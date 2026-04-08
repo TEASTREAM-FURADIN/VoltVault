@@ -6,7 +6,12 @@ import {
   Type, Cloud, Loader2, Camera, Upload, Folder,
   Tags, ListFilter, Archive,
   Zap, Plug, Cable, Power, Lightbulb, Wrench, Hammer, 
-  CheckCircle, Info, Building, Truck, Grid
+  CheckCircle, Info, Building, Truck, Grid,
+  Shield, Flame, Droplets, Wind, Thermometer, Scissors, Battery,
+  FileText, PenTool, Ruler, Compass, Home, Activity, Radio, Wifi,
+  Phone, Car, Clock, Lock, Unlock, Sun, Moon, ChevronDown,
+  // --- 多職種・取り合い用 新規追加アイコン ---
+  Snowflake, Paintbrush, Link, Milestone, Layers
 } from 'lucide-react';
 
 import { initializeApp } from 'firebase/app';
@@ -15,28 +20,15 @@ import { getFirestore, doc, setDoc, collection, onSnapshot, deleteDoc } from 'fi
 
 // --- アイコンと色のマッピング定義 ---
 const IconMap = {
-  Zap, Plug, Cable, Power, Lightbulb, Wrench, Hammer, HardHat, AlertCircle, CheckCircle, Info, Tags, Folder, MapPin, Building, Truck, Grid, ListFilter
+  Zap, Plug, Cable, Power, Lightbulb, Wrench, Hammer, HardHat, AlertCircle, CheckCircle, Info, Tags, Folder, MapPin, Building, Truck, Grid, ListFilter,
+  Shield, Flame, Droplets, Wind, Thermometer, Scissors, Battery, FileText, PenTool, Ruler, Compass, Home, Activity, Radio, Wifi, Phone, Car, Clock, Lock, Unlock, Sun, Moon,
+  Snowflake, Paintbrush, Link, Milestone, Layers
 };
 
 const IconNames = {
-  Zap: '雷マーク（強電）',
-  Plug: 'プラグ（コンセント）',
-  Cable: 'ケーブル（配線）',
-  Power: '電源スイッチ（動力）',
-  Lightbulb: '電球（照明）',
-  Wrench: 'レンチ（工具）',
-  Hammer: 'ハンマー（工具）',
-  HardHat: 'ヘルメット（安全）',
-  AlertCircle: '警告マーク（注意）',
-  CheckCircle: 'チェック（確認済）',
-  Info: 'インフォ（情報）',
-  Tags: 'タグ',
-  Folder: 'フォルダ',
-  MapPin: 'ピン（現場）',
-  Building: 'ビル（施設）',
-  Truck: 'トラック（車両）',
-  Grid: 'グリッド（盤・ラック）',
-  ListFilter: 'フィルター'
+  Zap: '強電・雷', Plug: 'コンセント', Cable: '配線', Power: '動力・電源', Lightbulb: '照明', Wrench: 'レンチ', Hammer: 'ハンマー', HardHat: 'ヘルメット', AlertCircle: '注意・警告', CheckCircle: '確認・完了', Info: '情報', Tags: 'タグ', Folder: 'フォルダ', MapPin: '現場・場所', Building: 'ビル・施設', Truck: 'トラック・搬入', Grid: '盤・ラック', ListFilter: 'フィルター',
+  Shield: '保安・防御', Flame: '火気・熱', Droplets: '水回り・配管', Wind: '換気・ダクト', Thermometer: '温度・測定', Scissors: '切断・加工', Battery: 'バッテリー', FileText: '図面・書類', PenTool: 'ペン・記録', Ruler: '寸法・測定', Compass: '方位', Home: '住宅・戸建', Activity: '波形・測定器', Radio: 'アンテナ・無線', Wifi: '通信・Wi-Fi', Phone: '電話・連絡', Car: '車両・移動', Clock: '時間・期限', Lock: '施錠・セキュリティ', Unlock: '解錠', Sun: '太陽光・昼', Moon: '夜間作業',
+  Snowflake: '空調・エアコン', Paintbrush: '塗装・補修', Link: '他職取り合い・連携', Milestone: '工程・段取り', Layers: '内装・ボード・軽天'
 };
 
 const ColorMap = {
@@ -52,15 +44,7 @@ const ColorMap = {
 };
 
 const ColorNames = {
-  red: '赤色',
-  blue: '青色',
-  green: '緑色',
-  yellow: '黄色',
-  orange: 'オレンジ色',
-  purple: '紫色',
-  pink: 'ピンク色',
-  teal: '青緑色',
-  gray: 'グレー色'
+  red: '赤色', blue: '青色', green: '緑色', yellow: '黄色', orange: 'オレンジ色', purple: '紫色', pink: 'ピンク色', teal: '青緑色', gray: 'グレー色'
 };
 
 // --- Firebase 設定 ---
@@ -78,20 +62,28 @@ const auth = getAuth(app);
 const db = getFirestore(app);
 const currentAppId = typeof __app_id !== 'undefined' ? __app_id : firebaseConfig.projectId;
 
+// 他職取り合いを意識した初期設定
 const defaultSettings = {
-  quickPhrases: ["通電確認OK", "絶縁抵抗計 測定済み", "盤内清掃完了", "端子増し締め確認", "相色確認OK", "隠蔽部写真撮影済"],
+  quickPhrases: [
+    "通電確認OK", "絶縁抵抗計 測定済", "相色確認OK", "隠蔽部写真撮影済",
+    "軽天屋さんと打ち合わせ済", "ボード開口指示", "先行配管完了", "スリーブ位置確認"
+  ],
   genres: {
     '幹線工事': { colorId: 'red', icon: 'Zap' },
     '盤結線': { colorId: 'blue', icon: 'Grid' },
-    '動力設備': { colorId: 'orange', icon: 'Power' },
     '弱電・通信': { colorId: 'green', icon: 'Cable' },
-    '現場ルール': { colorId: 'purple', icon: 'Building' }
+    '空調・エアコン': { colorId: 'teal', icon: 'Snowflake' },
+    '内装・ボード': { colorId: 'orange', icon: 'Layers' },
+    '他職取り合い': { colorId: 'purple', icon: 'Link' }
   },
   tags: {
     'VVFケーブル': { colorId: 'gray', icon: 'Cable' },
-    'CVケーブル': { colorId: 'gray', icon: 'Cable' },
     'ブレーカー': { colorId: 'yellow', icon: 'Plug' },
-    '照明器具': { colorId: 'yellow', icon: 'Lightbulb' }
+    '照明器具': { colorId: 'yellow', icon: 'Lightbulb' },
+    '室外機': { colorId: 'teal', icon: 'Snowflake' },
+    '先行配線': { colorId: 'green', icon: 'Cable' },
+    '点検口': { colorId: 'purple', icon: 'Unlock' },
+    'スリーブ': { colorId: 'orange', icon: 'Target' } // LucideにTargetはないがフォールバックされる
   }
 };
 
@@ -102,8 +94,8 @@ const DynamicIcon = ({ name, size = 16, className = "" }) => {
 
 const App = () => {
   const [user, setUser] = useState(null);
-  const [view, setView] = useState('list'); // 'list' | 'add' | 'edit' | 'settings'
-  const [listMode, setListMode] = useState('all'); // 'all' | 'site' | 'genre' | 'material'
+  const [view, setView] = useState('list'); 
+  const [listMode, setListMode] = useState('all'); 
   
   const [selectedMemo, setSelectedMemo] = useState(null);
   const [editingMemo, setEditingMemo] = useState(null);
@@ -141,7 +133,6 @@ const App = () => {
     const unsubscribeSettings = onSnapshot(settingsDoc, (d) => {
       if (d.exists()) {
         const data = d.data();
-        // 古いバージョンのマイグレーション
         let tagsData = data.tags || defaultSettings.tags;
         if (data.materials && Array.isArray(data.materials)) {
           tagsData = { ...tagsData };
@@ -183,7 +174,6 @@ const App = () => {
 
   const saveSettings = async (newSettings) => {
     setUserSettings(newSettings);
-    // 【バグ修正】 merge: true を外すことで、削除したキーがFirestoreからも完全に消去される
     await setDoc(doc(db, 'artifacts', currentAppId, 'public', 'data', 'settings', 'user'), newSettings);
   };
 
@@ -281,7 +271,6 @@ const App = () => {
     reader.onload = (event) => {
       const img = new Image();
       img.onload = () => {
-        // 画像をリサイズして容量削減 (1枚あたり軽くする)
         const canvas = document.createElement('canvas');
         const MAX_WIDTH = 800;
         const scale = MAX_WIDTH / img.width;
@@ -295,11 +284,66 @@ const App = () => {
       img.src = event.target.result;
     };
     reader.readAsDataURL(file);
-    e.target.value = null; // リセット
+    e.target.value = null; 
   };
 
 
-  // --- Master設定用ヘルパーコンポーネント ---
+  // --- Master設定用 カスタムUIコンポーネント ---
+  const ColorSelector = ({ value, onChange }) => {
+    const [isOpen, setIsOpen] = useState(false);
+    const dropdownRef = useRef(null);
+    useEffect(() => {
+      const handleClickOutside = (event) => { if (dropdownRef.current && !dropdownRef.current.contains(event.target)) setIsOpen(false); };
+      document.addEventListener("mousedown", handleClickOutside);
+      return () => document.removeEventListener("mousedown", handleClickOutside);
+    }, []);
+    return (
+      <div className="relative flex-[0.8]" ref={dropdownRef}>
+        <button type="button" onClick={() => setIsOpen(!isOpen)} className="w-full bg-white border border-slate-300 p-2.5 rounded-xl text-xs font-bold outline-none flex items-center justify-between hover:bg-slate-50 transition-colors">
+          <span className="flex items-center gap-2"><span className={`w-3.5 h-3.5 rounded-full ${ColorMap[value].bg} shadow-sm`}></span>{ColorNames[value]}</span>
+          <ChevronDown size={14} className="text-slate-400"/>
+        </button>
+        {isOpen && (
+          <div className="absolute z-50 bottom-full left-0 mb-1 w-full bg-white border border-slate-200 rounded-xl shadow-2xl py-1 max-h-48 overflow-y-auto">
+            {Object.keys(ColorMap).map(c => (
+              <button key={c} type="button" onClick={() => { onChange(c); setIsOpen(false); }} className={`w-full flex items-center gap-2 px-3 py-2.5 text-[10px] font-bold text-left transition-colors hover:bg-slate-50 ${value === c ? 'bg-slate-100 text-blue-700' : 'text-slate-700'}`}>
+                <span className={`w-3.5 h-3.5 rounded-full ${ColorMap[c].bg} shadow-sm`}></span>{ColorNames[c]}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  const IconSelector = ({ value, onChange }) => {
+    const [isOpen, setIsOpen] = useState(false);
+    const dropdownRef = useRef(null);
+    useEffect(() => {
+      const handleClickOutside = (event) => { if (dropdownRef.current && !dropdownRef.current.contains(event.target)) setIsOpen(false); };
+      document.addEventListener("mousedown", handleClickOutside);
+      return () => document.removeEventListener("mousedown", handleClickOutside);
+    }, []);
+    return (
+      <div className="relative flex-1" ref={dropdownRef}>
+        <button type="button" onClick={() => setIsOpen(!isOpen)} className="w-full bg-white border border-slate-300 p-2.5 rounded-xl text-xs font-bold outline-none flex items-center justify-between hover:bg-slate-50 transition-colors">
+          <span className="flex items-center gap-2"><DynamicIcon name={value} size={16} className="text-slate-700"/> <span className="truncate">{IconNames[value] || value}</span></span>
+          <ChevronDown size={14} className="text-slate-400"/>
+        </button>
+        {isOpen && (
+          <div className="absolute z-50 bottom-full right-0 mb-1 w-[260px] bg-white border border-slate-200 rounded-xl shadow-2xl p-2 max-h-60 overflow-y-auto grid grid-cols-2 gap-1">
+            {Object.keys(IconMap).map(iconName => (
+              <button key={iconName} type="button" onClick={() => { onChange(iconName); setIsOpen(false); }} className={`flex items-center gap-2 p-2.5 rounded-lg text-[10px] font-bold text-left transition-colors ${value === iconName ? 'bg-blue-100 text-blue-800' : 'hover:bg-slate-100 text-slate-700'}`}>
+                <DynamicIcon name={iconName} size={14} className={value === iconName ? 'text-blue-600' : 'text-slate-500'} /> 
+                <span className="truncate">{IconNames[iconName]}</span>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  };
+
   const EditorSection = ({ title, icon: Icon, items, onAdd, onDelete, placeholder }) => {
     const [name, setName] = useState('');
     const [color, setColor] = useState('blue');
@@ -312,24 +356,20 @@ const App = () => {
           {Object.entries(items).map(([key, config]) => {
             const colors = ColorMap[config.colorId] || ColorMap.gray;
             return (
-              <span key={key} className={`${colors.light} ${colors.text} ${colors.border} border text-xs font-bold px-3 py-1.5 rounded-xl flex items-center gap-2`}>
+              <span key={key} className={`${colors.light} ${colors.text} ${colors.border} border text-xs font-bold px-3 py-1.5 rounded-xl flex items-center gap-2 shadow-sm`}>
                 <DynamicIcon name={config.icon} size={14} /> {key}
-                <button onClick={() => { if(window.confirm(`「${key}」を削除しますか？`)) onDelete(key); }} className="opacity-40 hover:opacity-100"><X size={12}/></button>
+                <button onClick={() => { if(window.confirm(`「${key}」を削除しますか？`)) onDelete(key); }} className="opacity-40 hover:opacity-100 hover:text-red-600 transition-colors"><X size={14}/></button>
               </span>
             );
           })}
         </div>
         <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 space-y-3">
-          <input type="text" placeholder={placeholder} value={name} onChange={e=>setName(e.target.value)} className="w-full bg-white border p-3 rounded-xl text-sm font-bold outline-none focus:border-blue-500" />
-          <div className="flex gap-2 items-center">
-            <select value={color} onChange={e=>setColor(e.target.value)} className="flex-1 bg-white border p-2 rounded-xl text-xs font-bold outline-none">
-              {Object.keys(ColorMap).map(c => <option key={c} value={c}>{ColorNames[c] || c}</option>)}
-            </select>
-            <select value={iconName} onChange={e=>setIconName(e.target.value)} className="flex-1 bg-white border p-2 rounded-xl text-xs font-bold outline-none">
-              {Object.keys(IconMap).map(i => <option key={i} value={i}>{IconNames[i] || i}</option>)}
-            </select>
-            <button onClick={() => { if(name.trim()){ onAdd(name.trim(), color, iconName); setName(''); } }} className="bg-slate-800 text-white px-4 py-2 rounded-xl font-bold text-xs whitespace-nowrap">追加</button>
+          <input type="text" placeholder={placeholder} value={name} onChange={e=>setName(e.target.value)} className="w-full bg-white border border-slate-300 p-3 rounded-xl text-sm font-bold outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all" />
+          <div className="flex gap-2 relative">
+            <ColorSelector value={color} onChange={setColor} />
+            <IconSelector value={iconName} onChange={setIconName} />
           </div>
+          <button onClick={() => { if(name.trim()){ onAdd(name.trim(), color, iconName); setName(''); } }} className="w-full mt-2 bg-slate-800 text-white px-4 py-3.5 rounded-xl font-black text-xs uppercase tracking-widest shadow-md active:scale-[0.98] transition-transform">この設定で追加</button>
         </div>
       </div>
     );
@@ -348,7 +388,7 @@ const App = () => {
               <h1 className="text-2xl font-black italic tracking-tighter leading-none">VoltVault</h1>
               <div className="flex items-center gap-1.5 text-[8px] font-black text-blue-200 mt-1 uppercase tracking-widest">
                 {isSyncing ? <Loader2 size={10} className="animate-spin" /> : <Cloud size={10} />}
-                {user ? `Cloud Active` : "Connecting..."}
+                {user ? `Multi-Craft Mode` : "Connecting..."}
               </div>
             </div>
           </div>
@@ -454,7 +494,7 @@ const App = () => {
             <h2 className="text-xl font-black text-slate-800 flex items-center gap-2 mb-4"><Settings className="text-blue-600"/> Master設定</h2>
             
             <EditorSection 
-              title="ジャンルとアイコン編集" icon={ListFilter} items={userSettings.genres} placeholder="新ジャンル名..."
+              title="ジャンル編集" icon={ListFilter} items={userSettings.genres} placeholder="新ジャンル名..."
               onAdd={(name, colorId, icon) => saveSettings({...userSettings, genres: {...userSettings.genres, [name]: {colorId, icon}}})}
               onDelete={(name) => { const obj = {...userSettings.genres}; delete obj[name]; saveSettings({...userSettings, genres: obj}); }}
             />
@@ -475,21 +515,21 @@ const App = () => {
                   </span>
                 ))}
               </div>
-              <div className="flex gap-2">
-                <input id="newPhraseInput" type="text" placeholder="新しいフレーズ..." className="flex-1 bg-slate-50 border p-3 rounded-xl text-sm font-bold outline-none" />
+              <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 flex flex-col gap-2">
+                <input id="newPhraseInput" type="text" placeholder="新しいフレーズ..." className="w-full bg-white border border-slate-300 p-3 rounded-xl text-sm font-bold outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100" />
                 <button onClick={() => {
                   const input = document.getElementById('newPhraseInput');
                   if (input.value.trim()) {
                     saveSettings({ ...userSettings, quickPhrases: [...userSettings.quickPhrases, input.value.trim()] });
                     input.value = '';
                   }
-                }} className="bg-slate-800 text-white px-4 rounded-xl font-bold text-sm">追加</button>
+                }} className="w-full bg-slate-800 text-white px-4 py-3 rounded-xl font-black text-xs uppercase tracking-widest active:scale-95 transition-transform">追加</button>
               </div>
             </div>
             
             <div className="text-center py-4">
               <HardHat size={32} className="mx-auto text-yellow-500 drop-shadow-md mb-2"/>
-              <p className="text-xs font-black text-slate-500">VoltVault System v3.0.0 (Master Mode)</p>
+              <p className="text-xs font-black text-slate-500">VoltVault System v4.0.0 (Master Mode)</p>
             </div>
           </div>
         )}
@@ -502,7 +542,6 @@ const App = () => {
               <h2 className="font-black italic text-[10px] tracking-widest uppercase">Secret Knowledge</h2>
               <button onClick={() => { 
                 setEditingMemo(selectedMemo); 
-                // 古いデータの互換性 (markupImage を images 配列に変換)
                 const safeMemo = {...selectedMemo};
                 if (!safeMemo.images) safeMemo.images = [];
                 if (safeMemo.markupImage && safeMemo.images.length === 0) safeMemo.images.push(safeMemo.markupImage);
@@ -514,8 +553,8 @@ const App = () => {
             <div className="p-8 space-y-8 max-w-xl mx-auto">
               <div className="space-y-4">
                 <div className="flex gap-2 items-center mb-2">
-                  <span className={`px-3 py-1 rounded-lg text-[9px] font-black uppercase flex items-center gap-1 ${ColorMap[userSettings.genres[selectedMemo.genre]?.colorId || 'gray'].light} ${ColorMap[userSettings.genres[selectedMemo.genre]?.colorId || 'gray'].text} border`}>
-                    <DynamicIcon name={userSettings.genres[selectedMemo.genre]?.icon} size={12}/> {selectedMemo.genre}
+                  <span className={`px-3 py-1.5 rounded-lg text-[9px] font-black uppercase flex items-center gap-1.5 ${ColorMap[userSettings.genres[selectedMemo.genre]?.colorId || 'gray'].light} ${ColorMap[userSettings.genres[selectedMemo.genre]?.colorId || 'gray'].text} border`}>
+                    <DynamicIcon name={userSettings.genres[selectedMemo.genre]?.icon} size={14}/> {selectedMemo.genre}
                   </span>
                 </div>
                 <h2 className="text-3xl font-black text-slate-800 leading-tight tracking-tighter">{selectedMemo.title}</h2>
@@ -524,14 +563,13 @@ const App = () => {
                   <span className="flex items-center gap-1.5"><Calendar size={12} className="text-blue-500"/> {selectedMemo.date}</span>
                 </div>
                 
-                {/* タグ表示 */}
                 {selectedMemo.materials && selectedMemo.materials.length > 0 && (
                   <div className="flex flex-wrap gap-2 pt-2">
                     {selectedMemo.materials.map((mat, i) => {
                       const tagConf = userSettings.tags[mat] || { colorId: 'gray', icon: 'Tag' };
                       const tColor = ColorMap[tagConf.colorId];
                       return (
-                        <span key={i} className={`${tColor.light} ${tColor.text} ${tColor.border} border px-2.5 py-1 rounded-lg text-[10px] font-bold flex items-center gap-1.5`}>
+                        <span key={i} className={`${tColor.light} ${tColor.text} ${tColor.border} border px-2.5 py-1.5 rounded-lg text-[10px] font-bold flex items-center gap-1.5 shadow-sm`}>
                           <DynamicIcon name={tagConf.icon} size={12}/> {mat}
                         </span>
                       )
@@ -545,12 +583,11 @@ const App = () => {
                 <div className="space-y-3">
                   <h3 className="text-xs font-black text-slate-400 flex items-center gap-1"><Camera size={14}/> 現場写真</h3>
                   <div className="flex flex-col gap-4">
-                    {/* 古いデータの互換性 */}
                     {selectedMemo.markupImage && (!selectedMemo.images || selectedMemo.images.length===0) && (
                       <div className="bg-slate-100 rounded-[2.5rem] overflow-hidden border-2 shadow-inner"><img src={selectedMemo.markupImage} className="w-full" /></div>
                     )}
                     {selectedMemo.images && selectedMemo.images.map((img, i) => (
-                      <div key={i} className="bg-slate-100 rounded-[2.5rem] overflow-hidden border-2 shadow-inner relative group">
+                      <div key={i} className="bg-slate-100 rounded-[2.5rem] overflow-hidden border-2 shadow-inner relative">
                         <img src={img} className="w-full h-auto object-cover" />
                       </div>
                     ))}
@@ -577,22 +614,20 @@ const App = () => {
           </header>
           
           <div className="p-6 space-y-7 max-w-xl mx-auto">
-            {/* 基本入力 */}
             <div className="space-y-4">
               <input className="w-full text-2xl font-black bg-transparent border-b-2 border-slate-200 py-2 focus:border-blue-600 outline-none transition-colors placeholder:text-slate-300" placeholder="作業の要点・タイトル" value={formData.title} onChange={e => setFormData({...formData, title: e.target.value})} />
               <div className="grid grid-cols-2 gap-4">
-                <input type="date" className="p-3 bg-white border rounded-2xl font-bold outline-none text-sm text-slate-700" value={formData.date} onChange={e => setFormData({...formData, date: e.target.value})} />
-                <select className="p-3 bg-white border rounded-2xl font-bold outline-none text-sm text-slate-700" value={formData.genre} onChange={e => setFormData({...formData, genre: e.target.value})}>
+                <input type="date" className="p-3 bg-white border border-slate-200 rounded-2xl font-bold outline-none text-sm text-slate-700" value={formData.date} onChange={e => setFormData({...formData, date: e.target.value})} />
+                <select className="p-3 bg-white border border-slate-200 rounded-2xl font-bold outline-none text-sm text-slate-700" value={formData.genre} onChange={e => setFormData({...formData, genre: e.target.value})}>
                   {Object.keys(userSettings.genres).map(g => <option key={g} value={g}>{g}</option>)}
                 </select>
               </div>
               <div className="relative">
                 <Building className="absolute left-3 top-3.5 text-slate-400" size={16}/>
-                <input className="w-full p-3 pl-10 bg-white border rounded-2xl font-bold outline-none text-sm text-slate-700 focus:border-blue-500" placeholder="現場名・案件名" value={formData.site} onChange={e => setFormData({...formData, site: e.target.value})} />
+                <input className="w-full p-3 pl-10 bg-white border border-slate-200 rounded-2xl font-bold outline-none text-sm text-slate-700 focus:border-blue-500" placeholder="現場名・案件名" value={formData.site} onChange={e => setFormData({...formData, site: e.target.value})} />
               </div>
             </div>
 
-            {/* タグ選択 */}
             <div className="space-y-3">
               <p className="text-[10px] font-black text-slate-400 flex items-center gap-1"><Tags size={12}/> 使用材料・タグ (複数選択可)</p>
               <div className="flex flex-wrap gap-2">
@@ -617,7 +652,6 @@ const App = () => {
               </div>
             </div>
             
-            {/* 複数写真添付エリア */}
             <div className="space-y-3 bg-white p-5 rounded-[2.5rem] border border-slate-100 shadow-sm">
               <div className="flex justify-between items-center text-[10px] font-black text-slate-400 mb-2">
                 <span className="flex items-center gap-1"><Camera size={14}/> 現場写真 (タップで赤入れ)</span>
@@ -647,7 +681,6 @@ const App = () => {
               </div>
             </div>
             
-            {/* メモ本文 */}
             <div className="space-y-3 bg-white p-5 rounded-[2.5rem] border border-slate-100 shadow-sm">
               <div className="flex flex-wrap gap-2 pb-2 border-b border-slate-50">
                 {userSettings.quickPhrases.map(p => <button key={p} type="button" onClick={() => setFormData({...formData, content: formData.content + (formData.content?'\n':'') + p})} className="px-3 py-1.5 bg-slate-50 hover:bg-slate-100 text-slate-700 rounded-xl text-[10px] border font-black transition-colors">+ {p}</button>)}
@@ -660,7 +693,7 @@ const App = () => {
         </div>
       )}
 
-      {/* --- ボトムナビゲーション (スッキリ2つに) --- */}
+      {/* --- ボトムナビゲーション --- */}
       <nav className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-slate-900/95 backdrop-blur-2xl border border-slate-700 rounded-full p-2 flex items-center shadow-2xl z-40 w-max gap-2">
         <button onClick={() => setView('list')} className={`flex items-center gap-2 px-6 py-3 rounded-full transition-all duration-300 ${view === 'list' ? 'bg-blue-600 text-white shadow-lg' : 'text-slate-400 hover:text-white'}`}>
           <ClipboardList size={20} strokeWidth={view === 'list' ? 2.5 : 2} />
