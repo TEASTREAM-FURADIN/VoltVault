@@ -12,7 +12,8 @@ import {
   Phone, Car, Clock, Lock, Unlock, Sun, Moon, ChevronDown,
   Snowflake, Paintbrush, Link, Milestone, Layers,
   Gamepad2, Sword, Crown, Trophy, Target, Dumbbell, Book, Star, Sparkles, Medal, Award,
-  Move, ZoomIn, ZoomOut, RotateCcw
+  Move, ZoomIn, ZoomOut, RotateCcw,
+  User, Bell, ChevronUp, CheckSquare
 } from 'lucide-react';
 
 import { initializeApp } from 'firebase/app';
@@ -119,6 +120,9 @@ const App = () => {
   
   const [sortOrder, setSortOrder] = useState('newest'); 
   const [dateRange, setDateRange] = useState({ start: '', end: '' });
+  
+  // ★ 追加: 未確認クエストの絞り込み状態
+  const [filterPending, setFilterPending] = useState(false);
 
   const [isSyncing, setIsSyncing] = useState(false);
   const [error, setError] = useState(null);
@@ -127,8 +131,6 @@ const App = () => {
   const [userSettings, setUserSettings] = useState(defaultSettings);
   const [levelUpData, setLevelUpData] = useState(null);
 
-  // --- ★修正：入力履歴リスト生成時のクラッシュ完全防止策 ---
-  // String() で囲むことで、数値データが混ざっていてもエラーにならないようにしました
   const uniqueSites = [...new Set(memos.map(m => String(m.site || "")).filter(Boolean))];
   const uniqueTitles = [...new Set(memos.map(m => {
     const title = String(m.title || "");
@@ -146,7 +148,7 @@ const App = () => {
   useEffect(() => {
     if (!user) return;
     setIsSyncing(true);
-    setError(null); // エラーをリセット
+    setError(null); 
     
     const memosCol = collection(db, 'artifacts', currentAppId, 'public', 'data', 'memos');
     const unsubscribeMemos = onSnapshot(memosCol, 
@@ -179,10 +181,14 @@ const App = () => {
     return () => { unsubscribeMemos(); unsubscribeSettings(); };
   }, [user]);
 
-  const initialForm = { title: '', site: '', genre: '盤結線', materials: [], content: '', date: new Date().toISOString().split('T')[0], images: [] };
+  // ★ 修正: 詳細設定ステートとフィールド追加
+  const [showAdvanced, setShowAdvanced] = useState(false);
+  const initialForm = { 
+    title: '', site: '', genre: '盤結線', materials: [], content: '', date: new Date().toISOString().split('T')[0], images: [],
+    teacher: '', needsReview: false, reviewDate: '', isReviewed: false
+  };
   const [formData, setFormData] = useState(initialForm);
 
-  // --- ★修正：正規表現処理のクラッシュ防止 ---
   const escapeRegExp = (string) => String(string).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
   const handleSave = async () => {
@@ -240,6 +246,7 @@ const App = () => {
 
       setView('list');
       setFormData(initialForm);
+      setShowAdvanced(false); // 保存後は詳細設定を閉じる
     } catch (e) { alert("保存エラー。画像サイズが大きすぎる可能性があります。"); } 
     finally { setIsSyncing(false); }
   };
@@ -256,11 +263,13 @@ const App = () => {
     await setDoc(doc(db, 'artifacts', currentAppId, 'public', 'data', 'settings', 'user'), newSettings);
   };
 
+  // ★ 修正: 未確認フィルターと伝授者検索の追加
   const filteredMemos = memos.filter(m => {
-    const matchSearch = String(m.title || "").includes(searchTerm) || String(m.site || "").includes(searchTerm) || (m.materials || []).some(mat => String(mat).includes(searchTerm));
+    const matchSearch = String(m.title || "").includes(searchTerm) || String(m.site || "").includes(searchTerm) || (m.materials || []).some(mat => String(mat).includes(searchTerm)) || String(m.teacher || "").includes(searchTerm);
     const matchStart = dateRange.start ? (m.date || "") >= dateRange.start : true;
     const matchEnd = dateRange.end ? (m.date || "") <= dateRange.end : true;
-    return matchSearch && matchStart && matchEnd;
+    const matchPending = filterPending ? (m.needsReview && !m.isReviewed) : true;
+    return matchSearch && matchStart && matchEnd && matchPending;
   }).sort((a, b) => {
     const aTime = parseInt(String(a.id).split('_')[1]) || 0;
     const bTime = parseInt(String(b.id).split('_')[1]) || 0;
@@ -475,12 +484,9 @@ const App = () => {
     };
 
     const newImageUrls = await Promise.all(files.map(processFile));
-    
     setFormData(prev => ({...prev, images: [...prev.images, ...newImageUrls]}));
-    
     e.target.value = null; 
   };
-
 
   const ColorSelector = ({ value, onChange }) => {
     const [isOpen, setIsOpen] = useState(false);
@@ -592,86 +598,100 @@ const App = () => {
   const currentLevel = userSettings.stats?.level || 1;
   const expPercentage = currentExp % 100;
 
+  // ★ 追加: お知らせ通知の計算（未確認のもの）
+  const pendingReviews = memos.filter(m => m.needsReview && !m.isReviewed);
+
   return (
-    <div className="min-h-screen bg-slate-50 pb-32 text-slate-900 font-sans antialiased selection:bg-blue-100">
+    <div className="min-h-screen bg-slate-50 pb-28 text-slate-900 font-sans antialiased selection:bg-blue-100">
       <LevelUpModal />
       {markupModal.isOpen && <MarkupModalCanvas />}
       
-      {/* --- ヘッダー --- */}
-      <header className="bg-blue-700 text-white p-7 rounded-b-[3.5rem] shadow-xl sticky top-0 z-20 overflow-hidden relative">
-        <div className="absolute top-0 right-0 opacity-10 pointer-events-none"><Crown size={150} className="-mt-10 -mr-10 rotate-12" /></div>
+      <header className="bg-blue-700 text-white px-5 py-4 rounded-b-3xl shadow-xl sticky top-0 z-20 overflow-hidden relative">
+        <div className="absolute top-0 right-0 opacity-10 pointer-events-none"><Crown size={120} className="-mt-8 -mr-8 rotate-12" /></div>
 
-        <div className="flex justify-between items-center mb-5 relative z-10">
-          <div className="flex items-center gap-3">
-            <div className="bg-yellow-400 p-2.5 rounded-2xl rotate-3 shadow-lg"><HardHat className="text-blue-900" size={24}/></div>
+        <div className="flex justify-between items-center mb-3 relative z-10">
+          <div className="flex items-center gap-2">
+            <div className="bg-yellow-400 p-2 rounded-xl rotate-3 shadow-lg"><HardHat className="text-blue-900" size={20}/></div>
             <div>
-              <h1 className="text-2xl font-black italic tracking-tighter leading-none">苦菩茶の極意</h1>
-              <div className="flex items-center gap-1.5 text-[8px] font-black text-blue-200 mt-1 uppercase tracking-widest">
-                {isSyncing ? <Loader2 size={10} className="animate-spin" /> : <Cloud size={10} />}
-                {user ? `Quest Mode: Active` : "Connecting..."}
+              <h1 className="text-xl font-black italic tracking-tighter leading-none">苦菩茶の極意</h1>
+              <div className="flex items-center gap-1 text-[8px] font-black text-blue-200 mt-1 uppercase tracking-widest">
+                {isSyncing ? <Loader2 size={8} className="animate-spin" /> : <Cloud size={8} />}
+                {user ? `Quest Mode` : "Connecting..."}
               </div>
             </div>
           </div>
-          <button onClick={() => { setFormData(initialForm); setView('add'); }} className="bg-white text-blue-700 p-4 rounded-2xl shadow-xl active:scale-90 hover:scale-105 transition-all">
-            <Plus size={28} strokeWidth={4} />
-          </button>
+          <div className="flex gap-2">
+            {/* ★ 追加: お知らせベル機能 */}
+            <button onClick={() => { setView('list'); setFilterPending(!filterPending); }} className={`p-2.5 rounded-xl shadow-lg transition-all relative ${filterPending ? 'bg-red-500 text-white' : 'bg-blue-800 text-blue-200 hover:text-white'}`}>
+              <Bell size={22} />
+              {pendingReviews.length > 0 && !filterPending && (
+                <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[9px] font-black w-4 h-4 rounded-full flex items-center justify-center animate-pulse shadow-md border-2 border-blue-700">
+                  {pendingReviews.length}
+                </span>
+              )}
+            </button>
+            <button onClick={() => { setFormData(initialForm); setShowAdvanced(false); setView('add'); }} className="bg-white text-blue-700 p-2.5 rounded-xl shadow-lg active:scale-90 hover:scale-105 transition-all">
+              <Plus size={22} strokeWidth={4} />
+            </button>
+          </div>
         </div>
 
-        <div className="bg-blue-900/40 rounded-2xl p-3 mb-4 backdrop-blur-md border border-blue-500/30 relative z-10">
-          <div className="flex justify-between items-end mb-1.5">
+        <div className="bg-blue-900/40 rounded-xl p-2 mb-3 backdrop-blur-md border border-blue-500/30 relative z-10">
+          <div className="flex justify-between items-center mb-1.5">
             <div className="flex items-center gap-2">
-              <span className="bg-yellow-400 text-blue-900 text-[10px] font-black px-2 py-0.5 rounded-md flex items-center gap-1"><Trophy size={10}/> Lv.{currentLevel}</span>
-              <span className="text-xs font-bold text-white tracking-wide">{getTitle(currentLevel)}</span>
+              <span className="bg-yellow-400 text-blue-900 text-[9px] font-black px-1.5 py-0.5 rounded flex items-center gap-0.5"><Trophy size={10}/> Lv.{currentLevel}</span>
+              <span className="text-[10px] font-bold text-white tracking-wide truncate max-w-[120px]">{getTitle(currentLevel)}</span>
             </div>
-            <span className="text-[8px] font-bold text-blue-200 uppercase">Total Memos: {userSettings.stats?.totalMemos || 0}</span>
+            <span className="text-[8px] font-bold text-blue-200 uppercase">Memos: {userSettings.stats?.totalMemos || 0}</span>
           </div>
-          <div className="w-full bg-blue-950 rounded-full h-2.5 overflow-hidden border border-blue-800">
-            <div className="bg-gradient-to-r from-cyan-400 to-blue-300 h-2.5 rounded-full transition-all duration-1000 ease-out relative" style={{ width: `${expPercentage}%` }}>
+          <div className="w-full bg-blue-950 rounded-full h-1.5 overflow-hidden border border-blue-800">
+            <div className="bg-gradient-to-r from-cyan-400 to-blue-300 h-1.5 rounded-full transition-all duration-1000 ease-out relative" style={{ width: `${expPercentage}%` }}>
               <div className="absolute inset-0 bg-white/30 w-full h-full animate-pulse"></div>
             </div>
           </div>
         </div>
 
         {view === 'list' && (
-          <div className="space-y-4 animate-in slide-in-from-top-4 relative z-10">
-            <div className="flex bg-blue-900/40 p-1.5 rounded-2xl backdrop-blur-sm">
-              <button onClick={() => setListMode('all')} className={`flex-1 py-2 rounded-xl text-xs font-black transition-all ${listMode === 'all' ? 'bg-white shadow-sm text-blue-700' : 'text-blue-200'}`}>全て</button>
-              <button onClick={() => setListMode('site')} className={`flex-1 py-2 rounded-xl text-xs font-black transition-all ${listMode === 'site' ? 'bg-white shadow-sm text-blue-700' : 'text-blue-200'}`}>現場別</button>
-              <button onClick={() => setListMode('genre')} className={`flex-1 py-2 rounded-xl text-xs font-black transition-all ${listMode === 'genre' ? 'bg-white shadow-sm text-blue-700' : 'text-blue-200'}`}>ジャンル</button>
-              <button onClick={() => setListMode('material')} className={`flex-1 py-2 rounded-xl text-xs font-black transition-all ${listMode === 'material' ? 'bg-white shadow-sm text-blue-700' : 'text-blue-200'}`}>材料別</button>
+          <div className="space-y-2 animate-in slide-in-from-top-2 relative z-10">
+            <div className="flex bg-blue-900/40 p-1 rounded-xl backdrop-blur-sm">
+              <button onClick={() => setListMode('all')} className={`flex-1 py-1 rounded-lg text-[10px] font-black transition-all ${listMode === 'all' ? 'bg-white shadow-sm text-blue-700' : 'text-blue-200'}`}>全て</button>
+              <button onClick={() => setListMode('site')} className={`flex-1 py-1 rounded-lg text-[10px] font-black transition-all ${listMode === 'site' ? 'bg-white shadow-sm text-blue-700' : 'text-blue-200'}`}>現場別</button>
+              <button onClick={() => setListMode('genre')} className={`flex-1 py-1 rounded-lg text-[10px] font-black transition-all ${listMode === 'genre' ? 'bg-white shadow-sm text-blue-700' : 'text-blue-200'}`}>ジャンル</button>
+              <button onClick={() => setListMode('material')} className={`flex-1 py-1 rounded-lg text-[10px] font-black transition-all ${listMode === 'material' ? 'bg-white shadow-sm text-blue-700' : 'text-blue-200'}`}>材料別</button>
             </div>
-            <div className="relative">
-          <Search className="absolute left-4 top-3.5 text-blue-300" size={20} />
-          <input type="text" placeholder="極意・現場・材料を検索..." className="w-full bg-white/10 rounded-2xl py-3.5 pl-12 text-white placeholder-blue-300 outline-none text-sm font-bold focus:bg-white focus:text-slate-800 transition-colors shadow-inner" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
-        </div>
-
-        <div className="flex flex-col gap-2 mt-2">
-          {error && (
-            <div className="bg-red-500/20 border border-red-500/50 text-red-100 p-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1">
-              <AlertCircle size={14}/> {error}
+            
+            <div className="flex gap-2">
+              <div className="relative flex-1">
+                <Search className="absolute left-3 top-2 text-blue-300" size={16} />
+                <input type="text" placeholder="検索..." className="w-full bg-white/10 rounded-xl py-2 pl-9 text-white placeholder-blue-300 outline-none text-xs font-bold focus:bg-white focus:text-slate-800 transition-colors shadow-inner" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
+              </div>
+              <button onClick={() => setSortOrder(sortOrder === 'newest' ? 'oldest' : 'newest')} className="bg-blue-900/40 px-3 rounded-xl text-[10px] font-black text-blue-200 hover:bg-blue-800/40 whitespace-nowrap flex items-center gap-1">
+                {sortOrder === 'newest' ? '▼ 新しい順' : '▲ 古い順'}
+              </button>
             </div>
-          )}
-          <div className="flex gap-2 items-center bg-blue-900/40 p-2 rounded-xl backdrop-blur-sm">
-            <Calendar size={14} className="text-blue-200 ml-1" />
-            <input type="date" className="bg-transparent text-white text-xs outline-none font-bold flex-1" value={dateRange.start} onChange={e => setDateRange({...dateRange, start: e.target.value})} />
-            <span className="text-blue-200 text-xs font-black">〜</span>
-            <input type="date" className="bg-transparent text-white text-xs outline-none font-bold flex-1" value={dateRange.end} onChange={e => setDateRange({...dateRange, end: e.target.value})} />
-          </div>
-          <div className="flex gap-2">
-            <button onClick={() => setSortOrder('newest')} className={`flex-1 py-2 rounded-xl text-xs font-black transition-all shadow-sm ${sortOrder === 'newest' ? 'bg-white text-blue-700' : 'bg-blue-900/40 text-blue-200 hover:bg-blue-800/40'}`}>▼ 新しい順</button>
-            <button onClick={() => setSortOrder('oldest')} className={`flex-1 py-2 rounded-xl text-xs font-black transition-all shadow-sm ${sortOrder === 'oldest' ? 'bg-white text-blue-700' : 'bg-blue-900/40 text-blue-200 hover:bg-blue-800/40'}`}>▲ 古い順</button>
-          </div>
-        </div>
-      </div>
-    )}
-  </header>
 
-      <main className="p-6 max-w-xl mx-auto">
+            <div className="flex gap-2 items-center bg-blue-900/40 p-1.5 rounded-xl backdrop-blur-sm">
+              <Calendar size={14} className="text-blue-200 ml-1 shrink-0" />
+              <input type="date" className="bg-transparent text-white text-[10px] outline-none font-bold flex-1 w-full" value={dateRange.start} onChange={e => setDateRange({...dateRange, start: e.target.value})} />
+              <span className="text-blue-200 text-[10px] font-black shrink-0">〜</span>
+              <input type="date" className="bg-transparent text-white text-[10px] outline-none font-bold flex-1 w-full" value={dateRange.end} onChange={e => setDateRange({...dateRange, end: e.target.value})} />
+            </div>
+
+            {error && (
+              <div className="bg-red-500/20 border border-red-500/50 text-red-100 p-1.5 rounded-lg text-[10px] font-bold flex items-center justify-center gap-1 mt-1">
+                <AlertCircle size={12}/> {error}
+              </div>
+            )}
+          </div>
+        )}
+      </header>
+
+      <main className="p-4 max-w-xl mx-auto">
         
         {view === 'list' && (
-          <div className="space-y-6">
+          <div className="space-y-4">
             {listMode === 'all' ? (
-              <div className="space-y-4">
+              <div className="space-y-3">
                 {filteredMemos.length === 0 && !isSyncing && !error && (
                   <div className="text-center py-24 opacity-30">
                     <ClipboardList size={64} className="mx-auto mb-3"/>
@@ -682,17 +702,23 @@ const App = () => {
                   const genreConfig = userSettings.genres[memo.genre] || { colorId: 'gray', icon: 'Info' };
                   const colors = ColorMap[genreConfig.colorId];
                   return (
-                    <div key={memo.id} onClick={() => { setSelectedMemo(memo); setView('detail'); }} className="bg-white p-5 rounded-[2rem] border border-slate-100 relative overflow-hidden cursor-pointer active:scale-[0.98] transition-all shadow-sm">
-                      <div className={`absolute top-0 left-0 w-2.5 h-full ${colors.bg}`}></div>
-                      <div className="flex justify-between items-start mb-2 font-black italic text-slate-300 text-[10px] uppercase">
-                        <span>{memo.date}</span>
+                    <div key={memo.id} onClick={() => { setSelectedMemo(memo); setView('detail'); }} className="bg-white p-4 rounded-3xl border border-slate-100 relative overflow-hidden cursor-pointer active:scale-[0.98] transition-all shadow-sm">
+                      <div className={`absolute top-0 left-0 w-2 h-full ${colors.bg}`}></div>
+                      <div className="flex justify-between items-start mb-1.5 font-black italic text-slate-300 text-[9px] uppercase pl-1">
+                        <div className="flex items-center gap-1.5">
+                          <span>{memo.date}</span>
+                          {/* ★ 追加: 一覧での確認バッジ表示 */}
+                          {memo.needsReview && !memo.isReviewed && <span className="bg-red-50 text-red-600 px-1 rounded text-[8px] border border-red-200 flex items-center not-italic gap-0.5"><Bell size={8}/>要確認</span>}
+                          {memo.needsReview && memo.isReviewed && <span className="bg-green-50 text-green-600 px-1 rounded text-[8px] border border-green-200 flex items-center not-italic gap-0.5"><CheckSquare size={8}/>確認済</span>}
+                        </div>
                         <div className="flex gap-2">
-                          {memo.materials && memo.materials.length > 0 && <Tags size={12} className="text-orange-400" />}
-                          {memo.images && memo.images.length > 0 && <span className="flex items-center gap-0.5 text-blue-500"><Camera size={12}/>{memo.images.length}</span>}
+                          {memo.teacher && <span className="flex items-center gap-0.5 text-slate-400 not-italic"><User size={10}/>{memo.teacher}</span>}
+                          {memo.materials && memo.materials.length > 0 && <Tags size={10} className="text-orange-400" />}
+                          {memo.images && memo.images.length > 0 && <span className="flex items-center gap-0.5 text-blue-500"><Camera size={10}/>{memo.images.length}</span>}
                         </div>
                       </div>
-                      <h3 className="font-black text-slate-800 text-lg leading-tight mb-3 tracking-tight">{memo.title}</h3>
-                      <div className="flex items-center justify-between text-[9px] font-black text-slate-400 pt-3 border-t border-slate-50">
+                      <h3 className="font-black text-slate-800 text-base leading-tight mb-2 tracking-tight pl-2">{memo.title}</h3>
+                      <div className="flex items-center justify-between text-[9px] font-black text-slate-400 pt-2 border-t border-slate-50 pl-1">
                         <span className="flex items-center gap-1 bg-slate-50 px-2 py-1 rounded-md"><MapPin size={10} className="text-blue-500"/> {memo.site}</span>
                         <span className={`px-2.5 py-1 rounded-md flex items-center gap-1 ${colors.light} ${colors.text} border ${colors.border} uppercase`}><DynamicIcon name={genreConfig.icon} size={10}/> {memo.genre}</span>
                       </div>
@@ -705,28 +731,31 @@ const App = () => {
                 <p className="text-center text-xs font-bold text-slate-400 py-10">データがありません</p>
               ) : (
                 Object.entries(groupedMemos).sort(([a], [b]) => a.localeCompare(b)).map(([groupKey, groupMemos]) => (
-                  <div key={groupKey} className="bg-white rounded-[2rem] border border-slate-100 shadow-sm overflow-hidden mb-4">
-                    <div className="bg-slate-800 p-4 text-white flex justify-between items-center">
-                      <h3 className="font-black flex items-center gap-2">
-                        {listMode === 'site' && <Building size={16} className="text-blue-400"/>}
-                        {listMode === 'genre' && <ListFilter size={16} className="text-green-400"/>}
-                        {listMode === 'material' && <Tags size={16} className="text-orange-400"/>}
+                  <div key={groupKey} className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden mb-3">
+                    <div className="bg-slate-800 p-3 text-white flex justify-between items-center">
+                      <h3 className="font-black text-sm flex items-center gap-2">
+                        {listMode === 'site' && <Building size={14} className="text-blue-400"/>}
+                        {listMode === 'genre' && <ListFilter size={14} className="text-green-400"/>}
+                        {listMode === 'material' && <Tags size={14} className="text-orange-400"/>}
                         {groupKey}
                       </h3>
-                      <span className="text-[10px] font-bold bg-slate-700 px-2 py-1 rounded-full">{groupMemos.length} 件</span>
+                      <span className="text-[9px] font-bold bg-slate-700 px-2 py-1 rounded-full">{groupMemos.length} 件</span>
                     </div>
-                    <div className="p-4 space-y-2">
+                    <div className="p-3 space-y-2">
                       {groupMemos.map(memo => (
-                        <div key={memo.id} onClick={() => { setSelectedMemo(memo); setView('detail'); }} className="p-3 bg-slate-50 rounded-xl cursor-pointer active:bg-slate-100 flex justify-between items-center border border-transparent hover:border-slate-200">
+                        <div key={memo.id} onClick={() => { setSelectedMemo(memo); setView('detail'); }} className="p-2.5 bg-slate-50 rounded-xl cursor-pointer active:bg-slate-100 flex justify-between items-center border border-transparent hover:border-slate-200">
                           <div>
-                            <p className="text-sm font-black text-slate-700">{memo.title}</p>
-                            <p className="text-[9px] font-bold text-slate-400 mt-1 flex gap-2">
+                            <p className="text-xs font-black text-slate-700 flex items-center gap-1">
+                              {memo.needsReview && !memo.isReviewed && <Bell size={10} className="text-red-500"/>}
+                              {memo.title}
+                            </p>
+                            <p className="text-[8px] font-bold text-slate-400 mt-1 flex gap-2">
                               {listMode !== 'site' && <span>📍{memo.site}</span>}
                               {listMode !== 'genre' && <span>🏷️{memo.genre}</span>}
                               <span>{memo.date}</span>
                             </p>
                           </div>
-                          <ChevronRight size={16} className="text-slate-300"/>
+                          <ChevronRight size={14} className="text-slate-300"/>
                         </div>
                       ))}
                     </div>
@@ -777,7 +806,7 @@ const App = () => {
             
             <div className="text-center py-4 opacity-50">
               <Gamepad2 size={32} className="mx-auto text-slate-800 mb-2"/>
-              <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">苦菩茶の極意 Quest v6.1.0</p>
+              <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">苦菩茶の極意 Quest v7.0.0</p>
             </div>
           </div>
         )}
@@ -809,6 +838,27 @@ const App = () => {
                   <span className="flex items-center gap-1.5"><MapPin size={12} className="text-blue-500"/> {selectedMemo.site}</span>
                   <span className="flex items-center gap-1.5"><Calendar size={12} className="text-blue-500"/> {selectedMemo.date}</span>
                 </div>
+
+                {/* ★ 追加: 詳細画面での伝授者と確認ステータス表示 */}
+                {(selectedMemo.teacher || selectedMemo.needsReview) && (
+                  <div className="flex flex-wrap gap-2 text-[10px] font-bold mt-2">
+                    {selectedMemo.teacher && (
+                      <span className="bg-slate-100 text-slate-600 px-2 py-1 rounded-md flex items-center gap-1 border border-slate-200">
+                        <User size={12}/> 伝授: {selectedMemo.teacher}
+                      </span>
+                    )}
+                    {selectedMemo.needsReview && !selectedMemo.isReviewed && (
+                      <span className="bg-red-50 text-red-600 px-2 py-1 rounded-md flex items-center gap-1 border border-red-200">
+                        <Bell size={12}/> 要確認 ({selectedMemo.reviewDate || '期限なし'})
+                      </span>
+                    )}
+                    {selectedMemo.needsReview && selectedMemo.isReviewed && (
+                      <span className="bg-green-50 text-green-600 px-2 py-1 rounded-md flex items-center gap-1 border border-green-200">
+                        <CheckSquare size={12}/> 確認完了
+                      </span>
+                    )}
+                  </div>
+                )}
                 
                 {selectedMemo.materials && selectedMemo.materials.length > 0 && (
                   <div className="flex flex-wrap gap-2 pt-2">
@@ -895,6 +945,49 @@ const App = () => {
                   {uniqueSites.map(s => <option key={s} value={s} />)}
                 </datalist>
               </div>
+            </div>
+
+            {/* ★ 追加: 必要な時だけ開ける詳細設定（伝授者・確認機能） */}
+            <div className="space-y-3 bg-white p-4 rounded-[2rem] border border-slate-100 shadow-sm">
+              <button type="button" onClick={() => setShowAdvanced(!showAdvanced)} className="w-full flex justify-between items-center text-xs font-black text-slate-500 py-1">
+                <span className="flex items-center gap-1.5"><Info size={14}/> 詳細設定 (伝授者・確認アラート)</span>
+                {showAdvanced ? <ChevronUp size={16}/> : <ChevronDown size={16}/>}
+              </button>
+              
+              {showAdvanced && (
+                <div className="space-y-4 pt-2 border-t border-slate-100 animate-in fade-in slide-in-from-top-2">
+                  <div className="relative shadow-sm rounded-2xl">
+                    <User className="absolute left-3 top-3.5 text-slate-400" size={16}/>
+                    <input 
+                      className="w-full p-3 pl-10 bg-slate-50 border border-slate-200 rounded-2xl font-bold outline-none text-sm text-slate-700 focus:border-blue-500 focus:bg-white transition-colors" 
+                      placeholder="教えてくれた人（師匠・先輩など）" 
+                      value={formData.teacher || ''} 
+                      onChange={e => setFormData({...formData, teacher: e.target.value})} 
+                    />
+                  </div>
+
+                  <div className="bg-slate-50 p-3 rounded-2xl border border-slate-200 space-y-3">
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input type="checkbox" checked={formData.needsReview || false} onChange={e => setFormData({...formData, needsReview: e.target.checked})} className="w-5 h-5 text-blue-600 rounded-md border-slate-300 focus:ring-blue-500" />
+                      <span className="text-xs font-black text-slate-700">後で確認・復習が必要</span>
+                    </label>
+                    
+                    {formData.needsReview && (
+                      <div className="pl-7 space-y-3">
+                        <div className="flex items-center gap-2">
+                          <Bell size={14} className="text-orange-500 shrink-0"/>
+                          <input type="date" className="p-2 bg-white border border-slate-200 rounded-xl font-bold outline-none text-xs text-slate-700 shadow-sm w-full" value={formData.reviewDate || ''} onChange={e => setFormData({...formData, reviewDate: e.target.value})} />
+                          <span className="text-[10px] text-slate-500 font-bold shrink-0">にお知らせ</span>
+                        </div>
+                        <label className="flex items-center gap-2 cursor-pointer">
+                          <input type="checkbox" checked={formData.isReviewed || false} onChange={e => setFormData({...formData, isReviewed: e.target.checked})} className="w-5 h-5 text-green-600 rounded-md border-slate-300 focus:ring-green-500" />
+                          <span className="text-xs font-black text-green-700">確認完了（クリア！）</span>
+                        </label>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
 
             <div className="space-y-3">
