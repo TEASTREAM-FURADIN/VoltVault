@@ -60,6 +60,11 @@ const ColorNames = {
   red: '赤色', blue: '青色', green: '緑色', yellow: '黄色', orange: 'オレンジ色', purple: '紫色', pink: 'ピンク色', teal: '青緑色', gray: 'グレー色'
 };
 
+// --- ★新規追加：大分類（親カテゴリー）を固定化！ ---
+const MainCategories = [
+  '電気', '弱電', '設備', '内装', '建築', '事務', '工程', '知識技術', '趣味', 'その他'
+];
+
 // --- Firebase 設定 ---
 const firebaseConfig = {
   apiKey: "AIzaSyDMOwQv6Np1N38y8ecJSXCRDZ4G89wccnM",
@@ -75,21 +80,24 @@ const auth = getAuth(app);
 const db = getFirestore(app);
 const currentAppId = typeof __app_id !== 'undefined' ? __app_id : firebaseConfig.projectId;
 
-// --- ★修正：初期データに group と order (並び順) を追加 ---
 const defaultSettings = {
   quickPhrases: [
     "通電確認OK", "絶縁抵抗計 測定済", "相色確認OK", "隠蔽部写真撮影済", "先行配管完了"
   ],
   genres: {
-    '幹線工事': { colorId: 'red', icon: 'Zap', group: '強電・設備', order: 0 },
-    '盤結線': { colorId: 'blue', icon: 'Grid', group: '強電・設備', order: 1 },
-    '他職取り合い': { colorId: 'purple', icon: 'Link', group: '建築・他職', order: 2 },
-    '筋トレ記録': { colorId: 'orange', icon: 'Dumbbell', group: '趣味・その他', order: 3 }
+    '幹線工事': { colorId: 'red', icon: 'Zap', group: '電気', order: 0 },
+    '盤結線': { colorId: 'blue', icon: 'Grid', group: '電気', order: 1 },
+    '弱電配線': { colorId: 'green', icon: 'Cable', group: '弱電', order: 2 },
+    '空調関係': { colorId: 'teal', icon: 'Snowflake', group: '設備', order: 3 },
+    '安全書類': { colorId: 'gray', icon: 'FileText', group: '事務', order: 4 },
+    '他職取り合い': { colorId: 'purple', icon: 'Link', group: '建築', order: 5 },
+    '筋トレ記録': { colorId: 'orange', icon: 'Dumbbell', group: '趣味', order: 6 }
   },
   tags: {
-    'VVFケーブル': { colorId: 'gray', icon: 'Cable', group: '配線材料', order: 0 },
-    '照明器具': { colorId: 'yellow', icon: 'Lightbulb', group: '器具・機器', order: 1 },
-    '重要目標': { colorId: 'red', icon: 'Target', group: '状態・情報', order: 2 }
+    'VVFケーブル': { colorId: 'gray', icon: 'Cable', group: '電気', order: 0 },
+    '照明器具': { colorId: 'yellow', icon: 'Lightbulb', group: '電気', order: 1 },
+    '分電盤': { colorId: 'blue', icon: 'Grid', group: '電気', order: 2 },
+    '重要目標': { colorId: 'red', icon: 'Target', group: 'その他', order: 3 }
   },
   stats: {
     exp: 0, level: 1, totalMemos: 0
@@ -166,13 +174,13 @@ const App = () => {
         let genresData = data.genres || defaultSettings.genres;
         let tagsData = data.tags || defaultSettings.tags;
         
-        // --- ★マイグレーション：古いデータに group と order を付与 ---
+        // マイグレーション：固定カテゴリーにないものは「その他」に振り分ける
         Object.keys(genresData).forEach((k, i) => {
-          if (!genresData[k].group) genresData[k].group = '未分類';
+          if (!genresData[k].group || !MainCategories.includes(genresData[k].group)) genresData[k].group = 'その他';
           if (typeof genresData[k].order !== 'number') genresData[k].order = i;
         });
         Object.keys(tagsData).forEach((k, i) => {
-          if (!tagsData[k].group) tagsData[k].group = '未分類';
+          if (!tagsData[k].group || !MainCategories.includes(tagsData[k].group)) tagsData[k].group = 'その他';
           if (typeof tagsData[k].order !== 'number') tagsData[k].order = i;
         });
 
@@ -190,10 +198,17 @@ const App = () => {
 
   const [showAdvanced, setShowAdvanced] = useState(false);
   const initialForm = { 
-    title: '', site: '', genre: '盤結線', materials: [], content: '', date: new Date().toISOString().split('T')[0], images: [],
+    title: '', site: '', genre: '', materials: [], content: '', date: new Date().toISOString().split('T')[0], images: [],
     teacher: '', needsReview: false, reviewDate: '', isReviewed: false
   };
   const [formData, setFormData] = useState(initialForm);
+
+  // 初回フォームを開く際、既存のジャンルから一番最初のものを初期値にする
+  useEffect(() => {
+    if (view === 'add' && !formData.genre && Object.keys(userSettings.genres).length > 0) {
+      setFormData(prev => ({ ...prev, genre: Object.keys(userSettings.genres)[0] }));
+    }
+  }, [view, userSettings]);
 
   const escapeRegExp = (string) => String(string).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
@@ -332,7 +347,6 @@ const App = () => {
   };
 
   const [markupModal, setMarkupModal] = useState({ isOpen: false, imgIndex: null, dataUrl: null });
-  
   const MarkupModalCanvas = () => {
     const canvasRef = useRef(null);
     const containerRef = useRef(null);
@@ -568,26 +582,21 @@ const App = () => {
     );
   };
 
-  // --- ★修正：親ジャンル入力機能と「↑」「↓」並び替え機能の追加 ---
-  const EditorSection = ({ title, icon: Icon, items, onAdd, onDelete, onMoveUp, onMoveDown, placeholder, groupListId }) => {
+  // --- ★修正：Master設定での親グループを固定カテゴリーのプルダウンに変更 ---
+  const EditorSection = ({ title, icon: Icon, items, onAdd, onDelete, onMoveUp, onMoveDown, placeholder }) => {
     const [name, setName] = useState('');
     const [color, setColor] = useState('blue');
     const [iconName, setIconName] = useState('Info');
-    const [group, setGroup] = useState(''); // 親ジャンル名用ステート
+    const [group, setGroup] = useState(MainCategories[0]); // デフォルトは「電気」
 
-    // 順番（order）でソート
     const sortedItems = Object.entries(items)
       .map(([k, v]) => ({ key: k, ...v }))
       .sort((a, b) => a.order - b.order);
-      
-    // 既存のグループ名を抽出（入力のサジェスト用）
-    const uniqueGroups = [...new Set(sortedItems.map(i => i.group).filter(Boolean))];
 
     return (
       <div className="bg-white p-5 rounded-[2rem] border border-slate-100 shadow-sm space-y-4">
         <h3 className="text-sm font-black text-slate-700 border-b pb-2 flex items-center gap-2"><Icon size={16}/> {title}</h3>
         
-        {/* アイテムリストと並び替えボタン */}
         <div className="space-y-2 max-h-64 overflow-y-auto pr-1 mb-4">
           {sortedItems.map((item, idx) => {
             const colors = ColorMap[item.colorId] || ColorMap.gray;
@@ -610,12 +619,14 @@ const App = () => {
           })}
         </div>
 
-        {/* 追加フォーム */}
         <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 space-y-3">
           <div className="flex gap-2">
             <div className="flex-1 relative">
-              <input type="text" list={groupListId} placeholder="親グループ(例: 電気)" value={group} onChange={e=>setGroup(e.target.value)} className="w-full bg-white border border-slate-300 p-2.5 rounded-xl text-xs font-bold outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all" />
-              <datalist id={groupListId}>{uniqueGroups.map(g => <option key={g} value={g} />)}</datalist>
+              {/* 大分類のプルダウン */}
+              <select value={group} onChange={e=>setGroup(e.target.value)} className="w-full bg-white border border-slate-300 p-3 rounded-xl text-[10px] sm:text-xs font-bold outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all appearance-none">
+                {MainCategories.map(c => <option key={c} value={c}>{c}</option>)}
+              </select>
+              <ChevronDown size={14} className="absolute right-3 top-3.5 text-slate-400 pointer-events-none"/>
             </div>
             <input type="text" placeholder={placeholder} value={name} onChange={e=>setName(e.target.value)} className="flex-[2] bg-white border border-slate-300 p-2.5 rounded-xl text-sm font-bold outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all" />
           </div>
@@ -623,13 +634,12 @@ const App = () => {
             <ColorSelector value={color} onChange={setColor} />
             <IconSelector value={iconName} onChange={setIconName} />
           </div>
-          <button onClick={() => { if(name.trim()){ onAdd(name.trim(), color, iconName, group.trim() || '未分類'); setName(''); } }} className="w-full mt-2 bg-slate-800 text-white px-4 py-3.5 rounded-xl font-black text-xs uppercase tracking-widest shadow-md active:scale-[0.98] transition-transform flex justify-center items-center gap-2"><Sword size={14}/> 装備に追加</button>
+          <button onClick={() => { if(name.trim()){ onAdd(name.trim(), color, iconName, group); setName(''); } }} className="w-full mt-2 bg-slate-800 text-white px-4 py-3.5 rounded-xl font-black text-xs uppercase tracking-widest shadow-md active:scale-[0.98] transition-transform flex justify-center items-center gap-2"><Sword size={14}/> 装備に追加</button>
         </div>
       </div>
     );
   };
 
-  // --- ★追加：アイテムを上下に並び替えるロジック ---
   const handleMoveItem = (type, key, direction) => {
     const items = userSettings[type]; 
     const arr = Object.entries(items)
@@ -661,18 +671,15 @@ const App = () => {
   };
 
   const handleAddItem = (type, name, colorId, icon, group) => {
-    const items = userSettings[type];
+    const items = userSettings[type] || {};
     const maxOrder = Math.max(...Object.values(items).map(i => i.order || 0), -1);
     const newItem = { colorId, icon, group, order: maxOrder + 1 };
     saveSettings({ ...userSettings, [type]: { ...items, [name]: newItem } });
   };
 
-
-  // --- ★追加：タグ選択時のアコーディオンUI ---
   const TagAccordion = ({ groupName, tags, formData, setFormData }) => {
-    // 1つでも選択されていれば初期表示を開く
     const hasSelected = tags.some(t => (formData.materials || []).includes(t.key));
-    const [isOpen, setIsOpen] = useState(hasSelected || true); // デフォルト開いた状態
+    const [isOpen, setIsOpen] = useState(hasSelected || true); 
 
     return (
       <div className="border border-slate-200 rounded-2xl overflow-hidden mb-2 shadow-sm">
@@ -705,33 +712,29 @@ const App = () => {
     )
   };
 
-
   const currentExp = userSettings.stats?.exp || 0;
   const currentLevel = userSettings.stats?.level || 1;
   const expPercentage = currentExp % 100;
   const pendingReviews = memos.filter(m => m.needsReview && !m.isReviewed);
 
-  // --- ★修正：フォーム用 ジャンルのグループ化 ---
+  // --- ★修正：新規フォームでの表示を固定カテゴリー基準に整列 ---
   const sortedGenres = Object.entries(userSettings.genres)
     .map(([k, v]) => ({ key: k, ...v }))
     .sort((a, b) => a.order - b.order);
 
-  const groupedGenresForm = sortedGenres.reduce((acc, g) => {
-    if (!acc[g.group]) acc[g.group] = [];
-    acc[g.group].push(g);
-    return acc;
-  }, {});
+  const groupedGenresForm = MainCategories.map(cat => ({
+    category: cat,
+    genres: sortedGenres.filter(g => g.group === cat)
+  })).filter(g => g.genres.length > 0);
 
-  // --- ★修正：フォーム用 タグのグループ化 ---
   const sortedTags = Object.entries(userSettings.tags)
     .map(([k, v]) => ({ key: k, ...v }))
     .sort((a, b) => a.order - b.order);
 
-  const groupedTagsForm = sortedTags.reduce((acc, t) => {
-    if (!acc[t.group]) acc[t.group] = [];
-    acc[t.group].push(t);
-    return acc;
-  }, {});
+  const groupedTagsForm = MainCategories.map(cat => ({
+    category: cat,
+    tags: sortedTags.filter(t => t.group === cat)
+  })).filter(t => t.tags.length > 0);
 
   return (
     <div className="min-h-screen bg-slate-50 pb-28 text-slate-900 font-sans antialiased selection:bg-blue-100">
@@ -901,7 +904,7 @@ const App = () => {
             <h2 className="text-xl font-black text-slate-800 flex items-center gap-2 mb-4"><Settings className="text-blue-600"/> Master設定</h2>
             
             <EditorSection 
-              title="ジャンル編集" icon={ListFilter} items={userSettings.genres} placeholder="新ジャンル名..." groupListId="genre-groups"
+              title="ジャンル編集" icon={ListFilter} items={userSettings.genres} placeholder="新ジャンル名..."
               onAdd={(name, colorId, icon, group) => handleAddItem('genres', name, colorId, icon, group)}
               onDelete={(name) => { const obj = {...userSettings.genres}; delete obj[name]; saveSettings({...userSettings, genres: obj}); }}
               onMoveUp={(name) => handleMoveItem('genres', name, 'up')}
@@ -909,7 +912,7 @@ const App = () => {
             />
 
             <EditorSection 
-              title="材料・タグ編集" icon={Tags} items={userSettings.tags} placeholder="新しい材料・タグ..." groupListId="tag-groups"
+              title="材料・タグ編集" icon={Tags} items={userSettings.tags} placeholder="新しい材料・タグ..."
               onAdd={(name, colorId, icon, group) => handleAddItem('tags', name, colorId, icon, group)}
               onDelete={(name) => { const obj = {...userSettings.tags}; delete obj[name]; saveSettings({...userSettings, tags: obj}); }}
               onMoveUp={(name) => handleMoveItem('tags', name, 'up')}
@@ -940,14 +943,14 @@ const App = () => {
             
             <div className="text-center py-4 opacity-50">
               <Gamepad2 size={32} className="mx-auto text-slate-800 mb-2"/>
-              <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">苦菩茶の極意 Quest v8.0.0</p>
+              <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">苦菩茶の極意 Quest v8.1.0</p>
             </div>
           </div>
         )}
 
         {view === 'detail' && selectedMemo && (
           <div className="fixed inset-0 bg-white z-50 overflow-y-auto pb-32 animate-in slide-in-from-right duration-300">
-            <header className={`${ColorMap[userSettings.genres[selectedMemo.genre]?.colorId || 'gray'].bg} text-white p-6 flex justify-between items-center sticky top-0 rounded-b-[2.5rem] shadow-lg`}>
+            <header className={`${ColorMap[userSettings.genres[selectedMemo.genre]?.colorId || 'gray']?.bg || 'bg-slate-500'} text-white p-6 flex justify-between items-center sticky top-0 rounded-b-[2.5rem] shadow-lg`}>
               <button onClick={() => setView('list')}><ChevronLeft size={28}/></button>
               <h2 className="font-black italic text-[10px] tracking-widest uppercase">Secret Knowledge</h2>
               <button onClick={() => { 
@@ -963,7 +966,7 @@ const App = () => {
             <div className="p-8 space-y-8 max-w-xl mx-auto">
               <div className="space-y-4">
                 <div className="flex gap-2 items-center mb-2">
-                  <span className={`px-3 py-1.5 rounded-lg text-[9px] font-black uppercase flex items-center gap-1.5 ${ColorMap[userSettings.genres[selectedMemo.genre]?.colorId || 'gray'].light} ${ColorMap[userSettings.genres[selectedMemo.genre]?.colorId || 'gray'].text} border shadow-sm`}>
+                  <span className={`px-3 py-1.5 rounded-lg text-[9px] font-black uppercase flex items-center gap-1.5 ${ColorMap[userSettings.genres[selectedMemo.genre]?.colorId || 'gray']?.light} ${ColorMap[userSettings.genres[selectedMemo.genre]?.colorId || 'gray']?.text} border shadow-sm`}>
                     <DynamicIcon name={userSettings.genres[selectedMemo.genre]?.icon} size={14}/> {selectedMemo.genre}
                   </span>
                 </div>
@@ -1062,10 +1065,10 @@ const App = () => {
               <div className="grid grid-cols-2 gap-4">
                 <input type="date" className="p-3 bg-white border border-slate-200 rounded-2xl font-bold outline-none text-sm text-slate-700 shadow-sm" value={formData.date} onChange={e => setFormData({...formData, date: e.target.value})} />
                 
-                {/* --- ★修正：ジャンルのプルダウンをグループ化 --- */}
+                {/* --- ★修正：固定カテゴリーでグループ化されたジャンル選択 --- */}
                 <select className="p-3 bg-white border border-slate-200 rounded-2xl font-bold outline-none text-sm text-slate-700 shadow-sm" value={formData.genre} onChange={e => setFormData({...formData, genre: e.target.value})}>
-                  {Object.entries(groupedGenresForm).map(([group, genres]) => (
-                    <optgroup key={group} label={group}>
+                  {groupedGenresForm.map(({ category, genres }) => (
+                    <optgroup key={category} label={`【${category}】`}>
                       {genres.map(g => <option key={g.key} value={g.key}>{g.key}</option>)}
                     </optgroup>
                   ))}
@@ -1131,10 +1134,10 @@ const App = () => {
             <div className="space-y-3">
               <p className="text-[10px] font-black text-slate-400 flex items-center gap-1"><Tags size={12}/> 使用アイテム・タグ (複数選択可)</p>
               
-              {/* --- ★修正：タグ選択のアコーディオン表示 --- */}
+              {/* --- ★修正：固定カテゴリーでグループ化されたタグの表示 --- */}
               <div className="flex flex-col gap-2">
-                {Object.entries(groupedTagsForm).map(([group, tags]) => (
-                  <TagAccordion key={group} groupName={group} tags={tags} formData={formData} setFormData={setFormData} />
+                {groupedTagsForm.map(({ category, tags }) => (
+                  <TagAccordion key={category} groupName={`【${category}】`} tags={tags} formData={formData} setFormData={setFormData} />
                 ))}
               </div>
             </div>
