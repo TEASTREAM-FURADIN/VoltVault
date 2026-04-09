@@ -12,7 +12,6 @@ import {
   Phone, Car, Clock, Lock, Unlock, Sun, Moon, ChevronDown,
   Snowflake, Paintbrush, Link, Milestone, Layers,
   Gamepad2, Sword, Crown, Trophy, Target, Dumbbell, Book, Star, Sparkles, Medal, Award,
-  // --- 今回のアップデートで追加したアイコン ---
   Move, ZoomIn, ZoomOut, RotateCcw
 } from 'lucide-react';
 
@@ -34,6 +33,15 @@ const IconNames = {
   Snowflake: '空調・エアコン', Paintbrush: '塗装・補修', Link: '他職連携', Milestone: '工程・段取り', Layers: '内装・軽天',
   Gamepad2: 'ゲーム', Sword: '剣（攻撃）', Crown: '王冠（最高）', Trophy: 'トロフィー', Target: 'ダーツ・目標', Dumbbell: '筋トレ', Book: '読書・学習', Star: '星（重要）', Sparkles: 'キラキラ', Medal: 'メダル', Award: 'アワード'
 };
+
+const IconCategories = [
+  { name: '電気・設備', icons: ['Zap', 'Plug', 'Cable', 'Power', 'Lightbulb', 'Grid'] },
+  { name: '他職・建築', icons: ['Shield', 'Flame', 'Droplets', 'Wind', 'Building', 'Home', 'Snowflake', 'Paintbrush', 'Layers'] },
+  { name: '工具・測定', icons: ['Wrench', 'Hammer', 'HardHat', 'Thermometer', 'Scissors', 'Ruler', 'Compass', 'Activity'] },
+  { name: '工程・打合せ', icons: ['FileText', 'PenTool', 'Phone', 'Clock', 'Link', 'Milestone', 'Tags', 'Folder', 'ListFilter'] },
+  { name: '状態・情報', icons: ['AlertCircle', 'CheckCircle', 'Info', 'MapPin', 'Truck', 'Battery', 'Radio', 'Wifi', 'Car', 'Lock', 'Unlock', 'Sun', 'Moon'] },
+  { name: '趣味・ゲーム', icons: ['Gamepad2', 'Sword', 'Crown', 'Trophy', 'Target', 'Dumbbell', 'Book', 'Star', 'Sparkles', 'Medal', 'Award'] }
+];
 
 const ColorMap = {
   red: { bg: 'bg-red-500', text: 'text-red-700', light: 'bg-red-50', border: 'border-red-200' },
@@ -115,7 +123,6 @@ const App = () => {
   const [userSettings, setUserSettings] = useState(defaultSettings);
   const [levelUpData, setLevelUpData] = useState(null);
 
-  // --- 認証とデータ同期 ---
   useEffect(() => {
     const initAuth = async () => {
       try { await signInAnonymously(auth); } catch (e) { setError("認証エラー。"); }
@@ -159,7 +166,6 @@ const App = () => {
     return () => { unsubscribeMemos(); unsubscribeSettings(); };
   }, [user]);
 
-  // --- データの保存・削除 ---
   const initialForm = { title: '', site: '', genre: '盤結線', materials: [], content: '', date: new Date().toISOString().split('T')[0], images: [] };
   const [formData, setFormData] = useState(initialForm);
 
@@ -206,7 +212,6 @@ const App = () => {
     await setDoc(doc(db, 'artifacts', currentAppId, 'public', 'data', 'settings', 'user'), newSettings);
   };
 
-  // --- 検索とグループ化 ---
   const filteredMemos = memos.filter(m => 
     (m.title || "").includes(searchTerm) || (m.site || "").includes(searchTerm) || (m.materials || []).some(mat => mat.includes(searchTerm))
   );
@@ -236,8 +241,6 @@ const App = () => {
     return acc;
   }, {});
 
-  // --- UIコンポーネント ---
-
   const LevelUpModal = () => {
     if (!levelUpData) return null;
     return (
@@ -257,31 +260,27 @@ const App = () => {
     );
   };
 
-  // --- ★進化版：スクロール・ズーム対応の赤入れモーダル★ ---
   const [markupModal, setMarkupModal] = useState({ isOpen: false, imgIndex: null, dataUrl: null });
   
   const MarkupModalCanvas = () => {
     const canvasRef = useRef(null);
     const containerRef = useRef(null);
     const [isDrawing, setIsDrawing] = useState(false);
-    const [mode, setMode] = useState('draw'); // 'draw' または 'move'
+    const [mode, setMode] = useState('draw'); 
     const [zoom, setZoom] = useState(1);
     const [dimensions, setDimensions] = useState({ width: 0, height: 0 });
 
-    // 画像の本来のサイズ（アスペクト比）を計算してキャンバスサイズを決定
     useEffect(() => {
       if (!markupModal.dataUrl) return;
       const img = new Image();
       img.onload = () => {
-        // スマホ画面の横幅に合わせて初期サイズを計算
-        const screenW = Math.min(window.innerWidth - 48, 800); // 余白考慮
+        const screenW = Math.min(window.innerWidth - 48, 800); 
         const scale = screenW / img.width;
         setDimensions({ width: screenW, height: img.height * scale });
       };
       img.src = markupModal.dataUrl;
     }, [markupModal.dataUrl]);
 
-    // キャンバスの描画（サイズ決定時、またはクリア時）
     const drawInitialImage = () => {
       if (!dimensions.width || !canvasRef.current) return;
       const canvas = canvasRef.current;
@@ -290,9 +289,8 @@ const App = () => {
       img.onload = () => {
         ctx.clearRect(0, 0, canvas.width, canvas.height);
         ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-        // ペンの設定
         ctx.strokeStyle = '#ef4444'; 
-        ctx.lineWidth = 4 / zoom; // ズームしても線の太さを一定に保つ
+        ctx.lineWidth = 4 / zoom; 
         ctx.lineJoin = 'round'; 
         ctx.lineCap = 'round';
       };
@@ -301,7 +299,6 @@ const App = () => {
 
     useEffect(() => { drawInitialImage(); }, [dimensions]);
 
-    // 線の太さをズームに合わせる
     useEffect(() => {
       if (canvasRef.current) canvasRef.current.getContext('2d').lineWidth = 4 / zoom;
     }, [zoom]);
@@ -310,7 +307,6 @@ const App = () => {
       const r = canvasRef.current.getBoundingClientRect();
       const clientX = e.clientX || (e.touches && e.touches[0].clientX);
       const clientY = e.clientY || (e.touches && e.touches[0].clientY);
-      // CSSによるズーム（Scale）を考慮して、正確な描画座標を計算
       const scaleX = canvasRef.current.width / r.width;
       const scaleY = canvasRef.current.height / r.height;
       return { x: (clientX - r.left) * scaleX, y: (clientY - r.top) * scaleY };
@@ -326,7 +322,7 @@ const App = () => {
     };
     const draw = (e) => { 
       if (!isDrawing || mode !== 'draw') return; 
-      e.preventDefault(); // 描画中はスクロールを止める
+      e.preventDefault(); 
       const p = getPos(e); 
       const ctx = canvasRef.current.getContext('2d'); 
       ctx.lineTo(p.x, p.y); 
@@ -345,14 +341,11 @@ const App = () => {
     return (
       <div className="fixed inset-0 bg-slate-900/95 z-[60] flex flex-col items-center justify-center p-2 backdrop-blur-sm animate-in fade-in">
         <div className="w-full max-w-lg bg-white rounded-[2rem] p-3 flex flex-col gap-3 shadow-2xl h-[90vh]">
-          
-          {/* ヘッダー */}
           <div className="flex justify-between items-center px-2 pt-1">
             <h3 className="font-black text-slate-800 flex items-center gap-2"><Edit3 size={18} className="text-red-500"/> 写真を編集</h3>
             <button onClick={() => setMarkupModal({ isOpen: false })} className="text-slate-400 hover:text-slate-600"><X size={28}/></button>
           </div>
 
-          {/* ツールバー (ペン/移動・ズーム・クリア) */}
           <div className="flex justify-between items-center bg-slate-100 p-1.5 rounded-xl border border-slate-200">
             <div className="flex gap-1">
               <button onClick={() => setMode('draw')} className={`px-3 py-2 rounded-lg text-xs font-bold flex items-center gap-1 transition-all ${mode === 'draw' ? 'bg-white shadow-sm text-red-600' : 'text-slate-500'}`}>
@@ -370,7 +363,6 @@ const App = () => {
             </div>
           </div>
 
-          {/* スクロール可能な画像コンテナ */}
           <div ref={containerRef} className={`flex-1 overflow-auto rounded-xl border-2 border-slate-200 bg-slate-800 shadow-inner relative touch-pan-x touch-pan-y ${mode === 'draw' ? 'touch-none' : ''}`}>
             {dimensions.width > 0 && (
               <div style={{ width: dimensions.width * zoom, height: dimensions.height * zoom, position: 'relative' }}>
@@ -400,27 +392,42 @@ const App = () => {
     );
   };
 
-  const handleFileUpload = (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const img = new Image();
-      img.onload = () => {
-        const canvas = document.createElement('canvas');
-        const MAX_WIDTH = 1000; // 少し高画質に設定
-        const scale = Math.min(MAX_WIDTH / img.width, 1);
-        canvas.width = img.width * scale;
-        canvas.height = img.height * scale;
-        const ctx = canvas.getContext('2d');
-        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-        const dataUrl = canvas.toDataURL('image/jpeg', 0.6);
-        setFormData({...formData, images: [...formData.images, dataUrl]});
-      };
-      img.src = event.target.result;
+  // --- ★進化版：複数写真の一括アップロード処理★ ---
+  const handleFileUpload = async (e) => {
+    // 選択された全てのファイルを配列として取得
+    const files = Array.from(e.target.files);
+    if (files.length === 0) return;
+
+    // 1枚の画像をCanvasでリサイズ・圧縮する処理（Promise）
+    const processFile = (file) => {
+      return new Promise((resolve) => {
+        const reader = new FileReader();
+        reader.onload = (event) => {
+          const img = new Image();
+          img.onload = () => {
+            const canvas = document.createElement('canvas');
+            const MAX_WIDTH = 1000; 
+            const scale = Math.min(MAX_WIDTH / img.width, 1);
+            canvas.width = img.width * scale;
+            canvas.height = img.height * scale;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+            // JPEGで圧縮してデータURLとして返す
+            resolve(canvas.toDataURL('image/jpeg', 0.6));
+          };
+          img.src = event.target.result;
+        };
+        reader.readAsDataURL(file);
+      });
     };
-    reader.readAsDataURL(file);
-    e.target.value = null; 
+
+    // 全てのファイルを同時に処理し、全て終わったらstateに追加する
+    const newImageUrls = await Promise.all(files.map(processFile));
+    
+    // 既存の画像に新しい画像を追加
+    setFormData(prev => ({...prev, images: [...prev.images, ...newImageUrls]}));
+    
+    e.target.value = null; // リセット
   };
 
 
@@ -453,12 +460,17 @@ const App = () => {
 
   const IconSelector = ({ value, onChange }) => {
     const [isOpen, setIsOpen] = useState(false);
+    const [activeCategory, setActiveCategory] = useState(IconCategories[0].name);
     const dropdownRef = useRef(null);
+
     useEffect(() => {
       const handleClickOutside = (event) => { if (dropdownRef.current && !dropdownRef.current.contains(event.target)) setIsOpen(false); };
       document.addEventListener("mousedown", handleClickOutside);
       return () => document.removeEventListener("mousedown", handleClickOutside);
     }, []);
+
+    const activeIcons = IconCategories.find(c => c.name === activeCategory)?.icons || [];
+
     return (
       <div className="relative flex-1" ref={dropdownRef}>
         <button type="button" onClick={() => setIsOpen(!isOpen)} className="w-full bg-white border border-slate-300 p-2.5 rounded-xl text-xs font-bold outline-none flex items-center justify-between hover:bg-slate-50 transition-colors">
@@ -466,13 +478,28 @@ const App = () => {
           <ChevronDown size={14} className="text-slate-400"/>
         </button>
         {isOpen && (
-          <div className="absolute z-50 bottom-full right-0 mb-1 w-[280px] bg-white border border-slate-200 rounded-xl shadow-2xl p-2 max-h-64 overflow-y-auto grid grid-cols-2 gap-1">
-            {Object.keys(IconMap).map(iconName => (
-              <button key={iconName} type="button" onClick={() => { onChange(iconName); setIsOpen(false); }} className={`flex items-center gap-2 p-2.5 rounded-lg text-[10px] font-bold text-left transition-colors ${value === iconName ? 'bg-blue-100 text-blue-800' : 'hover:bg-slate-100 text-slate-700'}`}>
-                <DynamicIcon name={iconName} size={14} className={value === iconName ? 'text-blue-600' : 'text-slate-500'} /> 
-                <span className="truncate">{IconNames[iconName]}</span>
-              </button>
-            ))}
+          <div className="absolute z-50 bottom-full right-0 mb-1 w-[300px] sm:w-[320px] bg-white border border-slate-200 rounded-xl shadow-2xl p-2 flex flex-col gap-2">
+            <div className="flex overflow-x-auto gap-1 pb-1 snap-x" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
+              <style>{`.overflow-x-auto::-webkit-scrollbar { display: none; }`}</style>
+              {IconCategories.map(cat => (
+                <button 
+                  key={cat.name} 
+                  type="button" 
+                  onClick={() => setActiveCategory(cat.name)}
+                  className={`whitespace-nowrap px-3 py-1.5 rounded-lg text-[10px] font-bold transition-colors snap-start ${activeCategory === cat.name ? 'bg-blue-600 text-white shadow-sm' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+                >
+                  {cat.name}
+                </button>
+              ))}
+            </div>
+            <div className="max-h-48 overflow-y-auto grid grid-cols-2 gap-1 pr-1">
+              {activeIcons.map(iconName => (
+                <button key={iconName} type="button" onClick={() => { onChange(iconName); setIsOpen(false); }} className={`flex items-center gap-2 p-2 rounded-lg text-[10px] font-bold text-left transition-colors ${value === iconName ? 'bg-blue-100 text-blue-800' : 'hover:bg-slate-100 text-slate-700'}`}>
+                  <DynamicIcon name={iconName} size={14} className={value === iconName ? 'text-blue-600' : 'text-slate-500'} /> 
+                  <span className="truncate">{IconNames[iconName]}</span>
+                </button>
+              ))}
+            </div>
           </div>
         )}
       </div>
@@ -527,7 +554,8 @@ const App = () => {
           <div className="flex items-center gap-3">
             <div className="bg-yellow-400 p-2.5 rounded-2xl rotate-3 shadow-lg"><HardHat className="text-blue-900" size={24}/></div>
             <div>
-              <h1 className="text-2xl font-black italic tracking-tighter leading-none">VoltVault</h1>
+              {/* --- アプリ名の変更 --- */}
+              <h1 className="text-2xl font-black italic tracking-tighter leading-none">電気の極意</h1>
               <div className="flex items-center gap-1.5 text-[8px] font-black text-blue-200 mt-1 uppercase tracking-widest">
                 {isSyncing ? <Loader2 size={10} className="animate-spin" /> : <Cloud size={10} />}
                 {user ? `Quest Mode: Active` : "Connecting..."}
@@ -681,7 +709,7 @@ const App = () => {
             
             <div className="text-center py-4 opacity-50">
               <Gamepad2 size={32} className="mx-auto text-slate-800 mb-2"/>
-              <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">VoltVault Quest v5.1.0</p>
+              <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">電気の極意 Quest v6.0.0</p>
             </div>
           </div>
         )}
@@ -809,9 +837,10 @@ const App = () => {
             <div className="space-y-3 bg-white p-5 rounded-[2.5rem] border border-slate-100 shadow-sm">
               <div className="flex justify-between items-center text-[10px] font-black text-slate-400 mb-2">
                 <span className="flex items-center gap-1"><Camera size={14}/> 証拠写真 (タップで赤入れ)</span>
+                {/* --- 複数画像対応の input --- */}
                 <label className="text-blue-500 bg-blue-50 px-3 py-1.5 rounded-xl flex items-center gap-1 cursor-pointer active:scale-95 transition-all">
-                  <Upload size={14}/> 撮影 / 追加
-                  <input type="file" accept="image/*" onChange={handleFileUpload} className="hidden" />
+                  <Upload size={14}/> 撮影 / 一括追加
+                  <input type="file" accept="image/*" multiple onChange={handleFileUpload} className="hidden" />
                 </label>
               </div>
               
