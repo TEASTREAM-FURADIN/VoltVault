@@ -13,7 +13,7 @@ import {
   Snowflake, Paintbrush, Link, Milestone, Layers,
   Gamepad2, Sword, Crown, Trophy, Target, Dumbbell, Book, Star, Sparkles, Medal, Award,
   Move, ZoomIn, ZoomOut, RotateCcw,
-  User, Bell, ChevronUp, CheckSquare
+  User, Bell, ChevronUp, CheckSquare, ArrowUp, ArrowDown
 } from 'lucide-react';
 
 import { initializeApp } from 'firebase/app';
@@ -75,20 +75,21 @@ const auth = getAuth(app);
 const db = getFirestore(app);
 const currentAppId = typeof __app_id !== 'undefined' ? __app_id : firebaseConfig.projectId;
 
+// --- ★修正：初期データに group と order (並び順) を追加 ---
 const defaultSettings = {
   quickPhrases: [
     "通電確認OK", "絶縁抵抗計 測定済", "相色確認OK", "隠蔽部写真撮影済", "先行配管完了"
   ],
   genres: {
-    '幹線工事': { colorId: 'red', icon: 'Zap' },
-    '盤結線': { colorId: 'blue', icon: 'Grid' },
-    '他職取り合い': { colorId: 'purple', icon: 'Link' },
-    '筋トレ記録': { colorId: 'orange', icon: 'Dumbbell' }
+    '幹線工事': { colorId: 'red', icon: 'Zap', group: '強電・設備', order: 0 },
+    '盤結線': { colorId: 'blue', icon: 'Grid', group: '強電・設備', order: 1 },
+    '他職取り合い': { colorId: 'purple', icon: 'Link', group: '建築・他職', order: 2 },
+    '筋トレ記録': { colorId: 'orange', icon: 'Dumbbell', group: '趣味・その他', order: 3 }
   },
   tags: {
-    'VVFケーブル': { colorId: 'gray', icon: 'Cable' },
-    '照明器具': { colorId: 'yellow', icon: 'Lightbulb' },
-    '重要目標': { colorId: 'red', icon: 'Target' }
+    'VVFケーブル': { colorId: 'gray', icon: 'Cable', group: '配線材料', order: 0 },
+    '照明器具': { colorId: 'yellow', icon: 'Lightbulb', group: '器具・機器', order: 1 },
+    '重要目標': { colorId: 'red', icon: 'Target', group: '状態・情報', order: 2 }
   },
   stats: {
     exp: 0, level: 1, totalMemos: 0
@@ -120,8 +121,6 @@ const App = () => {
   
   const [sortOrder, setSortOrder] = useState('newest'); 
   const [dateRange, setDateRange] = useState({ start: '', end: '' });
-  
-  // ★ 追加: 未確認クエストの絞り込み状態
   const [filterPending, setFilterPending] = useState(false);
 
   const [isSyncing, setIsSyncing] = useState(false);
@@ -164,14 +163,22 @@ const App = () => {
     const unsubscribeSettings = onSnapshot(settingsDoc, (d) => {
       if (d.exists()) {
         const data = d.data();
+        let genresData = data.genres || defaultSettings.genres;
         let tagsData = data.tags || defaultSettings.tags;
-        if (data.materials && Array.isArray(data.materials)) {
-          tagsData = { ...tagsData };
-          data.materials.forEach(m => { if(!tagsData[m]) tagsData[m] = { colorId: 'orange', icon: 'Tags' }; });
-        }
+        
+        // --- ★マイグレーション：古いデータに group と order を付与 ---
+        Object.keys(genresData).forEach((k, i) => {
+          if (!genresData[k].group) genresData[k].group = '未分類';
+          if (typeof genresData[k].order !== 'number') genresData[k].order = i;
+        });
+        Object.keys(tagsData).forEach((k, i) => {
+          if (!tagsData[k].group) tagsData[k].group = '未分類';
+          if (typeof tagsData[k].order !== 'number') tagsData[k].order = i;
+        });
+
         setUserSettings({
           quickPhrases: data.quickPhrases || defaultSettings.quickPhrases,
-          genres: data.genres || defaultSettings.genres,
+          genres: genresData,
           tags: tagsData,
           stats: data.stats || defaultSettings.stats
         });
@@ -181,7 +188,6 @@ const App = () => {
     return () => { unsubscribeMemos(); unsubscribeSettings(); };
   }, [user]);
 
-  // ★ 修正: 詳細設定ステートとフィールド追加
   const [showAdvanced, setShowAdvanced] = useState(false);
   const initialForm = { 
     title: '', site: '', genre: '盤結線', materials: [], content: '', date: new Date().toISOString().split('T')[0], images: [],
@@ -246,7 +252,7 @@ const App = () => {
 
       setView('list');
       setFormData(initialForm);
-      setShowAdvanced(false); // 保存後は詳細設定を閉じる
+      setShowAdvanced(false); 
     } catch (e) { alert("保存エラー。画像サイズが大きすぎる可能性があります。"); } 
     finally { setIsSyncing(false); }
   };
@@ -263,7 +269,6 @@ const App = () => {
     await setDoc(doc(db, 'artifacts', currentAppId, 'public', 'data', 'settings', 'user'), newSettings);
   };
 
-  // ★ 修正: 未確認フィルターと伝授者検索の追加
   const filteredMemos = memos.filter(m => {
     const matchSearch = String(m.title || "").includes(searchTerm) || String(m.site || "").includes(searchTerm) || (m.materials || []).some(mat => String(mat).includes(searchTerm)) || String(m.teacher || "").includes(searchTerm);
     const matchStart = dateRange.start ? (m.date || "") >= dateRange.start : true;
@@ -563,43 +568,170 @@ const App = () => {
     );
   };
 
-  const EditorSection = ({ title, icon: Icon, items, onAdd, onDelete, placeholder }) => {
+  // --- ★修正：親ジャンル入力機能と「↑」「↓」並び替え機能の追加 ---
+  const EditorSection = ({ title, icon: Icon, items, onAdd, onDelete, onMoveUp, onMoveDown, placeholder, groupListId }) => {
     const [name, setName] = useState('');
     const [color, setColor] = useState('blue');
     const [iconName, setIconName] = useState('Info');
+    const [group, setGroup] = useState(''); // 親ジャンル名用ステート
+
+    // 順番（order）でソート
+    const sortedItems = Object.entries(items)
+      .map(([k, v]) => ({ key: k, ...v }))
+      .sort((a, b) => a.order - b.order);
+      
+    // 既存のグループ名を抽出（入力のサジェスト用）
+    const uniqueGroups = [...new Set(sortedItems.map(i => i.group).filter(Boolean))];
 
     return (
-      <div className="bg-white p-6 rounded-[2rem] border border-slate-100 shadow-sm space-y-4">
+      <div className="bg-white p-5 rounded-[2rem] border border-slate-100 shadow-sm space-y-4">
         <h3 className="text-sm font-black text-slate-700 border-b pb-2 flex items-center gap-2"><Icon size={16}/> {title}</h3>
-        <div className="flex flex-wrap gap-2 mb-4">
-          {Object.entries(items).map(([key, config]) => {
-            const colors = ColorMap[config.colorId] || ColorMap.gray;
+        
+        {/* アイテムリストと並び替えボタン */}
+        <div className="space-y-2 max-h-64 overflow-y-auto pr-1 mb-4">
+          {sortedItems.map((item, idx) => {
+            const colors = ColorMap[item.colorId] || ColorMap.gray;
             return (
-              <span key={key} className={`${colors.light} ${colors.text} ${colors.border} border text-xs font-bold px-3 py-1.5 rounded-xl flex items-center gap-2 shadow-sm`}>
-                <DynamicIcon name={config.icon} size={14} /> {key}
-                <button onClick={() => { if(window.confirm(`「${key}」を削除しますか？`)) onDelete(key); }} className="opacity-40 hover:opacity-100 hover:text-red-600 transition-colors"><X size={14}/></button>
-              </span>
+              <div key={item.key} className="flex justify-between items-center bg-slate-50 p-2.5 rounded-2xl border border-slate-200 shadow-sm">
+                <div className="flex flex-col gap-1 items-start">
+                  <span className="text-[8px] font-black text-slate-400 uppercase tracking-wider bg-slate-200 px-1.5 py-0.5 rounded">{item.group}</span>
+                  <span className={`${colors.light} ${colors.text} ${colors.border} border text-xs font-bold px-2.5 py-1 rounded-lg flex items-center gap-1.5 w-max`}>
+                    <DynamicIcon name={item.icon} size={14} /> {item.key}
+                  </span>
+                </div>
+                <div className="flex gap-1 items-center">
+                  <button onClick={() => onMoveUp(item.key)} disabled={idx === 0} className="p-2 text-slate-400 hover:text-blue-600 disabled:opacity-30 active:scale-90"><ArrowUp size={16}/></button>
+                  <button onClick={() => onMoveDown(item.key)} disabled={idx === sortedItems.length - 1} className="p-2 text-slate-400 hover:text-blue-600 disabled:opacity-30 active:scale-90"><ArrowDown size={16}/></button>
+                  <div className="w-px h-6 bg-slate-300 mx-1"></div>
+                  <button onClick={() => { if(window.confirm(`「${item.key}」を削除しますか？`)) onDelete(item.key); }} className="p-2 text-slate-400 hover:text-red-600 active:scale-90"><Trash2 size={16}/></button>
+                </div>
+              </div>
             );
           })}
         </div>
+
+        {/* 追加フォーム */}
         <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 space-y-3">
-          <input type="text" placeholder={placeholder} value={name} onChange={e=>setName(e.target.value)} className="w-full bg-white border border-slate-300 p-3 rounded-xl text-sm font-bold outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all" />
+          <div className="flex gap-2">
+            <div className="flex-1 relative">
+              <input type="text" list={groupListId} placeholder="親グループ(例: 電気)" value={group} onChange={e=>setGroup(e.target.value)} className="w-full bg-white border border-slate-300 p-2.5 rounded-xl text-xs font-bold outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all" />
+              <datalist id={groupListId}>{uniqueGroups.map(g => <option key={g} value={g} />)}</datalist>
+            </div>
+            <input type="text" placeholder={placeholder} value={name} onChange={e=>setName(e.target.value)} className="flex-[2] bg-white border border-slate-300 p-2.5 rounded-xl text-sm font-bold outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all" />
+          </div>
           <div className="flex gap-2 relative">
             <ColorSelector value={color} onChange={setColor} />
             <IconSelector value={iconName} onChange={setIconName} />
           </div>
-          <button onClick={() => { if(name.trim()){ onAdd(name.trim(), color, iconName); setName(''); } }} className="w-full mt-2 bg-slate-800 text-white px-4 py-3.5 rounded-xl font-black text-xs uppercase tracking-widest shadow-md active:scale-[0.98] transition-transform flex justify-center items-center gap-2"><Sword size={14}/> 装備に追加</button>
+          <button onClick={() => { if(name.trim()){ onAdd(name.trim(), color, iconName, group.trim() || '未分類'); setName(''); } }} className="w-full mt-2 bg-slate-800 text-white px-4 py-3.5 rounded-xl font-black text-xs uppercase tracking-widest shadow-md active:scale-[0.98] transition-transform flex justify-center items-center gap-2"><Sword size={14}/> 装備に追加</button>
         </div>
       </div>
     );
   };
 
+  // --- ★追加：アイテムを上下に並び替えるロジック ---
+  const handleMoveItem = (type, key, direction) => {
+    const items = userSettings[type]; 
+    const arr = Object.entries(items)
+      .map(([k, v]) => ({ key: k, ...v }))
+      .sort((a, b) => a.order - b.order);
+      
+    const index = arr.findIndex(item => item.key === key);
+    if (index === -1) return;
+    
+    if (direction === 'up' && index > 0) {
+      const temp = arr[index].order;
+      arr[index].order = arr[index - 1].order;
+      arr[index - 1].order = temp;
+    } else if (direction === 'down' && index < arr.length - 1) {
+      const temp = arr[index].order;
+      arr[index].order = arr[index + 1].order;
+      arr[index + 1].order = temp;
+    } else {
+      return; 
+    }
+    
+    const newItems = {};
+    arr.forEach(item => {
+      const { key, ...rest } = item;
+      newItems[key] = rest;
+    });
+    
+    saveSettings({ ...userSettings, [type]: newItems });
+  };
+
+  const handleAddItem = (type, name, colorId, icon, group) => {
+    const items = userSettings[type];
+    const maxOrder = Math.max(...Object.values(items).map(i => i.order || 0), -1);
+    const newItem = { colorId, icon, group, order: maxOrder + 1 };
+    saveSettings({ ...userSettings, [type]: { ...items, [name]: newItem } });
+  };
+
+
+  // --- ★追加：タグ選択時のアコーディオンUI ---
+  const TagAccordion = ({ groupName, tags, formData, setFormData }) => {
+    // 1つでも選択されていれば初期表示を開く
+    const hasSelected = tags.some(t => (formData.materials || []).includes(t.key));
+    const [isOpen, setIsOpen] = useState(hasSelected || true); // デフォルト開いた状態
+
+    return (
+      <div className="border border-slate-200 rounded-2xl overflow-hidden mb-2 shadow-sm">
+        <button type="button" onClick={() => setIsOpen(!isOpen)} className="w-full p-3 flex justify-between items-center text-xs font-black text-slate-700 bg-slate-50 hover:bg-slate-100 transition-colors">
+          <span className="flex items-center gap-1.5"><Folder size={14} className="text-blue-500"/> {groupName} <span className="text-[9px] text-slate-400 font-bold ml-1 bg-white px-1.5 rounded-full border">全 {tags.length} 種</span></span>
+          {isOpen ? <ChevronUp size={16} className="text-slate-400"/> : <ChevronDown size={16} className="text-slate-400"/>}
+        </button>
+        {isOpen && (
+          <div className="p-3 flex flex-wrap gap-2 bg-white">
+            {tags.map(t => {
+              const isSelected = (formData.materials || []).includes(t.key);
+              const colors = ColorMap[t.colorId];
+              return (
+                <button key={t.key} type="button" onClick={() => {
+                    const mats = formData.materials || [];
+                    if (isSelected) setFormData({...formData, materials: mats.filter(m => m !== t.key)});
+                    else setFormData({...formData, materials: [...mats, t.key]});
+                  }}
+                  className={`px-3 py-1.5 rounded-xl text-[10px] font-bold border transition-all flex items-center gap-1.5 shadow-sm active:scale-95 ${
+                    isSelected ? `${colors.bg} text-white border-transparent` : `bg-white ${colors.text} border-slate-200 hover:bg-slate-50`
+                  }`}
+                >
+                  <DynamicIcon name={t.icon} size={12} /> {t.key}
+                </button>
+              )
+            })}
+          </div>
+        )}
+      </div>
+    )
+  };
+
+
   const currentExp = userSettings.stats?.exp || 0;
   const currentLevel = userSettings.stats?.level || 1;
   const expPercentage = currentExp % 100;
-
-  // ★ 追加: お知らせ通知の計算（未確認のもの）
   const pendingReviews = memos.filter(m => m.needsReview && !m.isReviewed);
+
+  // --- ★修正：フォーム用 ジャンルのグループ化 ---
+  const sortedGenres = Object.entries(userSettings.genres)
+    .map(([k, v]) => ({ key: k, ...v }))
+    .sort((a, b) => a.order - b.order);
+
+  const groupedGenresForm = sortedGenres.reduce((acc, g) => {
+    if (!acc[g.group]) acc[g.group] = [];
+    acc[g.group].push(g);
+    return acc;
+  }, {});
+
+  // --- ★修正：フォーム用 タグのグループ化 ---
+  const sortedTags = Object.entries(userSettings.tags)
+    .map(([k, v]) => ({ key: k, ...v }))
+    .sort((a, b) => a.order - b.order);
+
+  const groupedTagsForm = sortedTags.reduce((acc, t) => {
+    if (!acc[t.group]) acc[t.group] = [];
+    acc[t.group].push(t);
+    return acc;
+  }, {});
 
   return (
     <div className="min-h-screen bg-slate-50 pb-28 text-slate-900 font-sans antialiased selection:bg-blue-100">
@@ -621,7 +753,6 @@ const App = () => {
             </div>
           </div>
           <div className="flex gap-2">
-            {/* ★ 追加: お知らせベル機能 */}
             <button onClick={() => { setView('list'); setFilterPending(!filterPending); }} className={`p-2.5 rounded-xl shadow-lg transition-all relative ${filterPending ? 'bg-red-500 text-white' : 'bg-blue-800 text-blue-200 hover:text-white'}`}>
               <Bell size={22} />
               {pendingReviews.length > 0 && !filterPending && (
@@ -707,7 +838,6 @@ const App = () => {
                       <div className="flex justify-between items-start mb-1.5 font-black italic text-slate-300 text-[9px] uppercase pl-1">
                         <div className="flex items-center gap-1.5">
                           <span>{memo.date}</span>
-                          {/* ★ 追加: 一覧での確認バッジ表示 */}
                           {memo.needsReview && !memo.isReviewed && <span className="bg-red-50 text-red-600 px-1 rounded text-[8px] border border-red-200 flex items-center not-italic gap-0.5"><Bell size={8}/>要確認</span>}
                           {memo.needsReview && memo.isReviewed && <span className="bg-green-50 text-green-600 px-1 rounded text-[8px] border border-green-200 flex items-center not-italic gap-0.5"><CheckSquare size={8}/>確認済</span>}
                         </div>
@@ -771,15 +901,19 @@ const App = () => {
             <h2 className="text-xl font-black text-slate-800 flex items-center gap-2 mb-4"><Settings className="text-blue-600"/> Master設定</h2>
             
             <EditorSection 
-              title="ジャンル編集" icon={ListFilter} items={userSettings.genres} placeholder="新ジャンル名..."
-              onAdd={(name, colorId, icon) => saveSettings({...userSettings, genres: {...userSettings.genres, [name]: {colorId, icon}}})}
+              title="ジャンル編集" icon={ListFilter} items={userSettings.genres} placeholder="新ジャンル名..." groupListId="genre-groups"
+              onAdd={(name, colorId, icon, group) => handleAddItem('genres', name, colorId, icon, group)}
               onDelete={(name) => { const obj = {...userSettings.genres}; delete obj[name]; saveSettings({...userSettings, genres: obj}); }}
+              onMoveUp={(name) => handleMoveItem('genres', name, 'up')}
+              onMoveDown={(name) => handleMoveItem('genres', name, 'down')}
             />
 
             <EditorSection 
-              title="材料・タグ編集" icon={Tags} items={userSettings.tags} placeholder="新しい材料・タグ..."
-              onAdd={(name, colorId, icon) => saveSettings({...userSettings, tags: {...userSettings.tags, [name]: {colorId, icon}}})}
+              title="材料・タグ編集" icon={Tags} items={userSettings.tags} placeholder="新しい材料・タグ..." groupListId="tag-groups"
+              onAdd={(name, colorId, icon, group) => handleAddItem('tags', name, colorId, icon, group)}
               onDelete={(name) => { const obj = {...userSettings.tags}; delete obj[name]; saveSettings({...userSettings, tags: obj}); }}
+              onMoveUp={(name) => handleMoveItem('tags', name, 'up')}
+              onMoveDown={(name) => handleMoveItem('tags', name, 'down')}
             />
 
             <div className="bg-white p-6 rounded-[2rem] border border-slate-100 shadow-sm space-y-4">
@@ -806,7 +940,7 @@ const App = () => {
             
             <div className="text-center py-4 opacity-50">
               <Gamepad2 size={32} className="mx-auto text-slate-800 mb-2"/>
-              <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">苦菩茶の極意 Quest v7.0.0</p>
+              <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">苦菩茶の極意 Quest v8.0.0</p>
             </div>
           </div>
         )}
@@ -839,7 +973,6 @@ const App = () => {
                   <span className="flex items-center gap-1.5"><Calendar size={12} className="text-blue-500"/> {selectedMemo.date}</span>
                 </div>
 
-                {/* ★ 追加: 詳細画面での伝授者と確認ステータス表示 */}
                 {(selectedMemo.teacher || selectedMemo.needsReview) && (
                   <div className="flex flex-wrap gap-2 text-[10px] font-bold mt-2">
                     {selectedMemo.teacher && (
@@ -928,8 +1061,14 @@ const App = () => {
 
               <div className="grid grid-cols-2 gap-4">
                 <input type="date" className="p-3 bg-white border border-slate-200 rounded-2xl font-bold outline-none text-sm text-slate-700 shadow-sm" value={formData.date} onChange={e => setFormData({...formData, date: e.target.value})} />
+                
+                {/* --- ★修正：ジャンルのプルダウンをグループ化 --- */}
                 <select className="p-3 bg-white border border-slate-200 rounded-2xl font-bold outline-none text-sm text-slate-700 shadow-sm" value={formData.genre} onChange={e => setFormData({...formData, genre: e.target.value})}>
-                  {Object.keys(userSettings.genres).map(g => <option key={g} value={g}>{g}</option>)}
+                  {Object.entries(groupedGenresForm).map(([group, genres]) => (
+                    <optgroup key={group} label={group}>
+                      {genres.map(g => <option key={g.key} value={g.key}>{g.key}</option>)}
+                    </optgroup>
+                  ))}
                 </select>
               </div>
               <div className="relative shadow-sm rounded-2xl">
@@ -947,7 +1086,6 @@ const App = () => {
               </div>
             </div>
 
-            {/* ★ 追加: 必要な時だけ開ける詳細設定（伝授者・確認機能） */}
             <div className="space-y-3 bg-white p-4 rounded-[2rem] border border-slate-100 shadow-sm">
               <button type="button" onClick={() => setShowAdvanced(!showAdvanced)} className="w-full flex justify-between items-center text-xs font-black text-slate-500 py-1">
                 <span className="flex items-center gap-1.5"><Info size={14}/> 詳細設定 (伝授者・確認アラート)</span>
@@ -992,25 +1130,12 @@ const App = () => {
 
             <div className="space-y-3">
               <p className="text-[10px] font-black text-slate-400 flex items-center gap-1"><Tags size={12}/> 使用アイテム・タグ (複数選択可)</p>
-              <div className="flex flex-wrap gap-2">
-                {Object.keys(userSettings.tags).map(mat => {
-                  const isSelected = (formData.materials || []).includes(mat);
-                  const conf = userSettings.tags[mat];
-                  const colors = ColorMap[conf.colorId];
-                  return (
-                    <button key={mat} type="button" onClick={() => {
-                        const mats = formData.materials || [];
-                        if (isSelected) setFormData({...formData, materials: mats.filter(m => m !== mat)});
-                        else setFormData({...formData, materials: [...mats, mat]});
-                      }}
-                      className={`px-3 py-1.5 rounded-xl text-[10px] font-bold border transition-all flex items-center gap-1.5 shadow-sm active:scale-95 ${
-                        isSelected ? `${colors.bg} text-white border-transparent` : `bg-white ${colors.text} border-slate-200 hover:bg-slate-50`
-                      }`}
-                    >
-                      <DynamicIcon name={conf.icon} size={12} /> {mat}
-                    </button>
-                  );
-                })}
+              
+              {/* --- ★修正：タグ選択のアコーディオン表示 --- */}
+              <div className="flex flex-col gap-2">
+                {Object.entries(groupedTagsForm).map(([group, tags]) => (
+                  <TagAccordion key={group} groupName={group} tags={tags} formData={formData} setFormData={setFormData} />
+                ))}
               </div>
             </div>
             
