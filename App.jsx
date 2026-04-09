@@ -4,13 +4,16 @@ import {
   Image as ImageIcon, Save, X, Edit3, Trash2, Check, 
   ChevronRight, Settings, AlertCircle, 
   Type, Cloud, Loader2, Camera, Upload, Folder,
-  Tags, ListFilter, Archive, BookMarked, ScrollText, // 追加
+  Tags, ListFilter, Archive,
   Zap, Plug, Cable, Power, Lightbulb, Wrench, Hammer, 
   CheckCircle, Info, Building, Truck, Grid,
   Shield, Flame, Droplets, Wind, Thermometer, Scissors, Battery,
   FileText, PenTool, Ruler, Compass, Home, Activity, Radio, Wifi,
   Phone, Car, Clock, Lock, Unlock, Sun, Moon, ChevronDown,
-  Snowflake, Paintbrush, Link, Milestone, Layers
+  Snowflake, Paintbrush, Link, Milestone, Layers,
+  Gamepad2, Sword, Crown, Trophy, Target, Dumbbell, Book, Star, Sparkles, Medal, Award,
+  // --- 今回のアップデートで追加したアイコン ---
+  Move, ZoomIn, ZoomOut, RotateCcw
 } from 'lucide-react';
 
 import { initializeApp } from 'firebase/app';
@@ -21,13 +24,15 @@ import { getFirestore, doc, setDoc, collection, onSnapshot, deleteDoc } from 'fi
 const IconMap = {
   Zap, Plug, Cable, Power, Lightbulb, Wrench, Hammer, HardHat, AlertCircle, CheckCircle, Info, Tags, Folder, MapPin, Building, Truck, Grid, ListFilter,
   Shield, Flame, Droplets, Wind, Thermometer, Scissors, Battery, FileText, PenTool, Ruler, Compass, Home, Activity, Radio, Wifi, Phone, Car, Clock, Lock, Unlock, Sun, Moon,
-  Snowflake, Paintbrush, Link, Milestone, Layers
+  Snowflake, Paintbrush, Link, Milestone, Layers,
+  Gamepad2, Sword, Crown, Trophy, Target, Dumbbell, Book, Star, Sparkles, Medal, Award
 };
 
 const IconNames = {
   Zap: '強電・雷', Plug: 'コンセント', Cable: '配線', Power: '動力・電源', Lightbulb: '照明', Wrench: 'レンチ', Hammer: 'ハンマー', HardHat: 'ヘルメット', AlertCircle: '注意・警告', CheckCircle: '確認・完了', Info: '情報', Tags: 'タグ', Folder: 'フォルダ', MapPin: '現場・場所', Building: 'ビル・施設', Truck: 'トラック・搬入', Grid: '盤・ラック', ListFilter: 'フィルター',
   Shield: '保安・防御', Flame: '火気・熱', Droplets: '水回り・配管', Wind: '換気・ダクト', Thermometer: '温度・測定', Scissors: '切断・加工', Battery: 'バッテリー', FileText: '図面・書類', PenTool: 'ペン・記録', Ruler: '寸法・測定', Compass: '方位', Home: '住宅・戸建', Activity: '波形・測定器', Radio: 'アンテナ・無線', Wifi: '通信・Wi-Fi', Phone: '電話・連絡', Car: '車両・移動', Clock: '時間・期限', Lock: '施錠・セキュリティ', Unlock: '解錠', Sun: '太陽光・昼', Moon: '夜間作業',
-  Snowflake: '空調・エアコン', Paintbrush: '塗装・補修', Link: '他職取り合い・連携', Milestone: '工程・段取り', Layers: '内装・ボード・軽天'
+  Snowflake: '空調・エアコン', Paintbrush: '塗装・補修', Link: '他職連携', Milestone: '工程・段取り', Layers: '内装・軽天',
+  Gamepad2: 'ゲーム', Sword: '剣（攻撃）', Crown: '王冠（最高）', Trophy: 'トロフィー', Target: 'ダーツ・目標', Dumbbell: '筋トレ', Book: '読書・学習', Star: '星（重要）', Sparkles: 'キラキラ', Medal: 'メダル', Award: 'アワード'
 };
 
 const ColorMap = {
@@ -63,26 +68,31 @@ const currentAppId = typeof __app_id !== 'undefined' ? __app_id : firebaseConfig
 
 const defaultSettings = {
   quickPhrases: [
-    "通電確認OK", "絶縁抵抗計 測定済", "相色確認OK", "隠蔽部写真撮影済",
-    "軽天屋さんと打ち合わせ済", "ボード開口指示", "先行配管完了", "スリーブ位置確認"
+    "通電確認OK", "絶縁抵抗計 測定済", "相色確認OK", "隠蔽部写真撮影済", "先行配管完了"
   ],
   genres: {
     '幹線工事': { colorId: 'red', icon: 'Zap' },
     '盤結線': { colorId: 'blue', icon: 'Grid' },
-    '弱電・通信': { colorId: 'green', icon: 'Cable' },
-    '空調・エアコン': { colorId: 'teal', icon: 'Snowflake' },
-    '内装・ボード': { colorId: 'orange', icon: 'Layers' },
-    '他職取り合い': { colorId: 'purple', icon: 'Link' }
+    '他職取り合い': { colorId: 'purple', icon: 'Link' },
+    '筋トレ記録': { colorId: 'orange', icon: 'Dumbbell' }
   },
   tags: {
     'VVFケーブル': { colorId: 'gray', icon: 'Cable' },
-    'ブレーカー': { colorId: 'yellow', icon: 'Plug' },
     '照明器具': { colorId: 'yellow', icon: 'Lightbulb' },
-    '室外機': { colorId: 'teal', icon: 'Snowflake' },
-    '先行配線': { colorId: 'green', icon: 'Cable' },
-    '点検口': { colorId: 'purple', icon: 'Unlock' },
-    'スリーブ': { colorId: 'orange', icon: 'Target' }
+    '重要目標': { colorId: 'red', icon: 'Target' }
+  },
+  stats: {
+    exp: 0, level: 1, totalMemos: 0
   }
+};
+
+const getTitle = (level) => {
+  if (level >= 99) return "伝説の電設王 (Legend)";
+  if (level >= 50) return "無双の親方 (Master)";
+  if (level >= 20) return "熟練の職人 (Expert)";
+  if (level >= 10) return "一人前の職人 (Journeyman)";
+  if (level >= 5) return "若手エース (Ace)";
+  return "新米職人 (Novice)";
 };
 
 const DynamicIcon = ({ name, size = 16, className = "" }) => {
@@ -103,58 +113,7 @@ const App = () => {
 
   const [memos, setMemos] = useState([]);
   const [userSettings, setUserSettings] = useState(defaultSettings);
-
-  // --- iPhoneホーム画面用 アプリアイコン自動生成魔法 ---
-  useEffect(() => {
-    const setAppIcon = () => {
-      const canvas = document.createElement('canvas');
-      canvas.width = 256;
-      canvas.height = 256;
-      const ctx = canvas.getContext('2d');
-      
-      // 背景色 (極秘ファイル感のある濃紺)
-      ctx.fillStyle = '#0f172a';
-      ctx.fillRect(0, 0, 256, 256);
-      
-      // 内側の枠線 (金色)
-      ctx.strokeStyle = '#eab308';
-      ctx.lineWidth = 8;
-      ctx.strokeRect(16, 16, 224, 224);
-
-      // 上部にイナズママーク
-      ctx.fillStyle = '#eab308';
-      ctx.font = '80px sans-serif';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText('⚡', 128, 90);
-      
-      // 中央から下部に「極」の文字
-      ctx.fillStyle = '#ffffff';
-      ctx.font = 'bold 90px "Hiragino Kaku Gothic ProN", "Yu Gothic", sans-serif';
-      ctx.fillText('極', 128, 170);
-
-      const dataUrl = canvas.toDataURL();
-      
-      // スマホ（Apple系）のホーム画面用アイコンに設定
-      let appleLink = document.querySelector("link[rel='apple-touch-icon']");
-      if (!appleLink) {
-        appleLink = document.createElement('link');
-        appleLink.rel = 'apple-touch-icon';
-        document.head.appendChild(appleLink);
-      }
-      appleLink.href = dataUrl;
-
-      // ブラウザのタブ用ファビコンにも設定
-      let iconLink = document.querySelector("link[rel~='icon']");
-      if (!iconLink) {
-        iconLink = document.createElement('link');
-        iconLink.rel = 'icon';
-        document.head.appendChild(iconLink);
-      }
-      iconLink.href = dataUrl;
-    };
-    setAppIcon();
-  }, []);
+  const [levelUpData, setLevelUpData] = useState(null);
 
   // --- 認証とデータ同期 ---
   useEffect(() => {
@@ -191,7 +150,8 @@ const App = () => {
         setUserSettings({
           quickPhrases: data.quickPhrases || defaultSettings.quickPhrases,
           genres: data.genres || defaultSettings.genres,
-          tags: tagsData
+          tags: tagsData,
+          stats: data.stats || defaultSettings.stats
         });
       }
     });
@@ -207,8 +167,27 @@ const App = () => {
     if (!formData.title || !user) return;
     setIsSyncing(true);
     try {
-      const id = view === 'edit' ? editingMemo.id : `memo_${Date.now()}`;
+      const isNew = view !== 'edit';
+      const id = isNew ? `memo_${Date.now()}` : editingMemo.id;
       await setDoc(doc(db, 'artifacts', currentAppId, 'public', 'data', 'memos', id), { ...formData, id }, { merge: true });
+      
+      if (isNew) {
+        const currentStats = userSettings.stats || defaultSettings.stats;
+        const newExp = currentStats.exp + 25;
+        const newLevel = Math.floor(newExp / 100) + 1;
+        
+        if (newLevel > currentStats.level) {
+          setLevelUpData({ level: newLevel, title: getTitle(newLevel) });
+          setTimeout(() => setLevelUpData(null), 4000); 
+        }
+
+        const newSettings = {
+          ...userSettings,
+          stats: { exp: newExp, level: newLevel, totalMemos: currentStats.totalMemos + 1 }
+        };
+        await saveSettings(newSettings);
+      }
+
       setView('list');
       setFormData(initialForm);
     } catch (e) { alert("保存エラー。画像サイズが大きすぎる可能性があります。"); } 
@@ -257,34 +236,102 @@ const App = () => {
     return acc;
   }, {});
 
-  // --- 複数画像対応の赤入れモーダル ---
+  // --- UIコンポーネント ---
+
+  const LevelUpModal = () => {
+    if (!levelUpData) return null;
+    return (
+      <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/80 backdrop-blur-sm animate-in fade-in duration-300">
+        <div className="bg-gradient-to-b from-yellow-300 to-yellow-500 p-1 rounded-[2.5rem] shadow-2xl animate-bounce">
+          <div className="bg-white px-10 py-12 rounded-[2.4rem] text-center flex flex-col items-center">
+            <Sparkles size={64} className="text-yellow-500 mb-4 animate-spin-slow" />
+            <h2 className="text-3xl font-black text-slate-800 mb-2">LEVEL UP!</h2>
+            <p className="text-5xl font-black text-blue-600 mb-4 drop-shadow-sm">Lv.{levelUpData.level}</p>
+            <p className="text-sm font-bold text-slate-500">新しい称号を獲得しました</p>
+            <p className="text-xl font-black text-orange-600 mt-2 bg-orange-50 px-4 py-2 rounded-xl border border-orange-200">
+              {levelUpData.title}
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  // --- ★進化版：スクロール・ズーム対応の赤入れモーダル★ ---
   const [markupModal, setMarkupModal] = useState({ isOpen: false, imgIndex: null, dataUrl: null });
   
   const MarkupModalCanvas = () => {
     const canvasRef = useRef(null);
+    const containerRef = useRef(null);
     const [isDrawing, setIsDrawing] = useState(false);
-    
+    const [mode, setMode] = useState('draw'); // 'draw' または 'move'
+    const [zoom, setZoom] = useState(1);
+    const [dimensions, setDimensions] = useState({ width: 0, height: 0 });
+
+    // 画像の本来のサイズ（アスペクト比）を計算してキャンバスサイズを決定
     useEffect(() => {
-      if (!markupModal.dataUrl || !canvasRef.current) return;
+      if (!markupModal.dataUrl) return;
+      const img = new Image();
+      img.onload = () => {
+        // スマホ画面の横幅に合わせて初期サイズを計算
+        const screenW = Math.min(window.innerWidth - 48, 800); // 余白考慮
+        const scale = screenW / img.width;
+        setDimensions({ width: screenW, height: img.height * scale });
+      };
+      img.src = markupModal.dataUrl;
+    }, [markupModal.dataUrl]);
+
+    // キャンバスの描画（サイズ決定時、またはクリア時）
+    const drawInitialImage = () => {
+      if (!dimensions.width || !canvasRef.current) return;
       const canvas = canvasRef.current;
       const ctx = canvas.getContext('2d');
       const img = new Image();
-      img.onload = () => { ctx.clearRect(0,0,canvas.width,canvas.height); ctx.drawImage(img,0,0); };
+      img.onload = () => {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        // ペンの設定
+        ctx.strokeStyle = '#ef4444'; 
+        ctx.lineWidth = 4 / zoom; // ズームしても線の太さを一定に保つ
+        ctx.lineJoin = 'round'; 
+        ctx.lineCap = 'round';
+      };
       img.src = markupModal.dataUrl;
-      ctx.strokeStyle = '#ef4444'; ctx.lineWidth = 4; ctx.lineJoin = 'round'; ctx.lineCap = 'round';
-    }, [markupModal.dataUrl]);
+    };
+
+    useEffect(() => { drawInitialImage(); }, [dimensions]);
+
+    // 線の太さをズームに合わせる
+    useEffect(() => {
+      if (canvasRef.current) canvasRef.current.getContext('2d').lineWidth = 4 / zoom;
+    }, [zoom]);
 
     const getPos = (e) => {
       const r = canvasRef.current.getBoundingClientRect();
       const clientX = e.clientX || (e.touches && e.touches[0].clientX);
       const clientY = e.clientY || (e.touches && e.touches[0].clientY);
+      // CSSによるズーム（Scale）を考慮して、正確な描画座標を計算
       const scaleX = canvasRef.current.width / r.width;
       const scaleY = canvasRef.current.height / r.height;
       return { x: (clientX - r.left) * scaleX, y: (clientY - r.top) * scaleY };
     };
 
-    const startDrawing = (e) => { setIsDrawing(true); const p=getPos(e); const ctx=canvasRef.current.getContext('2d'); ctx.beginPath(); ctx.moveTo(p.x, p.y); };
-    const draw = (e) => { if(!isDrawing) return; e.preventDefault(); const p=getPos(e); const ctx=canvasRef.current.getContext('2d'); ctx.lineTo(p.x, p.y); ctx.stroke(); };
+    const startDrawing = (e) => { 
+      if (mode !== 'draw') return;
+      setIsDrawing(true); 
+      const p = getPos(e); 
+      const ctx = canvasRef.current.getContext('2d'); 
+      ctx.beginPath(); 
+      ctx.moveTo(p.x, p.y); 
+    };
+    const draw = (e) => { 
+      if (!isDrawing || mode !== 'draw') return; 
+      e.preventDefault(); // 描画中はスクロールを止める
+      const p = getPos(e); 
+      const ctx = canvasRef.current.getContext('2d'); 
+      ctx.lineTo(p.x, p.y); 
+      ctx.stroke(); 
+    };
     const stopDrawing = () => { setIsDrawing(false); };
 
     const handleSaveImage = () => {
@@ -296,19 +343,58 @@ const App = () => {
     };
 
     return (
-      <div className="fixed inset-0 bg-slate-900/95 z-[60] flex flex-col items-center justify-center p-4 backdrop-blur-sm">
-        <div className="w-full max-w-lg bg-white rounded-[2rem] p-4 flex flex-col gap-4 shadow-2xl">
-          <div className="flex justify-between items-center">
-            <h3 className="font-black text-slate-800 flex items-center gap-2"><Edit3 size={18} className="text-red-500"/> 赤入れ編集</h3>
-            <button onClick={() => setMarkupModal({ isOpen: false })} className="text-slate-400 hover:text-slate-600"><X size={24}/></button>
+      <div className="fixed inset-0 bg-slate-900/95 z-[60] flex flex-col items-center justify-center p-2 backdrop-blur-sm animate-in fade-in">
+        <div className="w-full max-w-lg bg-white rounded-[2rem] p-3 flex flex-col gap-3 shadow-2xl h-[90vh]">
+          
+          {/* ヘッダー */}
+          <div className="flex justify-between items-center px-2 pt-1">
+            <h3 className="font-black text-slate-800 flex items-center gap-2"><Edit3 size={18} className="text-red-500"/> 写真を編集</h3>
+            <button onClick={() => setMarkupModal({ isOpen: false })} className="text-slate-400 hover:text-slate-600"><X size={28}/></button>
           </div>
-          <div className="bg-slate-200 rounded-2xl overflow-hidden aspect-video relative touch-none border shadow-inner">
-            <canvas ref={canvasRef} width={600} height={337} className="w-full h-full cursor-crosshair bg-white"
-              onMouseDown={startDrawing} onMouseMove={draw} onMouseUp={stopDrawing} onMouseLeave={stopDrawing}
-              onTouchStart={startDrawing} onTouchMove={draw} onTouchEnd={stopDrawing}
-            />
+
+          {/* ツールバー (ペン/移動・ズーム・クリア) */}
+          <div className="flex justify-between items-center bg-slate-100 p-1.5 rounded-xl border border-slate-200">
+            <div className="flex gap-1">
+              <button onClick={() => setMode('draw')} className={`px-3 py-2 rounded-lg text-xs font-bold flex items-center gap-1 transition-all ${mode === 'draw' ? 'bg-white shadow-sm text-red-600' : 'text-slate-500'}`}>
+                <PenTool size={14}/> ペン
+              </button>
+              <button onClick={() => setMode('move')} className={`px-3 py-2 rounded-lg text-xs font-bold flex items-center gap-1 transition-all ${mode === 'move' ? 'bg-white shadow-sm text-blue-600' : 'text-slate-500'}`}>
+                <Move size={14}/> 移動
+              </button>
+            </div>
+            <div className="flex gap-1 items-center px-1 border-l border-slate-300">
+              <button onClick={() => setZoom(z => Math.max(1, z - 0.5))} className="p-1.5 text-slate-600 bg-white rounded-lg shadow-sm active:scale-95"><ZoomOut size={16}/></button>
+              <span className="text-[10px] font-black w-9 text-center text-slate-700">{Math.round(zoom * 100)}%</span>
+              <button onClick={() => setZoom(z => Math.min(4, z + 0.5))} className="p-1.5 text-slate-600 bg-white rounded-lg shadow-sm active:scale-95"><ZoomIn size={16}/></button>
+              <button onClick={drawInitialImage} className="ml-1 p-1.5 text-slate-500 bg-white rounded-lg shadow-sm active:scale-95 hover:text-red-500"><RotateCcw size={16}/></button>
+            </div>
           </div>
-          <button onClick={handleSaveImage} className="w-full bg-red-500 text-white py-4 rounded-2xl font-black uppercase tracking-widest shadow-lg active:scale-95 transition-transform">保存して戻る</button>
+
+          {/* スクロール可能な画像コンテナ */}
+          <div ref={containerRef} className={`flex-1 overflow-auto rounded-xl border-2 border-slate-200 bg-slate-800 shadow-inner relative touch-pan-x touch-pan-y ${mode === 'draw' ? 'touch-none' : ''}`}>
+            {dimensions.width > 0 && (
+              <div style={{ width: dimensions.width * zoom, height: dimensions.height * zoom, position: 'relative' }}>
+                <canvas
+                  ref={canvasRef}
+                  width={dimensions.width}
+                  height={dimensions.height}
+                  style={{
+                    transform: `scale(${zoom})`,
+                    transformOrigin: 'top left',
+                    touchAction: mode === 'draw' ? 'none' : 'auto'
+                  }}
+                  className={`absolute top-0 left-0 bg-white shadow-lg ${mode === 'draw' ? 'cursor-crosshair' : 'cursor-grab'}`}
+                  onMouseDown={startDrawing} onMouseMove={draw} onMouseUp={stopDrawing} onMouseLeave={stopDrawing}
+                  onTouchStart={startDrawing} onTouchMove={draw} onTouchEnd={stopDrawing}
+                />
+              </div>
+            )}
+            {!dimensions.width && <div className="absolute inset-0 flex items-center justify-center text-white"><Loader2 size={24} className="animate-spin"/></div>}
+          </div>
+
+          <button onClick={handleSaveImage} className="w-full bg-red-500 text-white py-4 rounded-2xl font-black uppercase tracking-widest shadow-lg active:scale-[0.98] transition-transform">
+            編集を確定する
+          </button>
         </div>
       </div>
     );
@@ -322,9 +408,9 @@ const App = () => {
       const img = new Image();
       img.onload = () => {
         const canvas = document.createElement('canvas');
-        const MAX_WIDTH = 800;
-        const scale = MAX_WIDTH / img.width;
-        canvas.width = MAX_WIDTH;
+        const MAX_WIDTH = 1000; // 少し高画質に設定
+        const scale = Math.min(MAX_WIDTH / img.width, 1);
+        canvas.width = img.width * scale;
         canvas.height = img.height * scale;
         const ctx = canvas.getContext('2d');
         ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
@@ -338,7 +424,6 @@ const App = () => {
   };
 
 
-  // --- Master設定用 カスタムUIコンポーネント ---
   const ColorSelector = ({ value, onChange }) => {
     const [isOpen, setIsOpen] = useState(false);
     const dropdownRef = useRef(null);
@@ -381,7 +466,7 @@ const App = () => {
           <ChevronDown size={14} className="text-slate-400"/>
         </button>
         {isOpen && (
-          <div className="absolute z-50 bottom-full right-0 mb-1 w-[260px] bg-white border border-slate-200 rounded-xl shadow-2xl p-2 max-h-60 overflow-y-auto grid grid-cols-2 gap-1">
+          <div className="absolute z-50 bottom-full right-0 mb-1 w-[280px] bg-white border border-slate-200 rounded-xl shadow-2xl p-2 max-h-64 overflow-y-auto grid grid-cols-2 gap-1">
             {Object.keys(IconMap).map(iconName => (
               <button key={iconName} type="button" onClick={() => { onChange(iconName); setIsOpen(false); }} className={`flex items-center gap-2 p-2.5 rounded-lg text-[10px] font-bold text-left transition-colors ${value === iconName ? 'bg-blue-100 text-blue-800' : 'hover:bg-slate-100 text-slate-700'}`}>
                 <DynamicIcon name={iconName} size={14} className={value === iconName ? 'text-blue-600' : 'text-slate-500'} /> 
@@ -419,30 +504,33 @@ const App = () => {
             <ColorSelector value={color} onChange={setColor} />
             <IconSelector value={iconName} onChange={setIconName} />
           </div>
-          <button onClick={() => { if(name.trim()){ onAdd(name.trim(), color, iconName); setName(''); } }} className="w-full mt-2 bg-slate-800 text-white px-4 py-3.5 rounded-xl font-black text-xs uppercase tracking-widest shadow-md active:scale-[0.98] transition-transform">この設定で追加</button>
+          <button onClick={() => { if(name.trim()){ onAdd(name.trim(), color, iconName); setName(''); } }} className="w-full mt-2 bg-slate-800 text-white px-4 py-3.5 rounded-xl font-black text-xs uppercase tracking-widest shadow-md active:scale-[0.98] transition-transform flex justify-center items-center gap-2"><Sword size={14}/> 装備に追加</button>
         </div>
       </div>
     );
   };
 
+  const currentExp = userSettings.stats?.exp || 0;
+  const currentLevel = userSettings.stats?.level || 1;
+  const expPercentage = currentExp % 100;
+
   return (
     <div className="min-h-screen bg-slate-50 pb-32 text-slate-900 font-sans antialiased selection:bg-blue-100">
+      <LevelUpModal />
       {markupModal.isOpen && <MarkupModalCanvas />}
       
       {/* --- ヘッダー --- */}
-      <header className="bg-blue-700 text-white p-7 rounded-b-[3.5rem] shadow-xl sticky top-0 z-20">
-        <div className="flex justify-between items-center mb-5">
+      <header className="bg-blue-700 text-white p-7 rounded-b-[3.5rem] shadow-xl sticky top-0 z-20 overflow-hidden relative">
+        <div className="absolute top-0 right-0 opacity-10 pointer-events-none"><Crown size={150} className="-mt-10 -mr-10 rotate-12" /></div>
+
+        <div className="flex justify-between items-center mb-5 relative z-10">
           <div className="flex items-center gap-3">
-            {/* アプリ内ロゴを極意書風に変更 */}
-            <div className="bg-slate-800 p-2.5 rounded-2xl -rotate-3 shadow-lg border-2 border-yellow-500 relative">
-              <BookMarked className="text-yellow-400" size={24}/>
-              <Zap className="text-white absolute -top-1.5 -right-2 fill-white" size={14}/>
-            </div>
+            <div className="bg-yellow-400 p-2.5 rounded-2xl rotate-3 shadow-lg"><HardHat className="text-blue-900" size={24}/></div>
             <div>
               <h1 className="text-2xl font-black italic tracking-tighter leading-none">VoltVault</h1>
               <div className="flex items-center gap-1.5 text-[8px] font-black text-blue-200 mt-1 uppercase tracking-widest">
                 {isSyncing ? <Loader2 size={10} className="animate-spin" /> : <Cloud size={10} />}
-                {user ? `Multi-Craft Mode` : "Connecting..."}
+                {user ? `Quest Mode: Active` : "Connecting..."}
               </div>
             </div>
           </div>
@@ -451,9 +539,23 @@ const App = () => {
           </button>
         </div>
 
-        {/* トップ画面用 アーカイブタブ＆検索 */}
+        <div className="bg-blue-900/40 rounded-2xl p-3 mb-4 backdrop-blur-md border border-blue-500/30 relative z-10">
+          <div className="flex justify-between items-end mb-1.5">
+            <div className="flex items-center gap-2">
+              <span className="bg-yellow-400 text-blue-900 text-[10px] font-black px-2 py-0.5 rounded-md flex items-center gap-1"><Trophy size={10}/> Lv.{currentLevel}</span>
+              <span className="text-xs font-bold text-white tracking-wide">{getTitle(currentLevel)}</span>
+            </div>
+            <span className="text-[8px] font-bold text-blue-200 uppercase">Total Memos: {userSettings.stats?.totalMemos || 0}</span>
+          </div>
+          <div className="w-full bg-blue-950 rounded-full h-2.5 overflow-hidden border border-blue-800">
+            <div className="bg-gradient-to-r from-cyan-400 to-blue-300 h-2.5 rounded-full transition-all duration-1000 ease-out relative" style={{ width: `${expPercentage}%` }}>
+              <div className="absolute inset-0 bg-white/30 w-full h-full animate-pulse"></div>
+            </div>
+          </div>
+        </div>
+
         {view === 'list' && (
-          <div className="space-y-4 animate-in slide-in-from-top-4">
+          <div className="space-y-4 animate-in slide-in-from-top-4 relative z-10">
             <div className="flex bg-blue-900/40 p-1.5 rounded-2xl backdrop-blur-sm">
               <button onClick={() => setListMode('all')} className={`flex-1 py-2 rounded-xl text-xs font-black transition-all ${listMode === 'all' ? 'bg-white shadow-sm text-blue-700' : 'text-blue-200'}`}>全て</button>
               <button onClick={() => setListMode('site')} className={`flex-1 py-2 rounded-xl text-xs font-black transition-all ${listMode === 'site' ? 'bg-white shadow-sm text-blue-700' : 'text-blue-200'}`}>現場別</button>
@@ -462,7 +564,7 @@ const App = () => {
             </div>
             <div className="relative">
               <Search className="absolute left-4 top-3.5 text-blue-300" size={20} />
-              <input type="text" placeholder="極意・現場・材料を検索..." className="w-full bg-white/10 rounded-2xl py-3.5 pl-12 text-white placeholder-blue-300 outline-none text-sm font-bold focus:bg-white focus:text-slate-800 transition-colors" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
+              <input type="text" placeholder="極意・現場・材料を検索..." className="w-full bg-white/10 rounded-2xl py-3.5 pl-12 text-white placeholder-blue-300 outline-none text-sm font-bold focus:bg-white focus:text-slate-800 transition-colors shadow-inner" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
             </div>
           </div>
         )}
@@ -470,7 +572,294 @@ const App = () => {
 
       <main className="p-6 max-w-xl mx-auto">
         
-        {/* --- ビュー: リスト ＆ アーカイブ統合 --- */}
         {view === 'list' && (
           <div className="space-y-6">
             {listMode === 'all' ? (
+              <div className="space-y-4">
+                {filteredMemos.length === 0 && !isSyncing && (
+                  <div className="text-center py-24 opacity-30">
+                    <ClipboardList size={64} className="mx-auto mb-3"/>
+                    <p className="text-sm font-black uppercase italic tracking-widest text-slate-500">No Secrets Found</p>
+                  </div>
+                )}
+                {filteredMemos.map(memo => {
+                  const genreConfig = userSettings.genres[memo.genre] || { colorId: 'gray', icon: 'Info' };
+                  const colors = ColorMap[genreConfig.colorId];
+                  return (
+                    <div key={memo.id} onClick={() => { setSelectedMemo(memo); setView('detail'); }} className="bg-white p-5 rounded-[2rem] border border-slate-100 relative overflow-hidden cursor-pointer active:scale-[0.98] transition-all shadow-sm">
+                      <div className={`absolute top-0 left-0 w-2.5 h-full ${colors.bg}`}></div>
+                      <div className="flex justify-between items-start mb-2 font-black italic text-slate-300 text-[10px] uppercase">
+                        <span>{memo.date}</span>
+                        <div className="flex gap-2">
+                          {memo.materials && memo.materials.length > 0 && <Tags size={12} className="text-orange-400" />}
+                          {memo.images && memo.images.length > 0 && <span className="flex items-center gap-0.5 text-blue-500"><Camera size={12}/>{memo.images.length}</span>}
+                        </div>
+                      </div>
+                      <h3 className="font-black text-slate-800 text-lg leading-tight mb-3 tracking-tight">{memo.title}</h3>
+                      <div className="flex items-center justify-between text-[9px] font-black text-slate-400 pt-3 border-t border-slate-50">
+                        <span className="flex items-center gap-1 bg-slate-50 px-2 py-1 rounded-md"><MapPin size={10} className="text-blue-500"/> {memo.site}</span>
+                        <span className={`px-2.5 py-1 rounded-md flex items-center gap-1 ${colors.light} ${colors.text} border ${colors.border} uppercase`}><DynamicIcon name={genreConfig.icon} size={10}/> {memo.genre}</span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              Object.keys(groupedMemos).length === 0 ? (
+                <p className="text-center text-xs font-bold text-slate-400 py-10">データがありません</p>
+              ) : (
+                Object.entries(groupedMemos).sort(([a], [b]) => a.localeCompare(b)).map(([groupKey, groupMemos]) => (
+                  <div key={groupKey} className="bg-white rounded-[2rem] border border-slate-100 shadow-sm overflow-hidden mb-4">
+                    <div className="bg-slate-800 p-4 text-white flex justify-between items-center">
+                      <h3 className="font-black flex items-center gap-2">
+                        {listMode === 'site' && <Building size={16} className="text-blue-400"/>}
+                        {listMode === 'genre' && <ListFilter size={16} className="text-green-400"/>}
+                        {listMode === 'material' && <Tags size={16} className="text-orange-400"/>}
+                        {groupKey}
+                      </h3>
+                      <span className="text-[10px] font-bold bg-slate-700 px-2 py-1 rounded-full">{groupMemos.length} 件</span>
+                    </div>
+                    <div className="p-4 space-y-2">
+                      {groupMemos.map(memo => (
+                        <div key={memo.id} onClick={() => { setSelectedMemo(memo); setView('detail'); }} className="p-3 bg-slate-50 rounded-xl cursor-pointer active:bg-slate-100 flex justify-between items-center border border-transparent hover:border-slate-200">
+                          <div>
+                            <p className="text-sm font-black text-slate-700">{memo.title}</p>
+                            <p className="text-[9px] font-bold text-slate-400 mt-1 flex gap-2">
+                              {listMode !== 'site' && <span>📍{memo.site}</span>}
+                              {listMode !== 'genre' && <span>🏷️{memo.genre}</span>}
+                              <span>{memo.date}</span>
+                            </p>
+                          </div>
+                          <ChevronRight size={16} className="text-slate-300"/>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))
+              )
+            )}
+          </div>
+        )}
+
+        {view === 'settings' && (
+          <div className="space-y-6 pb-10 animate-in slide-in-from-right">
+            <h2 className="text-xl font-black text-slate-800 flex items-center gap-2 mb-4"><Settings className="text-blue-600"/> Master設定</h2>
+            
+            <EditorSection 
+              title="ジャンル編集" icon={ListFilter} items={userSettings.genres} placeholder="新ジャンル名..."
+              onAdd={(name, colorId, icon) => saveSettings({...userSettings, genres: {...userSettings.genres, [name]: {colorId, icon}}})}
+              onDelete={(name) => { const obj = {...userSettings.genres}; delete obj[name]; saveSettings({...userSettings, genres: obj}); }}
+            />
+
+            <EditorSection 
+              title="材料・タグ編集" icon={Tags} items={userSettings.tags} placeholder="新しい材料・タグ..."
+              onAdd={(name, colorId, icon) => saveSettings({...userSettings, tags: {...userSettings.tags, [name]: {colorId, icon}}})}
+              onDelete={(name) => { const obj = {...userSettings.tags}; delete obj[name]; saveSettings({...userSettings, tags: obj}); }}
+            />
+
+            <div className="bg-white p-6 rounded-[2rem] border border-slate-100 shadow-sm space-y-4">
+              <h3 className="text-sm font-black text-slate-700 border-b pb-2 flex items-center gap-2"><Type size={16}/> クイックフレーズ編集</h3>
+              <div className="flex flex-wrap gap-2 mb-4">
+                {userSettings.quickPhrases.map((phrase, idx) => (
+                  <span key={idx} className="bg-slate-100 text-slate-700 text-xs font-bold px-3 py-1.5 rounded-lg flex items-center gap-2 border">
+                    {phrase}
+                    <button onClick={() => saveSettings({...userSettings, quickPhrases: userSettings.quickPhrases.filter((_, i) => i !== idx)})} className="text-slate-400 hover:text-red-500"><X size={12}/></button>
+                  </span>
+                ))}
+              </div>
+              <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 flex flex-col gap-2">
+                <input id="newPhraseInput" type="text" placeholder="新しいフレーズ..." className="w-full bg-white border border-slate-300 p-3 rounded-xl text-sm font-bold outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100" />
+                <button onClick={() => {
+                  const input = document.getElementById('newPhraseInput');
+                  if (input.value.trim()) {
+                    saveSettings({ ...userSettings, quickPhrases: [...userSettings.quickPhrases, input.value.trim()] });
+                    input.value = '';
+                  }
+                }} className="w-full bg-slate-800 text-white px-4 py-3 rounded-xl font-black text-xs uppercase tracking-widest active:scale-95 transition-transform flex justify-center items-center gap-2"><Sword size={14}/>装備に追加</button>
+              </div>
+            </div>
+            
+            <div className="text-center py-4 opacity-50">
+              <Gamepad2 size={32} className="mx-auto text-slate-800 mb-2"/>
+              <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">VoltVault Quest v5.1.0</p>
+            </div>
+          </div>
+        )}
+
+        {view === 'detail' && selectedMemo && (
+          <div className="fixed inset-0 bg-white z-50 overflow-y-auto pb-32 animate-in slide-in-from-right duration-300">
+            <header className={`${ColorMap[userSettings.genres[selectedMemo.genre]?.colorId || 'gray'].bg} text-white p-6 flex justify-between items-center sticky top-0 rounded-b-[2.5rem] shadow-lg`}>
+              <button onClick={() => setView('list')}><ChevronLeft size={28}/></button>
+              <h2 className="font-black italic text-[10px] tracking-widest uppercase">Secret Knowledge</h2>
+              <button onClick={() => { 
+                setEditingMemo(selectedMemo); 
+                const safeMemo = {...selectedMemo};
+                if (!safeMemo.images) safeMemo.images = [];
+                if (safeMemo.markupImage && safeMemo.images.length === 0) safeMemo.images.push(safeMemo.markupImage);
+                setFormData(safeMemo); 
+                setView('edit'); 
+              }}><Edit3 size={24}/></button>
+            </header>
+            
+            <div className="p-8 space-y-8 max-w-xl mx-auto">
+              <div className="space-y-4">
+                <div className="flex gap-2 items-center mb-2">
+                  <span className={`px-3 py-1.5 rounded-lg text-[9px] font-black uppercase flex items-center gap-1.5 ${ColorMap[userSettings.genres[selectedMemo.genre]?.colorId || 'gray'].light} ${ColorMap[userSettings.genres[selectedMemo.genre]?.colorId || 'gray'].text} border shadow-sm`}>
+                    <DynamicIcon name={userSettings.genres[selectedMemo.genre]?.icon} size={14}/> {selectedMemo.genre}
+                  </span>
+                </div>
+                <h2 className="text-3xl font-black text-slate-800 leading-tight tracking-tighter">{selectedMemo.title}</h2>
+                <div className="flex gap-4 text-[10px] font-black text-slate-500 uppercase bg-slate-50 p-3 rounded-xl border">
+                  <span className="flex items-center gap-1.5"><MapPin size={12} className="text-blue-500"/> {selectedMemo.site}</span>
+                  <span className="flex items-center gap-1.5"><Calendar size={12} className="text-blue-500"/> {selectedMemo.date}</span>
+                </div>
+                
+                {selectedMemo.materials && selectedMemo.materials.length > 0 && (
+                  <div className="flex flex-wrap gap-2 pt-2">
+                    {selectedMemo.materials.map((mat, i) => {
+                      const tagConf = userSettings.tags[mat] || { colorId: 'gray', icon: 'Tag' };
+                      const tColor = ColorMap[tagConf.colorId];
+                      return (
+                        <span key={i} className={`${tColor.light} ${tColor.text} ${tColor.border} border px-2.5 py-1.5 rounded-lg text-[10px] font-bold flex items-center gap-1.5 shadow-sm`}>
+                          <DynamicIcon name={tagConf.icon} size={12}/> {mat}
+                        </span>
+                      )
+                    })}
+                  </div>
+                )}
+              </div>
+              
+              {(selectedMemo.images && selectedMemo.images.length > 0) || selectedMemo.markupImage ? (
+                <div className="space-y-3">
+                  <h3 className="text-xs font-black text-slate-400 flex items-center gap-1"><Camera size={14}/> 現場写真</h3>
+                  <div className="flex flex-col gap-4">
+                    {selectedMemo.markupImage && (!selectedMemo.images || selectedMemo.images.length===0) && (
+                      <div className="bg-slate-100 rounded-[2.5rem] overflow-hidden border-2 shadow-inner"><img src={selectedMemo.markupImage} className="w-full" /></div>
+                    )}
+                    {selectedMemo.images && selectedMemo.images.map((img, i) => (
+                      <div key={i} className="bg-slate-100 rounded-[2.5rem] overflow-hidden border-2 shadow-inner relative">
+                        <img src={img} className="w-full h-auto object-cover" />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+
+              <div className="bg-blue-50/50 p-8 rounded-[3rem] text-slate-700 font-bold border-2 border-blue-100 leading-relaxed relative shadow-sm whitespace-pre-wrap">
+                <span className="absolute -top-3 left-10 bg-blue-600 text-white px-4 py-1 rounded-full text-[10px] not-italic shadow-md tracking-widest font-black uppercase">Quest Log</span>
+                {selectedMemo.content}
+              </div>
+            </div>
+          </div>
+        )}
+      </main>
+
+      {/* --- ビュー: フォーム (追加/編集) --- */}
+      {(view === 'add' || view === 'edit') && (
+        <div className="fixed inset-0 bg-slate-50 z-50 overflow-y-auto pb-32 animate-in slide-in-from-bottom-10">
+          <header className="bg-white border-b p-5 flex justify-between items-center sticky top-0 shadow-sm z-10">
+            <button onClick={() => setView('list')}><X size={24}/></button>
+            <h2 className="font-black text-slate-800 tracking-tighter italic flex items-center gap-2">
+              <Sword size={16} className="text-blue-500" /> Save Quest...
+            </h2>
+            <button onClick={handleSave} className="bg-blue-600 text-white px-7 py-2 rounded-full font-black text-xs uppercase shadow-lg disabled:opacity-50 active:scale-95 transition-all">
+              記録する (+25 EXP)
+            </button>
+          </header>
+          
+          <div className="p-6 space-y-7 max-w-xl mx-auto">
+            <div className="space-y-4">
+              <input className="w-full text-2xl font-black bg-transparent border-b-2 border-slate-200 py-2 focus:border-blue-600 outline-none transition-colors placeholder:text-slate-300" placeholder="クエスト名（作業・タイトル）" value={formData.title} onChange={e => setFormData({...formData, title: e.target.value})} />
+              <div className="grid grid-cols-2 gap-4">
+                <input type="date" className="p-3 bg-white border border-slate-200 rounded-2xl font-bold outline-none text-sm text-slate-700 shadow-sm" value={formData.date} onChange={e => setFormData({...formData, date: e.target.value})} />
+                <select className="p-3 bg-white border border-slate-200 rounded-2xl font-bold outline-none text-sm text-slate-700 shadow-sm" value={formData.genre} onChange={e => setFormData({...formData, genre: e.target.value})}>
+                  {Object.keys(userSettings.genres).map(g => <option key={g} value={g}>{g}</option>)}
+                </select>
+              </div>
+              <div className="relative shadow-sm rounded-2xl">
+                <Building className="absolute left-3 top-3.5 text-slate-400" size={16}/>
+                <input className="w-full p-3 pl-10 bg-white border border-slate-200 rounded-2xl font-bold outline-none text-sm text-slate-700 focus:border-blue-500" placeholder="ダンジョン名（現場・案件）" value={formData.site} onChange={e => setFormData({...formData, site: e.target.value})} />
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              <p className="text-[10px] font-black text-slate-400 flex items-center gap-1"><Tags size={12}/> 使用アイテム・タグ (複数選択可)</p>
+              <div className="flex flex-wrap gap-2">
+                {Object.keys(userSettings.tags).map(mat => {
+                  const isSelected = (formData.materials || []).includes(mat);
+                  const conf = userSettings.tags[mat];
+                  const colors = ColorMap[conf.colorId];
+                  return (
+                    <button key={mat} type="button" onClick={() => {
+                        const mats = formData.materials || [];
+                        if (isSelected) setFormData({...formData, materials: mats.filter(m => m !== mat)});
+                        else setFormData({...formData, materials: [...mats, mat]});
+                      }}
+                      className={`px-3 py-1.5 rounded-xl text-[10px] font-bold border transition-all flex items-center gap-1.5 shadow-sm active:scale-95 ${
+                        isSelected ? `${colors.bg} text-white border-transparent` : `bg-white ${colors.text} border-slate-200 hover:bg-slate-50`
+                      }`}
+                    >
+                      <DynamicIcon name={conf.icon} size={12} /> {mat}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+            
+            <div className="space-y-3 bg-white p-5 rounded-[2.5rem] border border-slate-100 shadow-sm">
+              <div className="flex justify-between items-center text-[10px] font-black text-slate-400 mb-2">
+                <span className="flex items-center gap-1"><Camera size={14}/> 証拠写真 (タップで赤入れ)</span>
+                <label className="text-blue-500 bg-blue-50 px-3 py-1.5 rounded-xl flex items-center gap-1 cursor-pointer active:scale-95 transition-all">
+                  <Upload size={14}/> 撮影 / 追加
+                  <input type="file" accept="image/*" onChange={handleFileUpload} className="hidden" />
+                </label>
+              </div>
+              
+              <div className="flex gap-4 overflow-x-auto pb-4 snap-x">
+                {!formData.images || formData.images.length === 0 ? (
+                  <div className="w-full flex-shrink-0 h-32 border-2 border-dashed border-slate-200 rounded-[2rem] flex flex-col items-center justify-center text-slate-400 font-bold text-xs bg-slate-50">
+                    <ImageIcon size={24} className="mb-2 opacity-50"/> 現場の様子を記録しましょう
+                  </div>
+                ) : (
+                  formData.images.map((img, i) => (
+                    <div key={i} className="relative w-48 flex-shrink-0 snap-center group">
+                      <img src={img} className="w-full h-32 object-cover rounded-[1.5rem] border shadow-sm cursor-pointer" onClick={() => setMarkupModal({ isOpen: true, imgIndex: i, dataUrl: img })} />
+                      <button type="button" onClick={() => {
+                        const newImgs = [...formData.images]; newImgs.splice(i, 1);
+                        setFormData({...formData, images: newImgs});
+                      }} className="absolute -top-2 -right-2 bg-red-500 text-white p-1.5 rounded-full shadow-md"><X size={14}/></button>
+                      <div className="absolute bottom-2 right-2 bg-slate-900/70 text-white p-1.5 rounded-full pointer-events-none"><Edit3 size={12}/></div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+            
+            <div className="space-y-3 bg-white p-5 rounded-[2.5rem] border border-slate-100 shadow-sm">
+              <div className="flex flex-wrap gap-2 pb-2 border-b border-slate-50">
+                {userSettings.quickPhrases.map(p => <button key={p} type="button" onClick={() => setFormData({...formData, content: formData.content + (formData.content?'\n':'') + p})} className="px-3 py-1.5 bg-slate-50 hover:bg-slate-100 text-slate-700 rounded-xl text-[10px] border font-black transition-colors shadow-sm">+ {p}</button>)}
+              </div>
+              <textarea className="w-full h-40 pt-2 bg-transparent outline-none text-sm font-medium leading-relaxed resize-none text-slate-700 placeholder:text-slate-300" placeholder="攻略のヒント、配線の色、次回への引き継ぎ事項などを記録..." value={formData.content} onChange={e => setFormData({...formData, content: e.target.value})} />
+            </div>
+            
+            {view === 'edit' && <button type="button" onClick={() => handleDelete(selectedMemo.id)} className="w-full py-5 text-red-500 font-black text-xs border-2 border-red-100 border-dashed rounded-[2.5rem] uppercase tracking-widest hover:bg-red-50 transition-all mt-8">クエストを破棄する</button>}
+          </div>
+        </div>
+      )}
+
+      {/* --- ボトムナビゲーション --- */}
+      <nav className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-slate-900/95 backdrop-blur-2xl border border-slate-700 rounded-full p-2 flex items-center shadow-2xl z-40 w-max gap-2">
+        <button onClick={() => setView('list')} className={`flex items-center gap-2 px-6 py-3 rounded-full transition-all duration-300 ${view === 'list' ? 'bg-blue-600 text-white shadow-lg' : 'text-slate-400 hover:text-white'}`}>
+          <ClipboardList size={20} strokeWidth={view === 'list' ? 2.5 : 2} />
+          <span className={`text-[10px] font-black uppercase tracking-widest ${view === 'list' ? 'block' : 'hidden'}`}>Quest Log</span>
+        </button>
+        <button onClick={() => setView('settings')} className={`flex items-center gap-2 px-6 py-3 rounded-full transition-all duration-300 ${view === 'settings' ? 'bg-blue-600 text-white shadow-lg' : 'text-slate-400 hover:text-white'}`}>
+          <Settings size={20} strokeWidth={view === 'settings' ? 2.5 : 2} />
+          <span className={`text-[10px] font-black uppercase tracking-widest ${view === 'settings' ? 'block' : 'hidden'}`}>Equipment</span>
+        </button>
+      </nav>
+    </div>
+  );
+};
+
+export default App;
