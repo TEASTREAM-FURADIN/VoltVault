@@ -116,6 +116,11 @@ const App = () => {
   const [selectedMemo, setSelectedMemo] = useState(null);
   const [editingMemo, setEditingMemo] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
+  
+  // ★ 追加：ソート順と期間絞り込み用のステート ★
+  const [sortOrder, setSortOrder] = useState('newest'); 
+  const [dateRange, setDateRange] = useState({ start: '', end: '' });
+
   const [isSyncing, setIsSyncing] = useState(false);
   const [error, setError] = useState(null);
 
@@ -123,13 +128,12 @@ const App = () => {
   const [userSettings, setUserSettings] = useState(defaultSettings);
   const [levelUpData, setLevelUpData] = useState(null);
 
-  useEffect(() => {
-    const initAuth = async () => {
-      try { await signInAnonymously(auth); } catch (e) { setError("認証エラー。"); }
-    };
-    initAuth();
-    return onAuthStateChanged(auth, setUser);
-  }, []);
+  // --- ★追加：入力履歴（サジェスト）用のリスト生成 ---
+  const uniqueSites = [...new Set(memos.map(m => m.site).filter(Boolean))];
+  const uniqueTitles = [...new Set(memos.map(m => {
+    const title = m.title || "";
+    return title.replace(/\s+\d+$/, ""); // 末尾の数字を消してベース名のみにする
+  }).filter(Boolean))];
 
   useEffect(() => {
     if (!user) return;
@@ -169,13 +173,48 @@ const App = () => {
   const initialForm = { title: '', site: '', genre: '盤結線', materials: [], content: '', date: new Date().toISOString().split('T')[0], images: [] };
   const [formData, setFormData] = useState(initialForm);
 
+  // --- ★追加：正規表現エスケープ関数（ナンバリング用） ---
+  const escapeRegExp = (string) => string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
   const handleSave = async () => {
     if (!formData.title || !user) return;
     setIsSyncing(true);
     try {
       const isNew = view !== 'edit';
       const id = isNew ? `memo_${Date.now()}` : editingMemo.id;
-      await setDoc(doc(db, 'artifacts', currentAppId, 'public', 'data', 'memos', id), { ...formData, id }, { merge: true });
+      
+      // --- ★追加：自動ナンバリング機能 ---
+      let finalTitle = formData.title.trim();
+      if (isNew) {
+        // 同じ現場内にある同じベース名のクエストを探す
+        const siteMemos = memos.filter(m => m.site === formData.site);
+        const baseTitle = finalTitle;
+        const regex = new RegExp(`^${escapeRegExp(baseTitle)}(?:\\s+(\\d+))?$`);
+        let maxNum = 0;
+        let hasBase = false;
+
+        siteMemos.forEach(m => {
+          const match = (m.title || "").match(regex);
+          if (match) {
+            hasBase = true;
+            if (match[1]) {
+              const num = parseInt(match[1], 10);
+              if (num > maxNum) maxNum = num;
+            } else {
+              if (maxNum < 1) maxNum = 1;
+            }
+          }
+        });
+
+        // 既に同じ名前があれば、最大番号+1を付与する
+        if (hasBase) {
+          finalTitle = `${baseTitle} ${maxNum + 1}`;
+        }
+      }
+
+      // formData.titleをfinalTitleに置き換えて保存
+      const dataToSave = { ...formData, title: finalTitle, id };
+      await setDoc(doc(db, 'artifacts', currentAppId, 'public', 'data', 'memos', id), dataToSave, { merge: true });
       
       if (isNew) {
         const currentStats = userSettings.stats || defaultSettings.stats;
@@ -212,9 +251,25 @@ const App = () => {
     await setDoc(doc(db, 'artifacts', currentAppId, 'public', 'data', 'settings', 'user'), newSettings);
   };
 
-  const filteredMemos = memos.filter(m => 
-    (m.title || "").includes(searchTerm) || (m.site || "").includes(searchTerm) || (m.materials || []).some(mat => mat.includes(searchTerm))
-  );
+  // ★ 変更：検索、期間絞り込み、および新しい順・古い順の並び替えロジック ★
+  const filteredMemos = memos.filter(m => {
+    const matchSearch = (m.title || "").includes(searchTerm) || (m.site || "").includes(searchTerm) || (m.materials || []).some(mat => mat.includes(searchTerm));
+    const matchStart = dateRange.start ? (m.date || "") >= dateRange.start : true;
+    const matchEnd = dateRange.end ? (m.date || "") <= dateRange.end : true;
+    return matchSearch && matchStart && matchEnd;
+  }).sort((a, b) => {
+    // IDに含まれるタイムスタンプ（memo_123456789）を抽出して秒単位で正確にソート
+    const aTime = parseInt(a.id.split('_')[1]) || 0;
+    const bTime = parseInt(b.id.split('_')[1]) || 0;
+    
+    if (sortOrder === 'newest') {
+      // 新しい順: 日付が同じなら追加した秒数で比較
+      return b.date !== a.date ? (b.date || "").localeCompare(a.date || "") : bTime - aTime;
+    } else {
+      // 古い順: 日付が同じなら追加した秒数で比較
+      return a.date !== b.date ? (a.date || "").localeCompare(b.date || "") : aTime - bTime;
+    }
+  });
 
   const groupedMemos = filteredMemos.reduce((acc, memo) => {
     if (listMode === 'all') return acc;
@@ -585,12 +640,26 @@ const App = () => {
               <button onClick={() => setListMode('material')} className={`flex-1 py-2 rounded-xl text-xs font-black transition-all ${listMode === 'material' ? 'bg-white shadow-sm text-blue-700' : 'text-blue-200'}`}>材料別</button>
             </div>
             <div className="relative">
-              <Search className="absolute left-4 top-3.5 text-blue-300" size={20} />
-              <input type="text" placeholder="極意・現場・材料を検索..." className="w-full bg-white/10 rounded-2xl py-3.5 pl-12 text-white placeholder-blue-300 outline-none text-sm font-bold focus:bg-white focus:text-slate-800 transition-colors shadow-inner" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
-            </div>
+          <Search className="absolute left-4 top-3.5 text-blue-300" size={20} />
+          <input type="text" placeholder="極意・現場・材料を検索..." className="w-full bg-white/10 rounded-2xl py-3.5 pl-12 text-white placeholder-blue-300 outline-none text-sm font-bold focus:bg-white focus:text-slate-800 transition-colors shadow-inner" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
+        </div>
+
+        {/* ★ 追加：期間絞り込みと並び替えのUI ★ */}
+        <div className="flex flex-col gap-2 mt-2">
+          <div className="flex gap-2 items-center bg-blue-900/40 p-2 rounded-xl backdrop-blur-sm">
+            <Calendar size={14} className="text-blue-200 ml-1" />
+            <input type="date" className="bg-transparent text-white text-xs outline-none font-bold flex-1" value={dateRange.start} onChange={e => setDateRange({...dateRange, start: e.target.value})} />
+            <span className="text-blue-200 text-xs font-black">〜</span>
+            <input type="date" className="bg-transparent text-white text-xs outline-none font-bold flex-1" value={dateRange.end} onChange={e => setDateRange({...dateRange, end: e.target.value})} />
           </div>
-        )}
-      </header>
+          <div className="flex gap-2">
+            <button onClick={() => setSortOrder('newest')} className={`flex-1 py-2 rounded-xl text-xs font-black transition-all shadow-sm ${sortOrder === 'newest' ? 'bg-white text-blue-700' : 'bg-blue-900/40 text-blue-200 hover:bg-blue-800/40'}`}>▼ 新しい順</button>
+            <button onClick={() => setSortOrder('oldest')} className={`flex-1 py-2 rounded-xl text-xs font-black transition-all shadow-sm ${sortOrder === 'oldest' ? 'bg-white text-blue-700' : 'bg-blue-900/40 text-blue-200 hover:bg-blue-800/40'}`}>▲ 古い順</button>
+          </div>
+        </div>
+      </div>
+    )}
+  </header>
 
       <main className="p-6 max-w-xl mx-auto">
         
@@ -791,7 +860,18 @@ const App = () => {
           
           <div className="p-6 space-y-7 max-w-xl mx-auto">
             <div className="space-y-4">
-              <input className="w-full text-2xl font-black bg-transparent border-b-2 border-slate-200 py-2 focus:border-blue-600 outline-none transition-colors placeholder:text-slate-300" placeholder="クエスト名（作業・タイトル）" value={formData.title} onChange={e => setFormData({...formData, title: e.target.value})} />
+              {/* --- ★変更：クエスト名の入力履歴（datalist）対応 --- */}
+              <input 
+                list="title-history"
+                className="w-full text-2xl font-black bg-transparent border-b-2 border-slate-200 py-2 focus:border-blue-600 outline-none transition-colors placeholder:text-slate-300" 
+                placeholder="クエスト名（作業・タイトル）" 
+                value={formData.title} 
+                onChange={e => setFormData({...formData, title: e.target.value})} 
+              />
+              <datalist id="title-history">
+                {uniqueTitles.map(t => <option key={t} value={t} />)}
+              </datalist>
+
               <div className="grid grid-cols-2 gap-4">
                 <input type="date" className="p-3 bg-white border border-slate-200 rounded-2xl font-bold outline-none text-sm text-slate-700 shadow-sm" value={formData.date} onChange={e => setFormData({...formData, date: e.target.value})} />
                 <select className="p-3 bg-white border border-slate-200 rounded-2xl font-bold outline-none text-sm text-slate-700 shadow-sm" value={formData.genre} onChange={e => setFormData({...formData, genre: e.target.value})}>
@@ -800,7 +880,17 @@ const App = () => {
               </div>
               <div className="relative shadow-sm rounded-2xl">
                 <Building className="absolute left-3 top-3.5 text-slate-400" size={16}/>
-                <input className="w-full p-3 pl-10 bg-white border border-slate-200 rounded-2xl font-bold outline-none text-sm text-slate-700 focus:border-blue-500" placeholder="ダンジョン名（現場・案件）" value={formData.site} onChange={e => setFormData({...formData, site: e.target.value})} />
+                {/* --- ★変更：ダンジョン名の入力履歴（datalist）対応 --- */}
+                <input 
+                  list="site-history"
+                  className="w-full p-3 pl-10 bg-white border border-slate-200 rounded-2xl font-bold outline-none text-sm text-slate-700 focus:border-blue-500" 
+                  placeholder="ダンジョン名（現場・案件）" 
+                  value={formData.site} 
+                  onChange={e => setFormData({...formData, site: e.target.value})} 
+                />
+                <datalist id="site-history">
+                  {uniqueSites.map(s => <option key={s} value={s} />)}
+                </datalist>
               </div>
             </div>
 
