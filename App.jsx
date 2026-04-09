@@ -392,13 +392,10 @@ const App = () => {
     );
   };
 
-  // --- ★進化版：複数写真の一括アップロード処理★ ---
   const handleFileUpload = async (e) => {
-    // 選択された全てのファイルを配列として取得
     const files = Array.from(e.target.files);
     if (files.length === 0) return;
 
-    // 1枚の画像をCanvasでリサイズ・圧縮する処理（Promise）
     const processFile = (file) => {
       return new Promise((resolve) => {
         const reader = new FileReader();
@@ -412,7 +409,6 @@ const App = () => {
             canvas.height = img.height * scale;
             const ctx = canvas.getContext('2d');
             ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-            // JPEGで圧縮してデータURLとして返す
             resolve(canvas.toDataURL('image/jpeg', 0.6));
           };
           img.src = event.target.result;
@@ -421,13 +417,11 @@ const App = () => {
       });
     };
 
-    // 全てのファイルを同時に処理し、全て終わったらstateに追加する
     const newImageUrls = await Promise.all(files.map(processFile));
     
-    // 既存の画像に新しい画像を追加
     setFormData(prev => ({...prev, images: [...prev.images, ...newImageUrls]}));
     
-    e.target.value = null; // リセット
+    e.target.value = null; 
   };
 
 
@@ -555,7 +549,7 @@ const App = () => {
             <div className="bg-yellow-400 p-2.5 rounded-2xl rotate-3 shadow-lg"><HardHat className="text-blue-900" size={24}/></div>
             <div>
               {/* --- アプリ名の変更 --- */}
-              <h1 className="text-2xl font-black italic tracking-tighter leading-none">電気の極意</h1>
+              <h1 className="text-2xl font-black italic tracking-tighter leading-none">苦菩茶の極意</h1>
               <div className="flex items-center gap-1.5 text-[8px] font-black text-blue-200 mt-1 uppercase tracking-widest">
                 {isSyncing ? <Loader2 size={10} className="animate-spin" /> : <Cloud size={10} />}
                 {user ? `Quest Mode: Active` : "Connecting..."}
@@ -709,7 +703,7 @@ const App = () => {
             
             <div className="text-center py-4 opacity-50">
               <Gamepad2 size={32} className="mx-auto text-slate-800 mb-2"/>
-              <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">電気の極意 Quest v6.0.0</p>
+              <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">苦菩茶の極意 Quest v6.0.0</p>
             </div>
           </div>
         )}
