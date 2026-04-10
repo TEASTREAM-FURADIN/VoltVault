@@ -347,6 +347,7 @@ const App = () => {
   };
 
   const [markupModal, setMarkupModal] = useState({ isOpen: false, imgIndex: null, dataUrl: null });
+  
   const MarkupModalCanvas = () => {
     const canvasRef = useRef(null);
     const containerRef = useRef(null);
@@ -354,6 +355,15 @@ const App = () => {
     const [mode, setMode] = useState('draw'); 
     const [zoom, setZoom] = useState(1);
     const [dimensions, setDimensions] = useState({ width: 0, height: 0 });
+    
+    // --- ★追加：ペンの色を管理するステートと、色の設定リスト ---
+    const [penColor, setPenColor] = useState('#ef4444'); 
+    const PEN_COLORS = [
+      { id: 'red', value: '#ef4444', tw: 'bg-red-500' },
+      { id: 'black', value: '#0f172a', tw: 'bg-slate-900' },
+      { id: 'blue', value: '#3b82f6', tw: 'bg-blue-500' },
+      { id: 'green', value: '#22c55e', tw: 'bg-green-500' }
+    ];
 
     useEffect(() => {
       if (!markupModal.dataUrl) return;
@@ -374,7 +384,7 @@ const App = () => {
       img.onload = () => {
         ctx.clearRect(0, 0, canvas.width, canvas.height);
         ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-        ctx.strokeStyle = '#ef4444'; 
+        ctx.strokeStyle = penColor; 
         ctx.lineWidth = 4 / zoom; 
         ctx.lineJoin = 'round'; 
         ctx.lineCap = 'round';
@@ -384,9 +394,14 @@ const App = () => {
 
     useEffect(() => { drawInitialImage(); }, [dimensions]);
 
+    // --- ★変更：ズームや色が変更されたらペンの設定を即座に更新 ---
     useEffect(() => {
-      if (canvasRef.current) canvasRef.current.getContext('2d').lineWidth = 4 / zoom;
-    }, [zoom]);
+      if (canvasRef.current) {
+        const ctx = canvasRef.current.getContext('2d');
+        ctx.lineWidth = 4 / zoom;
+        ctx.strokeStyle = penColor;
+      }
+    }, [zoom, penColor]);
 
     const getPos = (e) => {
       const r = canvasRef.current.getBoundingClientRect();
@@ -431,20 +446,34 @@ const App = () => {
             <button onClick={() => setMarkupModal({ isOpen: false })} className="text-slate-400 hover:text-slate-600"><X size={28}/></button>
           </div>
 
-          <div className="flex justify-between items-center bg-slate-100 p-1.5 rounded-xl border border-slate-200">
-            <div className="flex gap-1">
-              <button onClick={() => setMode('draw')} className={`px-3 py-2 rounded-lg text-xs font-bold flex items-center gap-1 transition-all ${mode === 'draw' ? 'bg-white shadow-sm text-red-600' : 'text-slate-500'}`}>
-                <PenTool size={14}/> ペン
-              </button>
-              <button onClick={() => setMode('move')} className={`px-3 py-2 rounded-lg text-xs font-bold flex items-center gap-1 transition-all ${mode === 'move' ? 'bg-white shadow-sm text-blue-600' : 'text-slate-500'}`}>
-                <Move size={14}/> 移動
-              </button>
+          {/* --- ★変更：ツールバーに色選択を追加し、2段構成でスッキリ配置 --- */}
+          <div className="flex flex-col gap-2 bg-slate-100 p-2 rounded-xl border border-slate-200">
+            <div className="flex justify-between items-center">
+              <div className="flex items-center gap-1.5 bg-white p-1 rounded-lg shadow-sm border border-slate-200">
+                <button onClick={() => setMode('draw')} className={`p-1.5 rounded-md transition-colors ${mode === 'draw' ? 'bg-slate-100 text-slate-800' : 'text-slate-400 hover:text-slate-600'}`}>
+                  <PenTool size={16}/>
+                </button>
+                <div className="w-px h-5 bg-slate-200 mx-0.5"></div>
+                {PEN_COLORS.map(c => (
+                  <button 
+                    key={c.id} 
+                    onClick={() => { setPenColor(c.value); setMode('draw'); }} 
+                    className={`w-5 h-5 rounded-full ${c.tw} transition-all border-2 ${penColor === c.value ? 'border-slate-800 scale-110 shadow-sm' : 'border-transparent scale-90 opacity-50 hover:opacity-100'}`}
+                  />
+                ))}
+              </div>
+              <div className="flex gap-1.5">
+                <button onClick={() => setMode('move')} className={`px-2 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1 transition-all ${mode === 'move' ? 'bg-white shadow-sm text-blue-600 border border-slate-200' : 'text-slate-500 hover:bg-slate-200'}`}>
+                  <Move size={14}/> 移動
+                </button>
+                <button onClick={drawInitialImage} className="p-1.5 text-slate-500 bg-white rounded-lg shadow-sm active:scale-95 hover:text-red-500 border border-slate-200"><RotateCcw size={16}/></button>
+              </div>
             </div>
-            <div className="flex gap-1 items-center px-1 border-l border-slate-300">
-              <button onClick={() => setZoom(z => Math.max(1, z - 0.5))} className="p-1.5 text-slate-600 bg-white rounded-lg shadow-sm active:scale-95"><ZoomOut size={16}/></button>
-              <span className="text-[10px] font-black w-9 text-center text-slate-700">{Math.round(zoom * 100)}%</span>
-              <button onClick={() => setZoom(z => Math.min(4, z + 0.5))} className="p-1.5 text-slate-600 bg-white rounded-lg shadow-sm active:scale-95"><ZoomIn size={16}/></button>
-              <button onClick={drawInitialImage} className="ml-1 p-1.5 text-slate-500 bg-white rounded-lg shadow-sm active:scale-95 hover:text-red-500"><RotateCcw size={16}/></button>
+            
+            <div className="flex gap-2 items-center justify-center bg-white py-1 rounded-lg border border-slate-200 mx-2">
+              <button onClick={() => setZoom(z => Math.max(1, z - 0.5))} className="p-1 text-slate-600 active:scale-95 hover:text-blue-500"><ZoomOut size={16}/></button>
+              <span className="text-[10px] font-black w-10 text-center text-slate-700">{Math.round(zoom * 100)}%</span>
+              <button onClick={() => setZoom(z => Math.min(4, z + 0.5))} className="p-1 text-slate-600 active:scale-95 hover:text-blue-500"><ZoomIn size={16}/></button>
             </div>
           </div>
 
