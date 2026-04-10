@@ -766,11 +766,11 @@ const App = () => {
 
         <div className="flex justify-between items-center mb-3 relative z-10">
           <div className="flex items-center gap-2">
-            {/* ★変更：オリジナルロゴ（お茶・メモ・ヘルメット）を確実に表示！ */}
-            <div className="bg-slate-800 px-2.5 py-1.5 rounded-xl rotate-3 shadow-lg flex items-center gap-1.5 border border-slate-600">
-              <Coffee className="text-green-400" size={16}/>
-              <ClipboardList className="text-slate-200" size={16}/>
-              <HardHat className="text-yellow-400" size={16}/>
+            {/* ★ 変更：お茶(緑)、メモ(青)、電気雷(黄)のオリジナルロゴ！ */}
+            <div className="bg-slate-900 p-2 rounded-xl rotate-2 shadow-lg flex items-center gap-1 border border-slate-700">
+              <Coffee className="text-green-500" size={18} strokeWidth={2.5}/>
+              <FileText className="text-blue-400" size={18} strokeWidth={2.5}/>
+              <Zap className="text-yellow-400" size={18} fill="currentColor"/>
             </div>
             <div>
               <h1 className="text-xl font-black italic tracking-tighter leading-none">苦菩茶の極意</h1>
@@ -968,7 +968,7 @@ const App = () => {
             
             <div className="text-center py-4 opacity-50">
               <Gamepad2 size={32} className="mx-auto text-slate-800 mb-2"/>
-              <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">苦菩茶の極意 Quest v9.0.0</p>
+              <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">苦菩茶の極意 Quest v10.0</p>
             </div>
           </div>
         )}
