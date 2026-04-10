@@ -1,4 +1,3 @@
-```react
 import React, { useState, useRef, useEffect } from 'react';
 import { 
   Plus, Calendar, MapPin, Search, ChevronLeft, ClipboardList, HardHat, 
@@ -1221,6 +1220,3 @@ const App = () => {
 };
 
 export default App;
-
-
-```
