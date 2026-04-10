@@ -766,10 +766,11 @@ const App = () => {
 
         <div className="flex justify-between items-center mb-3 relative z-10">
           <div className="flex items-center gap-2">
-            {/* ★ 変更：黒背景に お茶(緑)と雷(黄) の特製ロゴ！ */}
-            <div className="bg-slate-900 px-3 py-2 rounded-xl rotate-3 shadow-lg flex items-center gap-1.5 border-2 border-slate-700">
-              <Coffee className="text-green-500" size={18} strokeWidth={3}/>
-              <Zap className="text-yellow-400" size={20} fill="currentColor"/>
+            {/* ★ ここが修正されたオリジナルロゴ（お茶・メモ・雷）です！ */}
+            <div className="bg-slate-900 px-2.5 py-1.5 rounded-xl rotate-3 shadow-lg flex items-center gap-1 border border-slate-700">
+              <Coffee className="text-green-500" size={16} strokeWidth={2.5}/>
+              <FileText className="text-blue-400" size={16} strokeWidth={2.5}/>
+              <Zap className="text-yellow-400" size={18} fill="currentColor"/>
             </div>
             <div>
               <h1 className="text-xl font-black italic tracking-tighter leading-none">苦菩茶の極意</h1>
@@ -967,7 +968,7 @@ const App = () => {
             
             <div className="text-center py-4 opacity-50">
               <Gamepad2 size={32} className="mx-auto text-slate-800 mb-2"/>
-              <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">苦菩茶の極意 Quest v10.5</p>
+              <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">苦菩茶の極意 Quest v11.1</p>
             </div>
           </div>
         )}
