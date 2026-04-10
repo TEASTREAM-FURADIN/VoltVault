@@ -10,47 +10,9 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     
-    <!-- ★最強の裏ワザ：スマホの内部で直接アイコン画像（お茶＋メモ＋雷）を描画して設定するスクリプト -->
-    <script>
-      (function() {
-        var canvas = document.createElement('canvas');
-        canvas.width = 512;
-        canvas.height = 512;
-        var ctx = canvas.getContext('2d');
-        
-        // 1. プロ仕様の黒（スレート）背景
-        ctx.fillStyle = '#0f172a';
-        ctx.fillRect(0, 0, 512, 512);
-        
-        // 2. お茶とメモの絵文字
-        ctx.font = '240px sans-serif';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillText('🍵', 200, 320);
-        ctx.font = '160px sans-serif';
-        ctx.fillText('📝', 380, 380);
-
-        // 3. カッコいい黄色の雷（⚡）を上から重ねる
-        ctx.fillStyle = '#eab308';
-        ctx.shadowColor = '#ca8a04';
-        ctx.shadowBlur = 15;
-        ctx.beginPath();
-        ctx.moveTo(320, 40);
-        ctx.lineTo(120, 260);
-        ctx.lineTo(260, 260);
-        ctx.lineTo(200, 480);
-        ctx.lineTo(440, 200);
-        ctx.lineTo(300, 200);
-        ctx.closePath();
-        ctx.fill();
-
-        // 描画した画像をiPhoneのアイコンとして登録
-        var link = document.createElement('link');
-        link.rel = 'apple-touch-icon';
-        link.href = canvas.toDataURL('image/png');
-        document.head.appendChild(link);
-      })();
-    </script>
+    <!-- ★絶対にエラーにならない、暗号化された「お茶＋雷」の特製アイコン！ -->
+    <link rel="apple-touch-icon" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxMDAgMTAwIj4KICA8cmVjdCB3aWR0aD0iMTAwIiBoZWlnaHQ9IjEwMCIgcng9IjIyIiBmaWxsPSIjMGYxNzJhIi8+CiAgPHRleHQgeD0iNTAiIHk9IjUwIiBmb250LXNpemU9IjQ1IiB0ZXh0LWFuY2hvcj0ibWlkZGxlIiBkb21pbmFudC1iYXNlbGluZT0iY2VudHJhbCI+8J+NtTwvdGV4dD4KICA8cGF0aCBkPSJNNTUsMjAgTDM1LDYwIEw1MCw2MCBMNDUsODAgTDcwLDQ1IEw1MCw0NSBaIiBmaWxsPSIjZWFiMzA4IiBzdHJva2U9IiMwMDAiIHN0cm9rZS13aWR0aD0iMiIvPgo8L3N2Zz4=">
+    <link rel="icon" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxMDAgMTAwIj4KICA8cmVjdCB3aWR0aD0iMTAwIiBoZWlnaHQ9IjEwMCIgcng9IjIyIiBmaWxsPSIjMGYxNzJhIi8+CiAgPHRleHQgeD0iNTAiIHk9IjUwIiBmb250LXNpemU9IjQ1IiB0ZXh0LWFuY2hvcj0ibWlkZGxlIiBkb21pbmFudC1iYXNlbGluZT0iY2VudHJhbCI+8J+NtTwvdGV4dD4KICA8cGF0aCBkPSJNNTUsMjAgTDM1LDYwIEw1MCw2MCBMNDUsODAgTDcwLDQ1IEw1MCw0NSBaIiBmaWxsPSIjZWFiMzA4IiBzdHJva2U9IiMwMDAiIHN0cm9rZS13aWR0aD0iMiIvPgo8L3N2Zz4=">
 
     <script src="https://cdn.tailwindcss.com"></script>
   </head>
