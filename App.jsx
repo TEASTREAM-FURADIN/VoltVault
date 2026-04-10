@@ -1,3 +1,4 @@
+```react
 import React, { useState, useRef, useEffect } from 'react';
 import { 
   Plus, Calendar, MapPin, Search, ChevronLeft, ClipboardList, HardHat, 
@@ -13,7 +14,8 @@ import {
   Snowflake, Paintbrush, Link, Milestone, Layers,
   Gamepad2, Sword, Crown, Trophy, Target, Dumbbell, Book, Star, Sparkles, Medal, Award,
   Move, ZoomIn, ZoomOut, RotateCcw,
-  User, Bell, ChevronUp, CheckSquare, ArrowUp, ArrowDown
+  User, Bell, ChevronUp, CheckSquare, ArrowUp, ArrowDown,
+  Coffee // お茶のアイコンとして追加
 } from 'lucide-react';
 
 import { initializeApp } from 'firebase/app';
@@ -356,7 +358,6 @@ const App = () => {
     const [zoom, setZoom] = useState(1);
     const [dimensions, setDimensions] = useState({ width: 0, height: 0 });
     
-    // --- ★追加：ペンの色を管理するステートと、色の設定リスト ---
     const [penColor, setPenColor] = useState('#ef4444'); 
     const PEN_COLORS = [
       { id: 'red', value: '#ef4444', tw: 'bg-red-500' },
@@ -394,7 +395,6 @@ const App = () => {
 
     useEffect(() => { drawInitialImage(); }, [dimensions]);
 
-    // --- ★変更：ズームや色が変更されたらペンの設定を即座に更新 ---
     useEffect(() => {
       if (canvasRef.current) {
         const ctx = canvasRef.current.getContext('2d');
@@ -446,7 +446,6 @@ const App = () => {
             <button onClick={() => setMarkupModal({ isOpen: false })} className="text-slate-400 hover:text-slate-600"><X size={28}/></button>
           </div>
 
-          {/* --- ★変更：ツールバーに色選択を追加し、2段構成でスッキリ配置 --- */}
           <div className="flex flex-col gap-2 bg-slate-100 p-2 rounded-xl border border-slate-200">
             <div className="flex justify-between items-center">
               <div className="flex items-center gap-1.5 bg-white p-1 rounded-lg shadow-sm border border-slate-200">
@@ -611,12 +610,11 @@ const App = () => {
     );
   };
 
-  // --- ★修正：Master設定での親グループを固定カテゴリーのプルダウンに変更 ---
   const EditorSection = ({ title, icon: Icon, items, onAdd, onDelete, onMoveUp, onMoveDown, placeholder }) => {
     const [name, setName] = useState('');
     const [color, setColor] = useState('blue');
     const [iconName, setIconName] = useState('Info');
-    const [group, setGroup] = useState(MainCategories[0]); // デフォルトは「電気」
+    const [group, setGroup] = useState(MainCategories[0]); 
 
     const sortedItems = Object.entries(items)
       .map(([k, v]) => ({ key: k, ...v }))
@@ -651,7 +649,6 @@ const App = () => {
         <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 space-y-3">
           <div className="flex gap-2">
             <div className="flex-1 relative">
-              {/* 大分類のプルダウン */}
               <select value={group} onChange={e=>setGroup(e.target.value)} className="w-full bg-white border border-slate-300 p-3 rounded-xl text-[10px] sm:text-xs font-bold outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all appearance-none">
                 {MainCategories.map(c => <option key={c} value={c}>{c}</option>)}
               </select>
@@ -746,7 +743,6 @@ const App = () => {
   const expPercentage = currentExp % 100;
   const pendingReviews = memos.filter(m => m.needsReview && !m.isReviewed);
 
-  // --- ★修正：新規フォームでの表示を固定カテゴリー基準に整列 ---
   const sortedGenres = Object.entries(userSettings.genres)
     .map(([k, v]) => ({ key: k, ...v }))
     .sort((a, b) => a.order - b.order);
@@ -775,7 +771,12 @@ const App = () => {
 
         <div className="flex justify-between items-center mb-3 relative z-10">
           <div className="flex items-center gap-2">
-            <div className="bg-yellow-400 p-2 rounded-xl rotate-3 shadow-lg"><HardHat className="text-blue-900" size={20}/></div>
+            {/* --- ★変更：ヘッダーロゴを「お茶・メモ・ヘルメット」に変更！ --- */}
+            <div className="bg-yellow-400 px-2.5 py-1.5 rounded-xl rotate-3 shadow-lg flex items-center gap-1">
+              <Coffee className="text-green-800" size={16}/>
+              <ClipboardList className="text-blue-900" size={16}/>
+              <HardHat className="text-red-600" size={16}/>
+            </div>
             <div>
               <h1 className="text-xl font-black italic tracking-tighter leading-none">苦菩茶の極意</h1>
               <div className="flex items-center gap-1 text-[8px] font-black text-blue-200 mt-1 uppercase tracking-widest">
@@ -1228,3 +1229,6 @@ const App = () => {
 };
 
 export default App;
+
+
+```
