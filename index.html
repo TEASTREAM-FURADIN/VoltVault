@@ -10,9 +10,47 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     
-    <!-- ★iPhoneが絶対に読み込める、プロ仕様のヘルメットアイコン -->
-    <link rel="apple-touch-icon" href="https://cdn-icons-png.flaticon.com/512/3004/3004381.png">
-    <link rel="icon" type="image/png" href="https://cdn-icons-png.flaticon.com/512/3004/3004381.png">
+    <!-- ★最強の裏ワザ：スマホの内部で直接アイコン画像（お茶＋メモ＋雷）を描画して設定するスクリプト -->
+    <script>
+      (function() {
+        var canvas = document.createElement('canvas');
+        canvas.width = 512;
+        canvas.height = 512;
+        var ctx = canvas.getContext('2d');
+        
+        // 1. プロ仕様の黒（スレート）背景
+        ctx.fillStyle = '#0f172a';
+        ctx.fillRect(0, 0, 512, 512);
+        
+        // 2. お茶とメモの絵文字
+        ctx.font = '240px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('🍵', 200, 320);
+        ctx.font = '160px sans-serif';
+        ctx.fillText('📝', 380, 380);
+
+        // 3. カッコいい黄色の雷（⚡）を上から重ねる
+        ctx.fillStyle = '#eab308';
+        ctx.shadowColor = '#ca8a04';
+        ctx.shadowBlur = 15;
+        ctx.beginPath();
+        ctx.moveTo(320, 40);
+        ctx.lineTo(120, 260);
+        ctx.lineTo(260, 260);
+        ctx.lineTo(200, 480);
+        ctx.lineTo(440, 200);
+        ctx.lineTo(300, 200);
+        ctx.closePath();
+        ctx.fill();
+
+        // 描画した画像をiPhoneのアイコンとして登録
+        var link = document.createElement('link');
+        link.rel = 'apple-touch-icon';
+        link.href = canvas.toDataURL('image/png');
+        document.head.appendChild(link);
+      })();
+    </script>
 
     <script src="https://cdn.tailwindcss.com"></script>
   </head>
