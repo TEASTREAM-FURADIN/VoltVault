@@ -15,14 +15,13 @@ import {
   Gamepad2, Sword, Crown, Trophy, Target, Dumbbell, Book, Star, Sparkles, Medal, Award,
   Move, ZoomIn, ZoomOut, RotateCcw,
   User, Bell, ChevronUp, CheckSquare, ArrowUp, ArrowDown,
-  Coffee // お茶のアイコンとして追加
+  Coffee
 } from 'lucide-react';
 
 import { initializeApp } from 'firebase/app';
 import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
 import { getFirestore, doc, setDoc, collection, onSnapshot, deleteDoc } from 'firebase/firestore';
 
-// --- アイコンと色のマッピング定義 ---
 const IconMap = {
   Zap, Plug, Cable, Power, Lightbulb, Wrench, Hammer, HardHat, AlertCircle, CheckCircle, Info, Tags, Folder, MapPin, Building, Truck, Grid, ListFilter,
   Shield, Flame, Droplets, Wind, Thermometer, Scissors, Battery, FileText, PenTool, Ruler, Compass, Home, Activity, Radio, Wifi, Phone, Car, Clock, Lock, Unlock, Sun, Moon,
@@ -62,12 +61,10 @@ const ColorNames = {
   red: '赤色', blue: '青色', green: '緑色', yellow: '黄色', orange: 'オレンジ色', purple: '紫色', pink: 'ピンク色', teal: '青緑色', gray: 'グレー色'
 };
 
-// --- ★新規追加：大分類（親カテゴリー）を固定化！ ---
 const MainCategories = [
   '電気', '弱電', '設備', '内装', '建築', '事務', '工程', '知識技術', '趣味', 'その他'
 ];
 
-// --- Firebase 設定 ---
 const firebaseConfig = {
   apiKey: "AIzaSyDMOwQv6Np1N38y8ecJSXCRDZ4G89wccnM",
   authDomain: "electricity-gokui.firebaseapp.com",
@@ -176,7 +173,6 @@ const App = () => {
         let genresData = data.genres || defaultSettings.genres;
         let tagsData = data.tags || defaultSettings.tags;
         
-        // マイグレーション：固定カテゴリーにないものは「その他」に振り分ける
         Object.keys(genresData).forEach((k, i) => {
           if (!genresData[k].group || !MainCategories.includes(genresData[k].group)) genresData[k].group = 'その他';
           if (typeof genresData[k].order !== 'number') genresData[k].order = i;
@@ -205,7 +201,6 @@ const App = () => {
   };
   const [formData, setFormData] = useState(initialForm);
 
-  // 初回フォームを開く際、既存のジャンルから一番最初のものを初期値にする
   useEffect(() => {
     if (view === 'add' && !formData.genre && Object.keys(userSettings.genres).length > 0) {
       setFormData(prev => ({ ...prev, genre: Object.keys(userSettings.genres)[0] }));
@@ -771,11 +766,11 @@ const App = () => {
 
         <div className="flex justify-between items-center mb-3 relative z-10">
           <div className="flex items-center gap-2">
-            {/* --- ★変更：ヘッダーロゴを「お茶・メモ・ヘルメット」に変更！ --- */}
-            <div className="bg-yellow-400 px-2.5 py-1.5 rounded-xl rotate-3 shadow-lg flex items-center gap-1">
-              <Coffee className="text-green-800" size={16}/>
-              <ClipboardList className="text-blue-900" size={16}/>
-              <HardHat className="text-red-600" size={16}/>
+            {/* ★変更：オリジナルロゴ（お茶・メモ・ヘルメット）を確実に表示！ */}
+            <div className="bg-slate-800 px-2.5 py-1.5 rounded-xl rotate-3 shadow-lg flex items-center gap-1.5 border border-slate-600">
+              <Coffee className="text-green-400" size={16}/>
+              <ClipboardList className="text-slate-200" size={16}/>
+              <HardHat className="text-yellow-400" size={16}/>
             </div>
             <div>
               <h1 className="text-xl font-black italic tracking-tighter leading-none">苦菩茶の極意</h1>
@@ -973,7 +968,7 @@ const App = () => {
             
             <div className="text-center py-4 opacity-50">
               <Gamepad2 size={32} className="mx-auto text-slate-800 mb-2"/>
-              <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">苦菩茶の極意 Quest v8.1.0</p>
+              <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">苦菩茶の極意 Quest v9.0.0</p>
             </div>
           </div>
         )}
@@ -1094,8 +1089,6 @@ const App = () => {
 
               <div className="grid grid-cols-2 gap-4">
                 <input type="date" className="p-3 bg-white border border-slate-200 rounded-2xl font-bold outline-none text-sm text-slate-700 shadow-sm" value={formData.date} onChange={e => setFormData({...formData, date: e.target.value})} />
-                
-                {/* --- ★修正：固定カテゴリーでグループ化されたジャンル選択 --- */}
                 <select className="p-3 bg-white border border-slate-200 rounded-2xl font-bold outline-none text-sm text-slate-700 shadow-sm" value={formData.genre} onChange={e => setFormData({...formData, genre: e.target.value})}>
                   {groupedGenresForm.map(({ category, genres }) => (
                     <optgroup key={category} label={`【${category}】`}>
@@ -1164,7 +1157,6 @@ const App = () => {
             <div className="space-y-3">
               <p className="text-[10px] font-black text-slate-400 flex items-center gap-1"><Tags size={12}/> 使用アイテム・タグ (複数選択可)</p>
               
-              {/* --- ★修正：固定カテゴリーでグループ化されたタグの表示 --- */}
               <div className="flex flex-col gap-2">
                 {groupedTagsForm.map(({ category, tags }) => (
                   <TagAccordion key={category} groupName={`【${category}】`} tags={tags} formData={formData} setFormData={setFormData} />
