@@ -646,15 +646,34 @@ const App = () => {
     );
   };
 
-  const EditorSection = ({ title, icon: Icon, items, onAdd, onDelete, onMoveUp, onMoveDown, placeholder }) => {
+  const EditorSection = ({ title, icon: Icon, items, onAdd, onUpdate, onDelete, onMoveUp, onMoveDown, placeholder }) => {
     const [name, setName] = useState('');
     const [color, setColor] = useState('blue');
     const [iconName, setIconName] = useState('Info');
     const [group, setGroup] = useState(MainCategories[0]); 
+    const [editingKey, setEditingKey] = useState(null); // ★ 追加：編集中のアイテムキーを保持
 
     const sortedItems = Object.entries(items)
       .map(([k, v]) => ({ key: k, ...v }))
       .sort((a, b) => a.order - b.order);
+
+    // ★ 追加：編集ボタンを押したときの処理
+    const handleEdit = (item) => {
+      setEditingKey(item.key);
+      setName(item.key);
+      setColor(item.colorId);
+      setIconName(item.icon);
+      setGroup(item.group);
+    };
+
+    // ★ 追加：編集をキャンセルしたときの処理
+    const handleCancel = () => {
+      setEditingKey(null);
+      setName('');
+      setColor('blue');
+      setIconName('Info');
+      setGroup(MainCategories[0]);
+    };
 
     return (
       <div className="bg-slate-800/80 backdrop-blur-sm p-5 rounded-[2rem] border border-slate-700 shadow-[0_0_15px_rgba(0,0,0,0.5)] space-y-4">
@@ -664,7 +683,7 @@ const App = () => {
           {sortedItems.map((item, idx) => {
             const colors = ColorMap[item.colorId] || ColorMap.gray;
             return (
-              <div key={item.key} className="flex justify-between items-center bg-slate-900 p-2.5 rounded-2xl border border-slate-700 shadow-inner">
+              <div key={item.key} className={`flex justify-between items-center p-2.5 rounded-2xl border shadow-inner transition-colors ${editingKey === item.key ? 'bg-slate-800 border-yellow-500/50 shadow-[0_0_10px_rgba(234,179,8,0.2)]' : 'bg-slate-900 border-slate-700'}`}>
                 <div className="flex flex-col gap-1 items-start">
                   <span className="text-[8px] font-black text-cyan-600 uppercase tracking-wider bg-cyan-950/50 px-1.5 py-0.5 rounded border border-cyan-900">{item.group}</span>
                   <span className={`${colors.light} ${colors.text} ${colors.border} border text-xs font-bold px-2.5 py-1 rounded-lg flex items-center gap-1.5 w-max shadow-[0_0_8px_rgba(0,0,0,0.5)]`}>
@@ -672,17 +691,20 @@ const App = () => {
                   </span>
                 </div>
                 <div className="flex gap-1 items-center">
-                  <button onClick={() => onMoveUp(item.key)} disabled={idx === 0} className="p-2 text-slate-500 hover:text-cyan-400 disabled:opacity-30 active:scale-90"><ArrowUp size={16}/></button>
-                  <button onClick={() => onMoveDown(item.key)} disabled={idx === sortedItems.length - 1} className="p-2 text-slate-500 hover:text-cyan-400 disabled:opacity-30 active:scale-90"><ArrowDown size={16}/></button>
-                  <div className="w-px h-6 bg-slate-700 mx-1"></div>
-                  <button onClick={() => { if(window.confirm(`WARNING: 「${item.key}」を削除しますか？`)) onDelete(item.key); }} className="p-2 text-slate-500 hover:text-red-500 active:scale-90"><Trash2 size={16}/></button>
+                  {/* ★ 追加：編集ボタン */}
+                  <button onClick={() => handleEdit(item)} className={`p-2 transition-colors active:scale-90 ${editingKey === item.key ? 'text-yellow-400' : 'text-slate-500 hover:text-yellow-400'}`}><Edit3 size={16}/></button>
+                  <div className="w-px h-6 bg-slate-700 mx-0.5"></div>
+                  <button onClick={() => onMoveUp(item.key)} disabled={idx === 0 || editingKey} className="p-2 text-slate-500 hover:text-cyan-400 disabled:opacity-30 active:scale-90"><ArrowUp size={16}/></button>
+                  <button onClick={() => onMoveDown(item.key)} disabled={idx === sortedItems.length - 1 || editingKey} className="p-2 text-slate-500 hover:text-cyan-400 disabled:opacity-30 active:scale-90"><ArrowDown size={16}/></button>
+                  <div className="w-px h-6 bg-slate-700 mx-0.5"></div>
+                  <button onClick={() => { if(window.confirm(`WARNING: 「${item.key}」を削除しますか？`)) onDelete(item.key); }} disabled={editingKey !== null} className="p-2 text-slate-500 hover:text-red-500 disabled:opacity-30 active:scale-90"><Trash2 size={16}/></button>
                 </div>
               </div>
             );
           })}
         </div>
 
-        <div className="bg-slate-900 p-4 rounded-2xl border border-slate-700 space-y-3 shadow-inner">
+        <div className={`p-4 rounded-2xl border transition-colors ${editingKey ? 'bg-slate-800 border-yellow-500/50 shadow-[0_0_15px_rgba(234,179,8,0.1)]' : 'bg-slate-900 border-slate-700 shadow-inner'} space-y-3`}>
           <div className="flex gap-2">
             <div className="flex-1 relative">
               <select value={group} onChange={e=>setGroup(e.target.value)} className="w-full bg-slate-800 border border-slate-700 p-3 rounded-xl text-[10px] sm:text-xs font-bold text-slate-200 outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 transition-all appearance-none">
@@ -696,9 +718,23 @@ const App = () => {
             <ColorSelector value={color} onChange={setColor} />
             <IconSelector value={iconName} onChange={setIconName} />
           </div>
-          <button onClick={() => { if(name.trim()){ onAdd(name.trim(), color, iconName, group); setName(''); } }} className="w-full mt-2 bg-slate-800 border border-cyan-500/50 text-cyan-400 px-4 py-3.5 rounded-xl font-black text-xs uppercase tracking-widest shadow-[0_0_10px_rgba(34,211,238,0.2)] active:scale-[0.98] hover:bg-slate-700 transition-all flex justify-center items-center gap-2">
-            <ClipperIcon size={14}/> 装備に追加
-          </button>
+          <div className="flex gap-2 mt-2">
+            {/* ★ 変更：編集中か新規追加かでボタンを切り替え */}
+            {editingKey ? (
+              <>
+                <button onClick={() => { if(name.trim()){ onUpdate(editingKey, name.trim(), color, iconName, group); setEditingKey(null); setName(''); } }} className="flex-[3] bg-yellow-500/20 border border-yellow-500 text-yellow-400 px-4 py-3.5 rounded-xl font-black text-xs uppercase tracking-widest shadow-[0_0_10px_rgba(234,179,8,0.2)] active:scale-[0.98] hover:bg-yellow-500/30 transition-all flex justify-center items-center gap-2">
+                  <Save size={14}/> 設定を更新
+                </button>
+                <button onClick={handleCancel} className="flex-1 bg-slate-800 border border-slate-700 text-slate-400 px-4 py-3.5 rounded-xl font-black text-xs uppercase tracking-widest active:scale-[0.98] hover:bg-slate-700 transition-all flex justify-center items-center">
+                  <X size={14}/>
+                </button>
+              </>
+            ) : (
+              <button onClick={() => { if(name.trim()){ onAdd(name.trim(), color, iconName, group); setName(''); } }} className="w-full bg-slate-800 border border-cyan-500/50 text-cyan-400 px-4 py-3.5 rounded-xl font-black text-xs uppercase tracking-widest shadow-[0_0_10px_rgba(34,211,238,0.2)] active:scale-[0.98] hover:bg-slate-700 transition-all flex justify-center items-center gap-2">
+                <ClipperIcon size={14}/> 装備に追加
+              </button>
+            )}
+          </div>
         </div>
       </div>
     );
@@ -739,6 +775,54 @@ const App = () => {
     const maxOrder = Math.max(...Object.values(items).map(i => i.order || 0), -1);
     const newItem = { colorId, icon, group, order: maxOrder + 1 };
     saveSettings({ ...userSettings, [type]: { ...items, [name]: newItem } });
+  };
+
+  // ★ 追加：ジャンルやタグを編集・更新し、過去のメモも連動して書き換える最強ロジック
+  const handleUpdateItem = async (type, oldKey, newKey, colorId, icon, group) => {
+    const items = userSettings[type];
+    const oldOrder = items[oldKey].order;
+
+    // 名前が変更されていて、かつ新しい名前がすでに存在する場合はブロック
+    if (oldKey !== newKey && items[newKey]) {
+      alert("WARNING: その名前はすでに登録されています！");
+      return;
+    }
+
+    // 1. 設定リストを更新
+    const newItems = { ...items };
+    delete newItems[oldKey];
+    newItems[newKey] = { colorId, icon, group, order: oldOrder };
+
+    const newSettings = { ...userSettings, [type]: newItems };
+    await saveSettings(newSettings);
+
+    // 2. 過去のメモデータもすべて書き換える（データ一括更新）
+    if (oldKey !== newKey) {
+      setIsSyncing(true);
+      try {
+        const promises = memos.map(async (memo) => {
+          let needsUpdate = false;
+          let updatedData = {};
+
+          if (type === 'genres' && memo.genre === oldKey) {
+            needsUpdate = true;
+            updatedData.genre = newKey;
+          } else if (type === 'tags' && memo.materials && memo.materials.includes(oldKey)) {
+            needsUpdate = true;
+            updatedData.materials = memo.materials.map(m => m === oldKey ? newKey : m);
+          }
+
+          if (needsUpdate) {
+            await setDoc(doc(db, 'artifacts', currentAppId, 'public', 'data', 'memos', memo.id), updatedData, { merge: true });
+          }
+        });
+        await Promise.all(promises);
+      } catch (e) {
+        console.error("Failed to bulk update memos:", e);
+      } finally {
+        setIsSyncing(false);
+      }
+    }
   };
 
   const TagAccordion = ({ groupName, tags, formData, setFormData }) => {
@@ -818,7 +902,6 @@ const App = () => {
 
           <div className="flex justify-between items-center mb-3 relative z-10">
             <div className="flex items-center gap-2">
-              {/* ★ ここで `rotate-3` の傾きを削除し、取っ手のない TeaCupIcon を使用しています */}
               <div className="bg-slate-950 px-2.5 py-1.5 rounded-xl shadow-[0_0_15px_rgba(34,211,238,0.2)] flex items-center gap-1 border border-cyan-500/50">
                 <TeaCupIcon className="text-green-400 drop-shadow-[0_0_5px_rgba(74,222,128,0.8)]" size={16} strokeWidth={2.5}/>
                 <FileText className="text-blue-400 drop-shadow-[0_0_5px_rgba(96,165,250,0.8)]" size={16} strokeWidth={2.5}/>
@@ -842,7 +925,6 @@ const App = () => {
                 )}
               </button>
               <button onClick={() => { setFormData(initialForm); setShowAdvanced(false); setShowNewGenre(false); setShowNewTag(false); setView('add'); }} className="bg-slate-800 text-yellow-400 p-2.5 rounded-xl shadow-[0_0_15px_rgba(234,179,8,0.3)] border border-yellow-500/50 active:scale-90 hover:scale-105 transition-all">
-                {/* ★ クリッパーのアイコンで「記録を切断（追加）」する演出 */}
                 <ClipperIcon size={22} />
               </button>
             </div>
@@ -984,6 +1066,7 @@ const App = () => {
               <EditorSection 
                 title="ジャンル編集" icon={ListFilter} items={userSettings.genres} placeholder="新ジャンル名..."
                 onAdd={(name, colorId, icon, group) => handleAddItem('genres', name, colorId, icon, group)}
+                onUpdate={(oldKey, newKey, colorId, icon, group) => handleUpdateItem('genres', oldKey, newKey, colorId, icon, group)}
                 onDelete={(name) => { const obj = {...userSettings.genres}; delete obj[name]; saveSettings({...userSettings, genres: obj}); }}
                 onMoveUp={(name) => handleMoveItem('genres', name, 'up')}
                 onMoveDown={(name) => handleMoveItem('genres', name, 'down')}
@@ -992,6 +1075,7 @@ const App = () => {
               <EditorSection 
                 title="材料・タグ編集" icon={Tags} items={userSettings.tags} placeholder="新しい材料・タグ..."
                 onAdd={(name, colorId, icon, group) => handleAddItem('tags', name, colorId, icon, group)}
+                onUpdate={(oldKey, newKey, colorId, icon, group) => handleUpdateItem('tags', oldKey, newKey, colorId, icon, group)}
                 onDelete={(name) => { const obj = {...userSettings.tags}; delete obj[name]; saveSettings({...userSettings, tags: obj}); }}
                 onMoveUp={(name) => handleMoveItem('tags', name, 'up')}
                 onMoveDown={(name) => handleMoveItem('tags', name, 'down')}
@@ -1021,7 +1105,7 @@ const App = () => {
               
               <div className="text-center py-4 opacity-30">
                 <Gamepad2 size={32} className="mx-auto text-cyan-600 mb-2"/>
-                <p className="text-[10px] font-black text-cyan-600 uppercase tracking-widest">ELECTRIC CLIPPER MASTER v1.0</p>
+                <p className="text-[10px] font-black text-cyan-600 uppercase tracking-widest">ELECTRIC CLIPPER MASTER v1.1</p>
               </div>
             </div>
           )}
@@ -1326,6 +1410,11 @@ const App = () => {
         <button onClick={() => setView('list')} className={`flex items-center gap-2 px-6 py-3 rounded-full transition-all duration-300 ${view === 'list' ? 'bg-cyan-600 text-slate-900 shadow-[0_0_15px_rgba(6,182,212,0.5)]' : 'text-slate-400 hover:text-cyan-400'}`}>
           <ClipboardList size={20} strokeWidth={view === 'list' ? 2.5 : 2} />
           <span className={`text-[10px] font-black uppercase tracking-widest ${view === 'list' ? 'block' : 'hidden'}`}>Quest Log</span>
+        </button>
+        {/* ★ 追加：STATUS（レーダーチャート）タブ */}
+        <button onClick={() => setView('stats')} className={`flex items-center gap-2 px-6 py-3 rounded-full transition-all duration-300 ${view === 'stats' ? 'bg-cyan-600 text-slate-900 shadow-[0_0_15px_rgba(6,182,212,0.5)]' : 'text-slate-400 hover:text-cyan-400'}`}>
+          <Activity size={20} strokeWidth={view === 'stats' ? 2.5 : 2} />
+          <span className={`text-[10px] font-black uppercase tracking-widest ${view === 'stats' ? 'block' : 'hidden'}`}>Status</span>
         </button>
         <button onClick={() => setView('settings')} className={`flex items-center gap-2 px-6 py-3 rounded-full transition-all duration-300 ${view === 'settings' ? 'bg-cyan-600 text-slate-900 shadow-[0_0_15px_rgba(6,182,212,0.5)]' : 'text-slate-400 hover:text-cyan-400'}`}>
           <Settings size={20} strokeWidth={view === 'settings' ? 2.5 : 2} />
