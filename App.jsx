@@ -818,7 +818,8 @@ const App = () => {
 
           <div className="flex justify-between items-center mb-3 relative z-10">
             <div className="flex items-center gap-2">
-              <div className="bg-slate-950 px-2.5 py-1.5 rounded-xl rotate-3 shadow-[0_0_15px_rgba(34,211,238,0.2)] flex items-center gap-1 border border-cyan-500/50">
+              {/* ★ ここで `rotate-3` の傾きを削除し、取っ手のない TeaCupIcon を使用しています */}
+              <div className="bg-slate-950 px-2.5 py-1.5 rounded-xl shadow-[0_0_15px_rgba(34,211,238,0.2)] flex items-center gap-1 border border-cyan-500/50">
                 <TeaCupIcon className="text-green-400 drop-shadow-[0_0_5px_rgba(74,222,128,0.8)]" size={16} strokeWidth={2.5}/>
                 <FileText className="text-blue-400 drop-shadow-[0_0_5px_rgba(96,165,250,0.8)]" size={16} strokeWidth={2.5}/>
                 <Zap className="text-yellow-400 drop-shadow-[0_0_8px_rgba(250,204,21,0.8)]" size={18} fill="currentColor"/>
