@@ -200,6 +200,15 @@ const App = () => {
   };
   const [formData, setFormData] = useState(initialForm);
 
+  // ★ 追加: メモ追加画面から直接ジャンル・タグを作成する用のステート
+  const [showNewGenre, setShowNewGenre] = useState(false);
+  const [newGenreName, setNewGenreName] = useState('');
+  const [newGenreGroup, setNewGenreGroup] = useState(MainCategories[0]);
+  
+  const [showNewTag, setShowNewTag] = useState(false);
+  const [newTagName, setNewTagName] = useState('');
+  const [newTagGroup, setNewTagGroup] = useState(MainCategories[0]);
+
   useEffect(() => {
     if (view === 'add' && !formData.genre && Object.keys(userSettings.genres).length > 0) {
       setFormData(prev => ({ ...prev, genre: Object.keys(userSettings.genres)[0] }));
@@ -1088,14 +1097,38 @@ const App = () => {
 
               <div className="grid grid-cols-2 gap-4">
                 <input type="date" className="p-3 bg-white border border-slate-200 rounded-2xl font-bold outline-none text-sm text-slate-700 shadow-sm" value={formData.date} onChange={e => setFormData({...formData, date: e.target.value})} />
-                <select className="p-3 bg-white border border-slate-200 rounded-2xl font-bold outline-none text-sm text-slate-700 shadow-sm" value={formData.genre} onChange={e => setFormData({...formData, genre: e.target.value})}>
-                  {groupedGenresForm.map(({ category, genres }) => (
-                    <optgroup key={category} label={`【${category}】`}>
-                      {genres.map(g => <option key={g.key} value={g.key}>{g.key}</option>)}
-                    </optgroup>
-                  ))}
-                </select>
+                
+                {/* ★ 変更: ジャンル選択の横に追加ボタンを設置 */}
+                <div className="relative flex items-center">
+                  <select className="p-3 bg-white border border-slate-200 rounded-2xl font-bold outline-none text-sm text-slate-700 shadow-sm w-full" value={formData.genre} onChange={e => setFormData({...formData, genre: e.target.value})}>
+                    {groupedGenresForm.map(({ category, genres }) => (
+                      <optgroup key={category} label={`【${category}】`}>
+                        {genres.map(g => <option key={g.key} value={g.key}>{g.key}</option>)}
+                      </optgroup>
+                    ))}
+                  </select>
+                  <button type="button" onClick={() => setShowNewGenre(!showNewGenre)} className="absolute -top-2 -right-2 bg-blue-100 text-blue-600 rounded-full p-1.5 shadow-sm border border-blue-200 hover:bg-blue-200 active:scale-95 transition-all"><Plus size={14}/></button>
+                </div>
               </div>
+              
+              {/* ★ 追加: 新規ジャンルのその場作成フォーム */}
+              {showNewGenre && (
+                <div className="bg-blue-50 p-3 rounded-2xl border border-blue-200 flex gap-2 items-center animate-in fade-in slide-in-from-top-2 shadow-sm">
+                  <select value={newGenreGroup} onChange={e=>setNewGenreGroup(e.target.value)} className="bg-white border border-slate-200 p-2 rounded-xl text-[10px] sm:text-xs font-bold outline-none shadow-sm">
+                    {MainCategories.map(c => <option key={c} value={c}>{c}</option>)}
+                  </select>
+                  <input type="text" placeholder="新ジャンル名" value={newGenreName} onChange={e=>setNewGenreName(e.target.value)} className="flex-1 bg-white border border-slate-200 p-2 rounded-xl text-xs font-bold outline-none shadow-sm focus:border-blue-500" />
+                  <button type="button" onClick={() => {
+                    if(newGenreName.trim()) {
+                      handleAddItem('genres', newGenreName.trim(), 'blue', 'Info', newGenreGroup);
+                      setFormData({...formData, genre: newGenreName.trim()});
+                      setNewGenreName('');
+                      setShowNewGenre(false);
+                    }
+                  }} className="bg-blue-600 text-white px-3 py-2 rounded-xl text-xs font-black shadow-sm active:scale-95">追加</button>
+                </div>
+              )}
+
               <div className="relative shadow-sm rounded-2xl">
                 <Building className="absolute left-3 top-3.5 text-slate-400" size={16}/>
                 <input 
@@ -1154,8 +1187,33 @@ const App = () => {
             </div>
 
             <div className="space-y-3">
-              <p className="text-[10px] font-black text-slate-400 flex items-center gap-1"><Tags size={12}/> 使用アイテム・タグ (複数選択可)</p>
+              {/* ★ 変更: タグ選択のヘッダーに新規作成ボタンを追加 */}
+              <div className="flex justify-between items-end">
+                <p className="text-[10px] font-black text-slate-400 flex items-center gap-1"><Tags size={12}/> 使用アイテム・タグ (複数選択可)</p>
+                <button type="button" onClick={() => setShowNewTag(!showNewTag)} className="text-[10px] font-bold text-blue-600 bg-blue-50 px-2.5 py-1.5 rounded-lg flex items-center gap-1 border border-blue-200 shadow-sm active:scale-95 transition-all"><Plus size={12}/>新規タグ作成</button>
+              </div>
               
+              {/* ★ 追加: 新規タグのその場作成フォーム */}
+              {showNewTag && (
+                <div className="bg-blue-50 p-3 rounded-2xl border border-blue-200 flex gap-2 items-center animate-in fade-in slide-in-from-top-2 shadow-sm">
+                  <select value={newTagGroup} onChange={e=>setNewTagGroup(e.target.value)} className="bg-white border border-slate-200 p-2 rounded-xl text-[10px] sm:text-xs font-bold outline-none shadow-sm">
+                    {MainCategories.map(c => <option key={c} value={c}>{c}</option>)}
+                  </select>
+                  <input type="text" placeholder="新タグ名" value={newTagName} onChange={e=>setNewTagName(e.target.value)} className="flex-1 bg-white border border-slate-200 p-2 rounded-xl text-xs font-bold outline-none shadow-sm focus:border-blue-500" />
+                  <button type="button" onClick={() => {
+                    if(newTagName.trim()) {
+                      handleAddItem('tags', newTagName.trim(), 'gray', 'Tags', newTagGroup);
+                      const mats = formData.materials || [];
+                      if (!mats.includes(newTagName.trim())) {
+                        setFormData({...formData, materials: [...mats, newTagName.trim()]});
+                      }
+                      setNewTagName('');
+                      setShowNewTag(false);
+                    }
+                  }} className="bg-blue-600 text-white px-3 py-2 rounded-xl text-xs font-black shadow-sm active:scale-95">追加</button>
+                </div>
+              )}
+
               <div className="flex flex-col gap-2">
                 {groupedTagsForm.map(({ category, tags }) => (
                   <TagAccordion key={category} groupName={`【${category}】`} tags={tags} formData={formData} setFormData={setFormData} />
