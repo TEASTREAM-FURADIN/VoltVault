@@ -82,6 +82,7 @@ const ColorNames = {
   red: 'レッド', blue: 'ブルー', green: 'グリーン', yellow: 'イエロー', orange: 'オレンジ', purple: 'パープル', pink: 'ピンク', teal: 'シアン', gray: 'スチール'
 };
 
+// ★ ここに定義されている全10種類をレーダーチャートに展開します！
 const MainCategories = [
   '電気', '弱電', '設備', '内装', '建築', '事務', '工程', '知識技術', '趣味', 'その他'
 ];
@@ -464,8 +465,8 @@ const App = () => {
     };
 
     return (
-      <div className="fixed inset-0 bg-slate-950/95 z-[60] flex flex-col items-center justify-center p-2 backdrop-blur-sm animate-in fade-in">
-        <div className="w-full max-w-lg bg-slate-900 rounded-[2rem] p-3 flex flex-col gap-3 shadow-[0_0_30px_rgba(6,182,212,0.2)] border border-cyan-900/50 h-[90vh]">
+      <div className="fixed inset-0 bg-slate-950 z-[100] flex flex-col items-center justify-center p-2 sm:p-4 animate-in fade-in">
+        <div className="w-full max-w-lg bg-slate-900 rounded-[2rem] p-3 flex flex-col gap-3 shadow-[0_0_30px_rgba(6,182,212,0.2)] border border-cyan-900/50 h-[92dvh] max-h-[800px]">
           <div className="flex justify-between items-center px-2 pt-1">
             <h3 className="font-black text-cyan-400 flex items-center gap-2 tracking-widest"><Edit3 size={18}/> MARKUP TERMINAL</h3>
             <button onClick={() => setMarkupModal({ isOpen: false })} className="text-slate-500 hover:text-cyan-400"><X size={28}/></button>
@@ -522,7 +523,7 @@ const App = () => {
             {!dimensions.width && <div className="absolute inset-0 flex items-center justify-center text-cyan-500"><Loader2 size={24} className="animate-spin"/></div>}
           </div>
 
-          <button onClick={handleSaveImage} className="w-full bg-cyan-600 hover:bg-cyan-500 text-slate-900 py-4 rounded-2xl font-black uppercase tracking-widest shadow-[0_0_15px_rgba(6,182,212,0.4)] active:scale-[0.98] transition-all">
+          <button onClick={handleSaveImage} className="w-full shrink-0 bg-cyan-600 hover:bg-cyan-500 text-slate-900 py-4 rounded-2xl font-black uppercase tracking-widest shadow-[0_0_15px_rgba(6,182,212,0.4)] active:scale-[0.98] transition-all">
             編集を確定する
           </button>
         </div>
@@ -864,9 +865,10 @@ const App = () => {
     tags: sortedTags.filter(t => t.group === cat)
   })).filter(t => t.tags.length > 0);
 
-  // ★ 追加：レーダーチャート描画用のコンポーネント
+  // ★ 変更：全10種の大分類（MainCategories）を展開する10角形レーダーチャート
   const RadarChart = () => {
-    const radarCategories = ['電気', '弱電', '設備', '建築', '趣味', 'その他'];
+    // 定義済みの全10種をセット
+    const radarCategories = MainCategories;
     const data = radarCategories.map(cat => {
       const count = memos.filter(m => (userSettings.genres[m.genre]?.group || 'その他') === cat).length;
       return { name: cat, count };
@@ -875,7 +877,8 @@ const App = () => {
     const maxVal = Math.max(...data.map(d => d.count), 5);
     const centerX = 150;
     const centerY = 150;
-    const radius = 100;
+    // 10角形だと文字が外に広がるため、円の半径を100から90へ少し小さく調整
+    const radius = 90; 
 
     const getPoint = (index, value) => {
       const angle = (Math.PI * 2 * index) / data.length - Math.PI / 2;
@@ -902,11 +905,12 @@ const App = () => {
           })}
           {data.map((d, i) => {
             const angle = (Math.PI * 2 * i) / data.length - Math.PI / 2;
+            // ラベルの位置を絶妙に調整（文字が被らないように）
             const textRadius = radius + 25;
             const tx = centerX + textRadius * Math.cos(angle);
             const ty = centerY + textRadius * Math.sin(angle);
             return (
-              <text key={`label-${i}`} x={tx} y={ty} fill="#94a3b8" fontSize="12" fontWeight="900" textAnchor="middle" dominantBaseline="middle" className="drop-shadow-md">
+              <text key={`label-${i}`} x={tx} y={ty} fill="#94a3b8" fontSize="10" fontWeight="900" textAnchor="middle" dominantBaseline="middle" className="drop-shadow-md">
                 {d.name}
               </text>
             );
@@ -1053,7 +1057,6 @@ const App = () => {
                             </div>
                           </div>
 
-                          {/* ★ 写真サムネイル表示 */}
                           {((memo.images && memo.images.length > 0) || memo.markupImage) && (
                             <div className="w-20 h-20 shrink-0 rounded-2xl overflow-hidden border-2 border-slate-700 shadow-md relative">
                               <img src={memo.markupImage || memo.images[0]} alt="thumbnail" className="w-full h-full object-cover opacity-80" />
@@ -1099,7 +1102,6 @@ const App = () => {
                               </p>
                             </div>
                             
-                            {/* ★ グループ表示時の極小サムネイル表示 */}
                             {((memo.images && memo.images.length > 0) || memo.markupImage) && (
                               <div className="w-10 h-10 shrink-0 rounded-lg overflow-hidden border border-slate-600 shadow-sm">
                                 <img src={memo.markupImage || memo.images[0]} alt="thumbnail" className="w-full h-full object-cover opacity-80" />
@@ -1116,7 +1118,6 @@ const App = () => {
             </div>
           )}
 
-          {/* ★ 追加：STATUS（ステータス・レーダーチャート）ビュー */}
           {view === 'stats' && (
             <div className="space-y-6 pb-10 animate-in slide-in-from-bottom-4">
               <h2 className="text-xl font-black text-cyan-400 flex items-center gap-2 mb-4 tracking-widest drop-shadow-[0_0_8px_rgba(34,211,238,0.5)]">
@@ -1187,7 +1188,7 @@ const App = () => {
               
               <div className="text-center py-4 opacity-30">
                 <Gamepad2 size={32} className="mx-auto text-cyan-600 mb-2"/>
-                <p className="text-[10px] font-black text-cyan-600 uppercase tracking-widest">ELECTRIC CLIPPER MASTER v1.3</p>
+                <p className="text-[10px] font-black text-cyan-600 uppercase tracking-widest">ELECTRIC CLIPPER MASTER v1.4</p>
               </div>
             </div>
           )}
@@ -1296,7 +1297,6 @@ const App = () => {
               <h2 className="font-black text-yellow-400 tracking-tighter italic flex items-center gap-2 drop-shadow-[0_0_5px_rgba(234,179,8,0.8)]">
                 <ClipperIcon size={18} strokeWidth={2.5}/> RECORD NEW DATA...
               </h2>
-              {/* ★ クリッパーの記録ボタン */}
               <button onClick={handleSave} className="relative group overflow-hidden bg-slate-800 text-cyan-400 px-5 py-2.5 rounded-full font-black text-[10px] uppercase shadow-[0_0_15px_rgba(34,211,238,0.3)] border border-cyan-500/50 disabled:opacity-50 active:scale-95 transition-all">
                 <span className="relative z-10 flex items-center gap-1.5"><ClipperIcon size={14}/> ログを刻印</span>
                 <div className="absolute inset-0 bg-gradient-to-r from-cyan-600 to-blue-600 opacity-0 group-hover:opacity-20 transition-opacity"></div>
@@ -1488,21 +1488,22 @@ const App = () => {
       </div>
 
       {/* --- ボトムナビゲーション --- */}
-      <nav className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-slate-900/90 backdrop-blur-xl border border-slate-700 rounded-full p-2 flex items-center shadow-[0_0_20px_rgba(0,0,0,0.8)] z-40 w-max gap-2">
-        <button onClick={() => setView('list')} className={`flex items-center gap-2 px-6 py-3 rounded-full transition-all duration-300 ${view === 'list' ? 'bg-cyan-600 text-slate-900 shadow-[0_0_15px_rgba(6,182,212,0.5)]' : 'text-slate-400 hover:text-cyan-400'}`}>
-          <ClipboardList size={20} strokeWidth={view === 'list' ? 2.5 : 2} />
-          <span className={`text-[10px] font-black uppercase tracking-widest ${view === 'list' ? 'block' : 'hidden'}`}>Quest Log</span>
-        </button>
-        {/* ★ STATUS（レーダーチャート）タブ */}
-        <button onClick={() => setView('stats')} className={`flex items-center gap-2 px-6 py-3 rounded-full transition-all duration-300 ${view === 'stats' ? 'bg-cyan-600 text-slate-900 shadow-[0_0_15px_rgba(6,182,212,0.5)]' : 'text-slate-400 hover:text-cyan-400'}`}>
-          <Activity size={20} strokeWidth={view === 'stats' ? 2.5 : 2} />
-          <span className={`text-[10px] font-black uppercase tracking-widest ${view === 'stats' ? 'block' : 'hidden'}`}>Status</span>
-        </button>
-        <button onClick={() => setView('settings')} className={`flex items-center gap-2 px-6 py-3 rounded-full transition-all duration-300 ${view === 'settings' ? 'bg-cyan-600 text-slate-900 shadow-[0_0_15px_rgba(6,182,212,0.5)]' : 'text-slate-400 hover:text-cyan-400'}`}>
-          <Settings size={20} strokeWidth={view === 'settings' ? 2.5 : 2} />
-          <span className={`text-[10px] font-black uppercase tracking-widest ${view === 'settings' ? 'block' : 'hidden'}`}>Equipment</span>
-        </button>
-      </nav>
+      {!markupModal.isOpen && (
+        <nav className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-slate-900/90 backdrop-blur-xl border border-slate-700 rounded-full p-2 flex items-center shadow-[0_0_20px_rgba(0,0,0,0.8)] z-40 w-max gap-2">
+          <button onClick={() => setView('list')} className={`flex items-center gap-2 px-6 py-3 rounded-full transition-all duration-300 ${view === 'list' ? 'bg-cyan-600 text-slate-900 shadow-[0_0_15px_rgba(6,182,212,0.5)]' : 'text-slate-400 hover:text-cyan-400'}`}>
+            <ClipboardList size={20} strokeWidth={view === 'list' ? 2.5 : 2} />
+            <span className={`text-[10px] font-black uppercase tracking-widest ${view === 'list' ? 'block' : 'hidden'}`}>Quest Log</span>
+          </button>
+          <button onClick={() => setView('stats')} className={`flex items-center gap-2 px-6 py-3 rounded-full transition-all duration-300 ${view === 'stats' ? 'bg-cyan-600 text-slate-900 shadow-[0_0_15px_rgba(6,182,212,0.5)]' : 'text-slate-400 hover:text-cyan-400'}`}>
+            <Activity size={20} strokeWidth={view === 'stats' ? 2.5 : 2} />
+            <span className={`text-[10px] font-black uppercase tracking-widest ${view === 'stats' ? 'block' : 'hidden'}`}>Status</span>
+          </button>
+          <button onClick={() => setView('settings')} className={`flex items-center gap-2 px-6 py-3 rounded-full transition-all duration-300 ${view === 'settings' ? 'bg-cyan-600 text-slate-900 shadow-[0_0_15px_rgba(6,182,212,0.5)]' : 'text-slate-400 hover:text-cyan-400'}`}>
+            <Settings size={20} strokeWidth={view === 'settings' ? 2.5 : 2} />
+            <span className={`text-[10px] font-black uppercase tracking-widest ${view === 'settings' ? 'block' : 'hidden'}`}>Equipment</span>
+          </button>
+        </nav>
+      )}
     </div>
   );
 };
