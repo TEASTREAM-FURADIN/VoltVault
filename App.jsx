@@ -21,31 +21,23 @@ import { initializeApp } from 'firebase/app';
 import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
 import { getFirestore, doc, setDoc, collection, onSnapshot, deleteDoc } from 'firebase/firestore';
 
-// ★ 社長のメイン装備「クリッパー（ワイヤーカッター）」の特製アイコン
+// ★ 社長のメイン装備「クリッパー（ツノダ CA-22 ワイヤーカッター）」の特製アイコン
 const ClipperIcon = ({ size = 24, className = "", strokeWidth = 2 }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round" className={className}>
-    {/* 右持ち手 */}
     <path d="M14.5 9.5L21 18.5a2 2 0 0 1-2.8 2.8L9.5 14.5" />
-    {/* 左持ち手 */}
     <path d="M9.5 9.5L3 18.5a2 2 0 0 0 2.8 2.8L14.5 14.5" />
-    {/* 支点 */}
     <circle cx="12" cy="12" r="1.2" fill="currentColor"/>
-    {/* 刃先（ツノダ風の丸いくぼみ） */}
     <path d="M9.5 9.5C8 8 7 6 7 6C7 6 9 5 11 7L12 8" />
     <path d="M14.5 9.5C16 8 17 6 17 6C17 6 15 5 13 7L12 8" />
-    {/* スパークエフェクト */}
     <path d="M12 2L11 4H13L12 6" stroke="#06b6d4" strokeWidth="1.5"/>
   </svg>
 );
 
-// ★ 追加：取っ手のないお茶（湯呑み・グラス）の特製アイコン
+// ★ 取っ手のないお茶（湯呑み）の特製アイコン
 const TeaCupIcon = ({ size = 24, className = "", strokeWidth = 2 }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round" className={className}>
-    {/* コップ本体 */}
     <path d="M6 8v5a6 6 0 0 0 12 0V8" />
-    {/* フチ */}
     <line x1="5" y1="8" x2="19" y2="8" />
-    {/* 湯気 */}
     <path d="M10 3s1 1.5 1 2.5-1 1.5-1 2.5" />
     <path d="M14 3s-1 1.5-1 2.5 1 1.5 1 2.5" />
   </svg>
@@ -74,7 +66,6 @@ const IconCategories = [
   { name: '趣味・ゲーム', icons: ['Gamepad2', 'Sword', 'Crown', 'Trophy', 'Target', 'Dumbbell', 'Book', 'Star', 'Sparkles', 'Medal', 'Award'] }
 ];
 
-// ★ ダーク/ネオンテーマ用のカラーマップ
 const ColorMap = {
   red: { bg: 'bg-red-500', text: 'text-red-400', light: 'bg-red-950/50', border: 'border-red-500/50' },
   blue: { bg: 'bg-blue-500', text: 'text-blue-400', light: 'bg-blue-950/50', border: 'border-blue-500/50' },
@@ -465,7 +456,7 @@ const App = () => {
     const stopDrawing = () => { setIsDrawing(false); };
 
     const handleSaveImage = () => {
-      const newDataUrl = canvasRef.current.toDataURL('image/jpeg', 0.6);
+      const newDataUrl = canvasRef.current.toDataURL('image/jpeg', 0.4);
       const newImages = [...formData.images];
       newImages[markupModal.imgIndex] = newDataUrl;
       setFormData({...formData, images: newImages});
@@ -550,14 +541,12 @@ const App = () => {
           const img = new Image();
           img.onload = () => {
             const canvas = document.createElement('canvas');
-            // ★変更：1MBの制限対策として、最大幅を 1000 から 600 に縮小
             const MAX_WIDTH = 600; 
             const scale = Math.min(MAX_WIDTH / img.width, 1);
             canvas.width = img.width * scale;
             canvas.height = img.height * scale;
             const ctx = canvas.getContext('2d');
             ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-            // ★変更：品質を 0.6 から 0.4 に変更
             resolve(canvas.toDataURL('image/jpeg', 0.4));
           };
           img.src = event.target.result;
@@ -651,13 +640,12 @@ const App = () => {
     const [color, setColor] = useState('blue');
     const [iconName, setIconName] = useState('Info');
     const [group, setGroup] = useState(MainCategories[0]); 
-    const [editingKey, setEditingKey] = useState(null); // ★ 追加：編集中のアイテムキーを保持
+    const [editingKey, setEditingKey] = useState(null); 
 
     const sortedItems = Object.entries(items)
       .map(([k, v]) => ({ key: k, ...v }))
       .sort((a, b) => a.order - b.order);
 
-    // ★ 追加：編集ボタンを押したときの処理
     const handleEdit = (item) => {
       setEditingKey(item.key);
       setName(item.key);
@@ -666,7 +654,6 @@ const App = () => {
       setGroup(item.group);
     };
 
-    // ★ 追加：編集をキャンセルしたときの処理
     const handleCancel = () => {
       setEditingKey(null);
       setName('');
@@ -691,7 +678,6 @@ const App = () => {
                   </span>
                 </div>
                 <div className="flex gap-1 items-center">
-                  {/* ★ 追加：編集ボタン */}
                   <button onClick={() => handleEdit(item)} className={`p-2 transition-colors active:scale-90 ${editingKey === item.key ? 'text-yellow-400' : 'text-slate-500 hover:text-yellow-400'}`}><Edit3 size={16}/></button>
                   <div className="w-px h-6 bg-slate-700 mx-0.5"></div>
                   <button onClick={() => onMoveUp(item.key)} disabled={idx === 0 || editingKey} className="p-2 text-slate-500 hover:text-cyan-400 disabled:opacity-30 active:scale-90"><ArrowUp size={16}/></button>
@@ -719,7 +705,6 @@ const App = () => {
             <IconSelector value={iconName} onChange={setIconName} />
           </div>
           <div className="flex gap-2 mt-2">
-            {/* ★ 変更：編集中か新規追加かでボタンを切り替え */}
             {editingKey ? (
               <>
                 <button onClick={() => { if(name.trim()){ onUpdate(editingKey, name.trim(), color, iconName, group); setEditingKey(null); setName(''); } }} className="flex-[3] bg-yellow-500/20 border border-yellow-500 text-yellow-400 px-4 py-3.5 rounded-xl font-black text-xs uppercase tracking-widest shadow-[0_0_10px_rgba(234,179,8,0.2)] active:scale-[0.98] hover:bg-yellow-500/30 transition-all flex justify-center items-center gap-2">
@@ -777,18 +762,15 @@ const App = () => {
     saveSettings({ ...userSettings, [type]: { ...items, [name]: newItem } });
   };
 
-  // ★ 追加：ジャンルやタグを編集・更新し、過去のメモも連動して書き換える最強ロジック
   const handleUpdateItem = async (type, oldKey, newKey, colorId, icon, group) => {
     const items = userSettings[type];
     const oldOrder = items[oldKey].order;
 
-    // 名前が変更されていて、かつ新しい名前がすでに存在する場合はブロック
     if (oldKey !== newKey && items[newKey]) {
       alert("WARNING: その名前はすでに登録されています！");
       return;
     }
 
-    // 1. 設定リストを更新
     const newItems = { ...items };
     delete newItems[oldKey];
     newItems[newKey] = { colorId, icon, group, order: oldOrder };
@@ -796,7 +778,6 @@ const App = () => {
     const newSettings = { ...userSettings, [type]: newItems };
     await saveSettings(newSettings);
 
-    // 2. 過去のメモデータもすべて書き換える（データ一括更新）
     if (oldKey !== newKey) {
       setIsSyncing(true);
       try {
@@ -883,10 +864,61 @@ const App = () => {
     tags: sortedTags.filter(t => t.group === cat)
   })).filter(t => t.tags.length > 0);
 
+  // ★ 追加：レーダーチャート描画用のコンポーネント
+  const RadarChart = () => {
+    const radarCategories = ['電気', '弱電', '設備', '建築', '趣味', 'その他'];
+    const data = radarCategories.map(cat => {
+      const count = memos.filter(m => (userSettings.genres[m.genre]?.group || 'その他') === cat).length;
+      return { name: cat, count };
+    });
+    
+    const maxVal = Math.max(...data.map(d => d.count), 5);
+    const centerX = 150;
+    const centerY = 150;
+    const radius = 100;
+
+    const getPoint = (index, value) => {
+      const angle = (Math.PI * 2 * index) / data.length - Math.PI / 2;
+      const r = (value / maxVal) * radius;
+      return `${centerX + r * Math.cos(angle)},${centerY + r * Math.sin(angle)}`;
+    };
+
+    const polygonPoints = data.map((d, i) => getPoint(i, d.count)).join(' ');
+    const bgPolygonPoints = data.map((_, i) => getPoint(i, maxVal)).join(' ');
+    const midBgPolygonPoints = data.map((_, i) => getPoint(i, maxVal * 0.5)).join(' ');
+
+    return (
+      <div className="relative w-full max-w-xs mx-auto aspect-square mb-6">
+        <svg viewBox="0 0 300 300" className="w-full h-full drop-shadow-[0_0_15px_rgba(6,182,212,0.3)]">
+          <polygon points={bgPolygonPoints} fill="rgba(15,23,42,0.8)" stroke="#1e293b" strokeWidth="2" />
+          <polygon points={midBgPolygonPoints} fill="none" stroke="#1e293b" strokeWidth="1" strokeDasharray="4 4" />
+          {data.map((_, i) => (
+            <line key={i} x1={centerX} y1={centerY} x2={getPoint(i, maxVal).split(',')[0]} y2={getPoint(i, maxVal).split(',')[1]} stroke="#1e293b" strokeWidth="1" />
+          ))}
+          <polygon points={polygonPoints} fill="rgba(34,211,238,0.3)" stroke="#22d3ee" strokeWidth="3" className="animate-pulse" />
+          {data.map((d, i) => {
+            const [x, y] = getPoint(i, d.count).split(',');
+            return <circle key={`dot-${i}`} cx={x} cy={y} r="4" fill="#facc15" className="drop-shadow-[0_0_5px_rgba(250,204,21,1)]" />;
+          })}
+          {data.map((d, i) => {
+            const angle = (Math.PI * 2 * i) / data.length - Math.PI / 2;
+            const textRadius = radius + 25;
+            const tx = centerX + textRadius * Math.cos(angle);
+            const ty = centerY + textRadius * Math.sin(angle);
+            return (
+              <text key={`label-${i}`} x={tx} y={ty} fill="#94a3b8" fontSize="12" fontWeight="900" textAnchor="middle" dominantBaseline="middle" className="drop-shadow-md">
+                {d.name}
+              </text>
+            );
+          })}
+        </svg>
+      </div>
+    );
+  };
+
   return (
     <div className="min-h-screen bg-slate-950 pb-28 text-slate-200 font-sans antialiased selection:bg-cyan-500/30 relative">
       
-      {/* ★ 背景のサイバー・グリッドエフェクト */}
       <div className="fixed inset-0 pointer-events-none z-0 opacity-20" style={{
         backgroundImage: `linear-gradient(to right, #06b6d4 1px, transparent 1px), linear-gradient(to bottom, #06b6d4 1px, transparent 1px)`,
         backgroundSize: '30px 30px'
@@ -998,22 +1030,40 @@ const App = () => {
                     return (
                       <div key={memo.id} onClick={() => { setSelectedMemo(memo); setView('detail'); }} className="bg-slate-900/80 backdrop-blur-sm p-4 rounded-3xl border border-slate-700 relative overflow-hidden cursor-pointer active:scale-[0.98] hover:border-cyan-500/50 transition-all shadow-lg">
                         <div className={`absolute top-0 left-0 w-1.5 h-full ${colors.bg} shadow-[0_0_10px_currentColor]`}></div>
-                        <div className="flex justify-between items-start mb-1.5 font-black italic text-slate-500 text-[9px] uppercase pl-1 tracking-widest">
-                          <div className="flex items-center gap-1.5">
-                            <span className="text-cyan-700">{memo.date}</span>
-                            {memo.needsReview && !memo.isReviewed && <span className="bg-red-950/80 text-red-400 px-1.5 py-0.5 rounded text-[8px] border border-red-500/50 flex items-center not-italic gap-0.5 shadow-[0_0_5px_rgba(239,68,68,0.5)]"><Bell size={8}/>要確認</span>}
-                            {memo.needsReview && memo.isReviewed && <span className="bg-green-950/80 text-green-400 px-1.5 py-0.5 rounded text-[8px] border border-green-500/50 flex items-center not-italic gap-0.5 shadow-[0_0_5px_rgba(74,222,128,0.5)]"><CheckSquare size={8}/>確認済</span>}
+                        
+                        <div className="flex gap-4">
+                          <div className="flex-1 min-w-0">
+                            <div className="flex justify-between items-start mb-1.5 font-black italic text-slate-500 text-[9px] uppercase pl-1 tracking-widest">
+                              <div className="flex items-center gap-1.5">
+                                <span className="text-cyan-700">{memo.date}</span>
+                                {memo.needsReview && !memo.isReviewed && <span className="bg-red-950/80 text-red-400 px-1.5 py-0.5 rounded text-[8px] border border-red-500/50 flex items-center not-italic gap-0.5 shadow-[0_0_5px_rgba(239,68,68,0.5)]"><Bell size={8}/>要確認</span>}
+                                {memo.needsReview && memo.isReviewed && <span className="bg-green-950/80 text-green-400 px-1.5 py-0.5 rounded text-[8px] border border-green-500/50 flex items-center not-italic gap-0.5 shadow-[0_0_5px_rgba(74,222,128,0.5)]"><CheckSquare size={8}/>確認済</span>}
+                              </div>
+                            </div>
+                            <h3 className="font-black text-slate-100 text-base leading-tight mb-2 tracking-tight pl-2 drop-shadow-sm truncate">{memo.title}</h3>
+                            
+                            <div className="flex gap-2 text-cyan-600 pl-2 mb-2">
+                              {memo.teacher && <span className="flex items-center gap-0.5 not-italic text-[9px] font-bold"><User size={10}/>{memo.teacher}</span>}
+                              {memo.materials && memo.materials.length > 0 && <span className="flex items-center gap-0.5 not-italic text-[9px] font-bold"><Tags size={10} className="text-orange-400" />{memo.materials.length}</span>}
+                            </div>
+
+                            <div className="flex items-center justify-between text-[9px] font-black pt-2 border-t border-slate-800 pl-1">
+                              <span className="flex items-center gap-1 bg-slate-950 px-2.5 py-1 rounded-md text-slate-400 border border-slate-800 truncate max-w-[120px]"><MapPin size={10} className="text-cyan-500 shrink-0"/> <span className="truncate">{memo.site}</span></span>
+                              <span className={`px-2.5 py-1 rounded-md flex items-center gap-1 ${colors.light} ${colors.text} border ${colors.border} uppercase shadow-inner shrink-0`}><DynamicIcon name={genreConfig.icon} size={10}/> {memo.genre}</span>
+                            </div>
                           </div>
-                          <div className="flex gap-2 text-cyan-600">
-                            {memo.teacher && <span className="flex items-center gap-0.5 not-italic"><User size={10}/>{memo.teacher}</span>}
-                            {memo.materials && memo.materials.length > 0 && <Tags size={10} className="text-orange-400" />}
-                            {memo.images && memo.images.length > 0 && <span className="flex items-center gap-0.5 text-cyan-400"><Camera size={10}/>{memo.images.length}</span>}
-                          </div>
-                        </div>
-                        <h3 className="font-black text-slate-100 text-base leading-tight mb-2 tracking-tight pl-2 drop-shadow-sm">{memo.title}</h3>
-                        <div className="flex items-center justify-between text-[9px] font-black pt-2 border-t border-slate-800 pl-1">
-                          <span className="flex items-center gap-1 bg-slate-950 px-2.5 py-1 rounded-md text-slate-400 border border-slate-800"><MapPin size={10} className="text-cyan-500"/> {memo.site}</span>
-                          <span className={`px-2.5 py-1 rounded-md flex items-center gap-1 ${colors.light} ${colors.text} border ${colors.border} uppercase shadow-inner`}><DynamicIcon name={genreConfig.icon} size={10}/> {memo.genre}</span>
+
+                          {/* ★ 写真サムネイル表示 */}
+                          {((memo.images && memo.images.length > 0) || memo.markupImage) && (
+                            <div className="w-20 h-20 shrink-0 rounded-2xl overflow-hidden border-2 border-slate-700 shadow-md relative">
+                              <img src={memo.markupImage || memo.images[0]} alt="thumbnail" className="w-full h-full object-cover opacity-80" />
+                              {(memo.images?.length > 1) && (
+                                <div className="absolute bottom-1 right-1 bg-slate-900/80 text-cyan-400 text-[8px] font-black px-1.5 py-0.5 rounded-md border border-slate-700 backdrop-blur-sm">
+                                  +{memo.images.length - (memo.markupImage ? 0 : 1)}
+                                </div>
+                              )}
+                            </div>
+                          )}
                         </div>
                       </div>
                     );
@@ -1036,19 +1086,26 @@ const App = () => {
                       </div>
                       <div className="p-3 space-y-2">
                         {groupMemos.map(memo => (
-                          <div key={memo.id} onClick={() => { setSelectedMemo(memo); setView('detail'); }} className="p-2.5 bg-slate-800/50 rounded-xl cursor-pointer active:bg-slate-800 flex justify-between items-center border border-transparent hover:border-cyan-500/30 transition-colors">
-                            <div>
-                              <p className="text-xs font-black text-slate-200 flex items-center gap-1">
-                                {memo.needsReview && !memo.isReviewed && <Bell size={10} className="text-red-500 drop-shadow-[0_0_3px_rgba(239,68,68,0.8)]"/>}
-                                {memo.title}
+                          <div key={memo.id} onClick={() => { setSelectedMemo(memo); setView('detail'); }} className="p-2.5 bg-slate-800/50 rounded-xl cursor-pointer active:bg-slate-800 flex justify-between items-center border border-transparent hover:border-cyan-500/30 transition-colors gap-3">
+                            <div className="flex-1 min-w-0">
+                              <p className="text-xs font-black text-slate-200 flex items-center gap-1 truncate">
+                                {memo.needsReview && !memo.isReviewed && <Bell size={10} className="text-red-500 drop-shadow-[0_0_3px_rgba(239,68,68,0.8)] shrink-0"/>}
+                                <span className="truncate">{memo.title}</span>
                               </p>
                               <p className="text-[8px] font-bold text-slate-500 mt-1 flex gap-2">
-                                {listMode !== 'site' && <span>📍{memo.site}</span>}
-                                {listMode !== 'genre' && <span>🏷️{memo.genre}</span>}
-                                <span className="text-cyan-800">{memo.date}</span>
+                                {listMode !== 'site' && <span className="truncate">📍{memo.site}</span>}
+                                {listMode !== 'genre' && <span className="truncate">🏷️{memo.genre}</span>}
+                                <span className="text-cyan-800 shrink-0">{memo.date}</span>
                               </p>
                             </div>
-                            <ChevronRight size={14} className="text-slate-600"/>
+                            
+                            {/* ★ グループ表示時の極小サムネイル表示 */}
+                            {((memo.images && memo.images.length > 0) || memo.markupImage) && (
+                              <div className="w-10 h-10 shrink-0 rounded-lg overflow-hidden border border-slate-600 shadow-sm">
+                                <img src={memo.markupImage || memo.images[0]} alt="thumbnail" className="w-full h-full object-cover opacity-80" />
+                              </div>
+                            )}
+                            <ChevronRight size={14} className="text-slate-600 shrink-0"/>
                           </div>
                         ))}
                       </div>
@@ -1056,6 +1113,31 @@ const App = () => {
                   ))
                 )
               )}
+            </div>
+          )}
+
+          {/* ★ 追加：STATUS（ステータス・レーダーチャート）ビュー */}
+          {view === 'stats' && (
+            <div className="space-y-6 pb-10 animate-in slide-in-from-bottom-4">
+              <h2 className="text-xl font-black text-cyan-400 flex items-center gap-2 mb-4 tracking-widest drop-shadow-[0_0_8px_rgba(34,211,238,0.5)]">
+                <Activity className="text-cyan-500"/> MASTER STATUS
+              </h2>
+
+              <div className="bg-slate-900/80 backdrop-blur-sm p-6 rounded-[2.5rem] border border-slate-700 shadow-lg">
+                <h3 className="text-center text-xs font-black text-slate-400 tracking-widest mb-6">SKILL ANALYSIS</h3>
+                <RadarChart />
+                
+                <div className="grid grid-cols-2 gap-4 mt-6">
+                  <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800 shadow-inner">
+                    <p className="text-[10px] font-black text-cyan-700 mb-1">TOTAL LOGS</p>
+                    <p className="text-2xl font-black text-cyan-400">{memos.length}</p>
+                  </div>
+                  <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800 shadow-inner">
+                    <p className="text-[10px] font-black text-yellow-600 mb-1">CURRENT LEVEL</p>
+                    <p className="text-2xl font-black text-yellow-400">{currentLevel}</p>
+                  </div>
+                </div>
+              </div>
             </div>
           )}
 
@@ -1105,7 +1187,7 @@ const App = () => {
               
               <div className="text-center py-4 opacity-30">
                 <Gamepad2 size={32} className="mx-auto text-cyan-600 mb-2"/>
-                <p className="text-[10px] font-black text-cyan-600 uppercase tracking-widest">ELECTRIC CLIPPER MASTER v1.1</p>
+                <p className="text-[10px] font-black text-cyan-600 uppercase tracking-widest">ELECTRIC CLIPPER MASTER v1.3</p>
               </div>
             </div>
           )}
@@ -1411,7 +1493,7 @@ const App = () => {
           <ClipboardList size={20} strokeWidth={view === 'list' ? 2.5 : 2} />
           <span className={`text-[10px] font-black uppercase tracking-widest ${view === 'list' ? 'block' : 'hidden'}`}>Quest Log</span>
         </button>
-        {/* ★ 追加：STATUS（レーダーチャート）タブ */}
+        {/* ★ STATUS（レーダーチャート）タブ */}
         <button onClick={() => setView('stats')} className={`flex items-center gap-2 px-6 py-3 rounded-full transition-all duration-300 ${view === 'stats' ? 'bg-cyan-600 text-slate-900 shadow-[0_0_15px_rgba(6,182,212,0.5)]' : 'text-slate-400 hover:text-cyan-400'}`}>
           <Activity size={20} strokeWidth={view === 'stats' ? 2.5 : 2} />
           <span className={`text-[10px] font-black uppercase tracking-widest ${view === 'stats' ? 'block' : 'hidden'}`}>Status</span>
