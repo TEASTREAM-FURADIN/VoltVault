@@ -402,6 +402,9 @@ const App = () => {
     const [zoom, setZoom] = useState(1);
     const [dimensions, setDimensions] = useState({ width: 0, height: 0 });
     
+    // ★ 追加：テキスト入力用の状態
+    const [textInput, setTextInput] = useState(null);
+
     // ★ 追加：Undo（一つ戻る）機能のための履歴管理
     const [strokes, setStrokes] = useState([]);
     const currentStrokeRef = useRef(null);
@@ -436,16 +439,26 @@ const App = () => {
       img.onload = () => {
         ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
         strokesToDraw.forEach(stroke => {
-          ctx.strokeStyle = stroke.color;
-          ctx.lineWidth = stroke.width;
-          ctx.lineJoin = 'round';
-          ctx.lineCap = 'round';
-          ctx.beginPath();
-          stroke.points.forEach((p, i) => {
-            if (i === 0) ctx.moveTo(p.x, p.y);
-            else ctx.lineTo(p.x, p.y);
-          });
-          ctx.stroke();
+          if (stroke.type === 'path') {
+            ctx.strokeStyle = stroke.color;
+            ctx.lineWidth = stroke.width;
+            ctx.lineJoin = 'round';
+            ctx.lineCap = 'round';
+            ctx.beginPath();
+            stroke.points.forEach((p, i) => {
+              if (i === 0) ctx.moveTo(p.x, p.y);
+              else ctx.lineTo(p.x, p.y);
+            });
+            ctx.stroke();
+          } else if (stroke.type === 'text') {
+            ctx.fillStyle = stroke.color;
+            ctx.font = `900 ${stroke.fontSize}px sans-serif`;
+            ctx.textBaseline = 'top';
+            const lines = stroke.text.split('\n');
+            lines.forEach((line, index) => {
+               ctx.fillText(line, stroke.x, stroke.y + (index * stroke.fontSize * 1.2));
+            });
+          }
         });
       };
       img.src = markupModal.dataUrl;
@@ -471,14 +484,19 @@ const App = () => {
     };
 
     const startDrawing = (e) => { 
+      const p = getPos(e); 
+      // ★ 追加：テキストモードの場合は、タップした位置に入力枠を出す
+      if (mode === 'text') {
+        setTextInput({ x: p.x, y: p.y, text: '' });
+        return;
+      }
       if (mode !== 'draw') return;
       setIsDrawing(true); 
-      const p = getPos(e); 
       const ctx = canvasRef.current.getContext('2d'); 
       ctx.beginPath(); 
       ctx.moveTo(p.x, p.y); 
-      // ★ 履歴として保存開始
-      currentStrokeRef.current = { color: penColor, width: 4 / zoom, points: [p] };
+      // ★ 変更：履歴として保存開始（typeを追加）
+      currentStrokeRef.current = { type: 'path', color: penColor, width: 4 / zoom, points: [p] };
     };
     
     const draw = (e) => { 
@@ -534,40 +552,51 @@ const App = () => {
           </div>
 
           <div className="flex flex-col gap-2 bg-slate-800 p-2 rounded-xl border border-slate-700">
-            <div className="flex justify-between items-center">
-              <div className="flex items-center gap-1.5 bg-slate-900 p-1 rounded-lg shadow-inner border border-slate-700">
-                <button onClick={() => setMode('draw')} className={`p-1.5 rounded-md transition-colors ${mode === 'draw' ? 'bg-slate-800 text-cyan-400 shadow-[0_0_10px_rgba(34,211,238,0.3)]' : 'text-slate-500 hover:text-cyan-400'}`}>
+            {/* ★ 変更：ツールバーを2段に分けて、スマホでもボタンが隠れないように整理 */}
+            <div className="flex justify-between items-center bg-slate-900 p-1.5 rounded-lg border border-slate-700 shadow-inner">
+              <div className="flex items-center gap-1">
+                <button onClick={() => setMode('draw')} className={`p-2 rounded-md transition-colors flex items-center gap-1 ${mode === 'draw' ? 'bg-cyan-900/50 text-cyan-400 shadow-inner' : 'text-slate-500 hover:text-cyan-400'}`}>
                   <PenTool size={16}/>
                 </button>
-                <div className="w-px h-5 bg-slate-700 mx-0.5"></div>
+                <button onClick={() => setMode('text')} className={`p-2 rounded-md transition-colors flex items-center gap-1 ${mode === 'text' ? 'bg-cyan-900/50 text-cyan-400 shadow-inner' : 'text-slate-500 hover:text-cyan-400'}`}>
+                  <Type size={16}/>
+                </button>
+                <div className="w-px h-6 bg-slate-700 mx-1"></div>
                 {PEN_COLORS.map(c => (
                   <button 
                     key={c.id} 
-                    onClick={() => { setPenColor(c.value); setMode('draw'); }} 
-                    className={`w-5 h-5 rounded-full ${c.tw} transition-all border-2 ${penColor === c.value ? 'border-white scale-110' : 'border-transparent scale-90 opacity-50 hover:opacity-100'}`}
+                    onClick={() => { setPenColor(c.value); setMode(mode === 'move' ? 'draw' : mode); }} 
+                    className={`w-6 h-6 rounded-full ${c.tw} transition-all border-2 ${penColor === c.value ? 'border-white scale-110' : 'border-transparent scale-90 opacity-50 hover:opacity-100'}`}
                   />
                 ))}
               </div>
-              <div className="flex gap-1.5">
-                <button onClick={() => setMode('move')} className={`px-2 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1 transition-all ${mode === 'move' ? 'bg-slate-900 shadow-inner text-cyan-400 border border-cyan-900' : 'text-slate-400 hover:bg-slate-700'}`}>
-                  <Move size={14}/> 移動
-                </button>
-                {/* ★ 変更：一つ戻る（Undo）と全消去ボタンに変更 */}
-                <div className="flex gap-1">
-                  <button onClick={handleUndo} disabled={strokes.length === 0} className="p-1.5 text-slate-400 bg-slate-900 rounded-lg shadow-inner active:scale-95 hover:text-yellow-400 disabled:opacity-30 border border-slate-700"><RotateCcw size={16}/></button>
-                  <button onClick={handleClearAll} disabled={strokes.length === 0} className="p-1.5 text-slate-400 bg-slate-900 rounded-lg shadow-inner active:scale-95 hover:text-red-400 disabled:opacity-30 border border-slate-700"><Trash2 size={16}/></button>
-                </div>
-              </div>
             </div>
             
-            <div className="flex gap-2 items-center justify-center bg-slate-900 py-1 rounded-lg border border-slate-700 mx-2 shadow-inner">
+            <div className="flex justify-between items-center bg-slate-900 p-1.5 rounded-lg border border-slate-700 shadow-inner">
+              <div className="flex gap-1 items-center">
+                <button onClick={() => setMode('move')} className={`px-3 py-2 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all ${mode === 'move' ? 'bg-slate-800 shadow-inner text-cyan-400 border border-cyan-900' : 'text-slate-400 hover:bg-slate-700'}`}>
+                  <Move size={14}/> 移動
+                </button>
+              </div>
+              <div className="flex gap-2 items-center">
+                {/* ★ 変更：戻る・消去を文字付きの独立したボタンに変更し、押しやすくしました */}
+                <button onClick={handleUndo} disabled={strokes.length === 0} className="px-3 py-2 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all text-slate-300 bg-slate-800 hover:text-yellow-400 disabled:opacity-30 border border-slate-700 active:scale-95">
+                  <RotateCcw size={14}/> 戻る
+                </button>
+                <button onClick={handleClearAll} disabled={strokes.length === 0} className="px-3 py-2 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all text-slate-300 bg-slate-800 hover:text-red-400 disabled:opacity-30 border border-slate-700 active:scale-95">
+                  <Trash2 size={14}/> 消去
+                </button>
+              </div>
+            </div>
+
+            <div className="flex gap-2 items-center justify-center bg-slate-900 py-1.5 rounded-lg border border-slate-700 shadow-inner">
               <button onClick={() => setZoom(z => Math.max(1, z - 0.5))} className="p-1 text-slate-400 active:scale-95 hover:text-cyan-400"><ZoomOut size={16}/></button>
-              <span className="text-[10px] font-black w-10 text-center text-cyan-400 drop-shadow-[0_0_5px_rgba(34,211,238,0.5)]">{Math.round(zoom * 100)}%</span>
+              <span className="text-[10px] font-black w-12 text-center text-cyan-400 drop-shadow-[0_0_5px_rgba(34,211,238,0.5)]">{Math.round(zoom * 100)}%</span>
               <button onClick={() => setZoom(z => Math.min(4, z + 0.5))} className="p-1 text-slate-400 active:scale-95 hover:text-cyan-400"><ZoomIn size={16}/></button>
             </div>
           </div>
 
-          <div ref={containerRef} className={`flex-1 overflow-auto rounded-xl border-2 border-slate-700 bg-slate-950 shadow-inner relative touch-pan-x touch-pan-y ${mode === 'draw' ? 'touch-none' : ''}`}>
+          <div ref={containerRef} className={`flex-1 overflow-auto rounded-xl border-2 border-slate-700 bg-slate-950 shadow-inner relative touch-pan-x touch-pan-y ${mode === 'draw' || mode === 'text' ? 'touch-none' : ''}`}>
             {dimensions.width > 0 && (
               <div style={{ width: dimensions.width * zoom, height: dimensions.height * zoom, position: 'relative' }}>
                 <canvas
@@ -577,12 +606,55 @@ const App = () => {
                   style={{
                     transform: `scale(${zoom})`,
                     transformOrigin: 'top left',
-                    touchAction: mode === 'draw' ? 'none' : 'auto'
+                    touchAction: mode === 'draw' || mode === 'text' ? 'none' : 'auto'
                   }}
-                  className={`absolute top-0 left-0 shadow-lg ${mode === 'draw' ? 'cursor-crosshair' : 'cursor-grab'}`}
+                  className={`absolute top-0 left-0 shadow-lg ${mode === 'draw' ? 'cursor-crosshair' : mode === 'text' ? 'cursor-text' : 'cursor-grab'}`}
                   onMouseDown={startDrawing} onMouseMove={draw} onMouseUp={stopDrawing} onMouseLeave={stopDrawing}
                   onTouchStart={startDrawing} onTouchMove={draw} onTouchEnd={stopDrawing}
                 />
+                {/* ★ 追加：テキスト入力用ボックス */}
+                {textInput && (
+                  <textarea
+                    autoFocus
+                    value={textInput.text}
+                    onChange={(e) => setTextInput({ ...textInput, text: e.target.value })}
+                    onBlur={() => {
+                      if (textInput.text.trim()) {
+                        setStrokes(prev => [...prev, { 
+                          type: 'text', 
+                          color: penColor, 
+                          text: textInput.text, 
+                          x: textInput.x, 
+                          y: textInput.y, 
+                          fontSize: Math.max(16, 24 / zoom)
+                        }]);
+                        // onBlur後にすぐに再描画されるようにsetTimeoutを利用
+                        setTimeout(() => redrawAll([...strokes, { type: 'text', color: penColor, text: textInput.text, x: textInput.x, y: textInput.y, fontSize: Math.max(16, 24 / zoom) }]), 0);
+                      }
+                      setTextInput(null);
+                    }}
+                    style={{
+                      position: 'absolute',
+                      left: textInput.x * zoom,
+                      top: textInput.y * zoom,
+                      color: penColor,
+                      fontSize: `${Math.max(16, 24 / zoom) * zoom}px`,
+                      fontWeight: '900',
+                      background: 'rgba(0,0,0,0.6)',
+                      border: '2px dashed #06b6d4',
+                      borderRadius: '4px',
+                      outline: 'none',
+                      resize: 'both',
+                      zIndex: 50,
+                      minHeight: '2em',
+                      minWidth: '6em',
+                      lineHeight: '1.2',
+                      padding: '4px',
+                      whiteSpace: 'pre-wrap'
+                    }}
+                    placeholder="ここに入力..."
+                  />
+                )}
               </div>
             )}
             {!dimensions.width && <div className="absolute inset-0 flex items-center justify-center text-cyan-500"><Loader2 size={24} className="animate-spin"/></div>}
