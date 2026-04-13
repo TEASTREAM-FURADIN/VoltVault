@@ -82,7 +82,6 @@ const ColorNames = {
   red: 'レッド', blue: 'ブルー', green: 'グリーン', yellow: 'イエロー', orange: 'オレンジ', purple: 'パープル', pink: 'ピンク', teal: 'シアン', gray: 'スチール'
 };
 
-// ★ ここに定義されている全10種類をレーダーチャートに展開します！
 const MainCategories = [
   '電気', '弱電', '設備', '内装', '建築', '事務', '工程', '知識技術', '趣味', 'その他'
 ];
@@ -223,13 +222,28 @@ const App = () => {
   };
   const [formData, setFormData] = useState(initialForm);
 
+  // ★ その場でのジャンル・タグ追加用のカラー・アイコン状態を追加
   const [showNewGenre, setShowNewGenre] = useState(false);
   const [newGenreName, setNewGenreName] = useState('');
   const [newGenreGroup, setNewGenreGroup] = useState(MainCategories[0]);
+  const [newGenreColor, setNewGenreColor] = useState('blue');
+  const [newGenreIcon, setNewGenreIcon] = useState('Info');
   
   const [showNewTag, setShowNewTag] = useState(false);
   const [newTagName, setNewTagName] = useState('');
   const [newTagGroup, setNewTagGroup] = useState(MainCategories[0]);
+  const [newTagColor, setNewTagColor] = useState('gray');
+  const [newTagIcon, setNewTagIcon] = useState('Tags');
+
+  // ★ オートセーブ（一時保存）の処理
+  useEffect(() => {
+    if (view === 'add') {
+      const timeoutId = setTimeout(() => {
+        localStorage.setItem('voltVaultDraft', JSON.stringify(formData));
+      }, 500);
+      return () => clearTimeout(timeoutId);
+    }
+  }, [formData, view]);
 
   useEffect(() => {
     if (view === 'add' && !formData.genre && Object.keys(userSettings.genres).length > 0) {
@@ -290,6 +304,8 @@ const App = () => {
           stats: { exp: newExp, level: newLevel, totalMemos: currentStats.totalMemos + 1 }
         };
         await saveSettings(newSettings);
+        // ★ 保存に成功したらドラフトを消去
+        localStorage.removeItem('voltVaultDraft');
       }
 
       setView('list');
@@ -297,15 +313,17 @@ const App = () => {
       setShowAdvanced(false); 
       setShowNewGenre(false);
       setShowNewTag(false);
-    } catch (e) { alert("OVERLOAD: 画像サイズが大きすぎる可能性があります。"); } 
-    finally { setIsSyncing(false); }
+    } catch (e) { 
+      setError("OVERLOAD: 画像サイズが大きすぎるか、通信エラーです。");
+      setTimeout(()=>setError(null), 5000);
+    } finally { setIsSyncing(false); }
   };
 
   const handleDelete = async (id) => {
-    if (!user || !window.confirm("WARNING: この極意データを完全に消去しますか？")) return;
+    if (!user) return;
     setIsSyncing(true);
     try { await deleteDoc(doc(db, 'artifacts', currentAppId, 'public', 'data', 'memos', id)); setView('list'); } 
-    catch (e) { alert("DELETE FAILED."); } finally { setIsSyncing(false); }
+    catch (e) { setError("DELETE FAILED."); setTimeout(()=>setError(null), 5000); } finally { setIsSyncing(false); }
   };
 
   const saveSettings = async (newSettings) => {
@@ -384,6 +402,10 @@ const App = () => {
     const [zoom, setZoom] = useState(1);
     const [dimensions, setDimensions] = useState({ width: 0, height: 0 });
     
+    // ★ 追加：Undo（一つ戻る）機能のための履歴管理
+    const [strokes, setStrokes] = useState([]);
+    const currentStrokeRef = useRef(null);
+
     const [penColor, setPenColor] = useState('#ef4444'); 
     const PEN_COLORS = [
       { id: 'red', value: '#ef4444', tw: 'bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.8)]' },
@@ -403,23 +425,33 @@ const App = () => {
       img.src = markupModal.dataUrl;
     }, [markupModal.dataUrl]);
 
-    const drawInitialImage = () => {
+    // ★ 変更：ベース画像と、現在記憶されている履歴（strokes）をすべて再描画する関数
+    const redrawAll = (strokesToDraw = strokes) => {
       if (!dimensions.width || !canvasRef.current) return;
       const canvas = canvasRef.current;
       const ctx = canvas.getContext('2d');
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
       const img = new Image();
       img.onload = () => {
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
         ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-        ctx.strokeStyle = penColor; 
-        ctx.lineWidth = 4 / zoom; 
-        ctx.lineJoin = 'round'; 
-        ctx.lineCap = 'round';
+        strokesToDraw.forEach(stroke => {
+          ctx.strokeStyle = stroke.color;
+          ctx.lineWidth = stroke.width;
+          ctx.lineJoin = 'round';
+          ctx.lineCap = 'round';
+          ctx.beginPath();
+          stroke.points.forEach((p, i) => {
+            if (i === 0) ctx.moveTo(p.x, p.y);
+            else ctx.lineTo(p.x, p.y);
+          });
+          ctx.stroke();
+        });
       };
       img.src = markupModal.dataUrl;
     };
 
-    useEffect(() => { drawInitialImage(); }, [dimensions]);
+    useEffect(() => { redrawAll(); }, [dimensions]);
 
     useEffect(() => {
       if (canvasRef.current) {
@@ -445,7 +477,10 @@ const App = () => {
       const ctx = canvasRef.current.getContext('2d'); 
       ctx.beginPath(); 
       ctx.moveTo(p.x, p.y); 
+      // ★ 履歴として保存開始
+      currentStrokeRef.current = { color: penColor, width: 4 / zoom, points: [p] };
     };
+    
     const draw = (e) => { 
       if (!isDrawing || mode !== 'draw') return; 
       e.preventDefault(); 
@@ -453,8 +488,34 @@ const App = () => {
       const ctx = canvasRef.current.getContext('2d'); 
       ctx.lineTo(p.x, p.y); 
       ctx.stroke(); 
+      // ★ 履歴に座標を追加
+      if (currentStrokeRef.current) currentStrokeRef.current.points.push(p);
     };
-    const stopDrawing = () => { setIsDrawing(false); };
+    
+    const stopDrawing = () => { 
+      if (isDrawing && currentStrokeRef.current) {
+        setStrokes(prev => [...prev, currentStrokeRef.current]);
+        currentStrokeRef.current = null;
+      }
+      setIsDrawing(false); 
+    };
+
+    // ★ 追加：一つ戻る（Undo）処理
+    const handleUndo = () => {
+      setStrokes(prev => {
+        const newStrokes = prev.slice(0, -1);
+        redrawAll(newStrokes);
+        return newStrokes;
+      });
+    };
+
+    // ★ 追加：全消去処理
+    const handleClearAll = () => {
+      if(window.confirm('書き込みをすべて消去しますか？')) {
+        setStrokes([]);
+        redrawAll([]);
+      }
+    };
 
     const handleSaveImage = () => {
       const newDataUrl = canvasRef.current.toDataURL('image/jpeg', 0.4);
@@ -491,7 +552,11 @@ const App = () => {
                 <button onClick={() => setMode('move')} className={`px-2 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1 transition-all ${mode === 'move' ? 'bg-slate-900 shadow-inner text-cyan-400 border border-cyan-900' : 'text-slate-400 hover:bg-slate-700'}`}>
                   <Move size={14}/> 移動
                 </button>
-                <button onClick={drawInitialImage} className="p-1.5 text-slate-400 bg-slate-900 rounded-lg shadow-inner active:scale-95 hover:text-red-400 border border-slate-700"><RotateCcw size={16}/></button>
+                {/* ★ 変更：一つ戻る（Undo）と全消去ボタンに変更 */}
+                <div className="flex gap-1">
+                  <button onClick={handleUndo} disabled={strokes.length === 0} className="p-1.5 text-slate-400 bg-slate-900 rounded-lg shadow-inner active:scale-95 hover:text-yellow-400 disabled:opacity-30 border border-slate-700"><RotateCcw size={16}/></button>
+                  <button onClick={handleClearAll} disabled={strokes.length === 0} className="p-1.5 text-slate-400 bg-slate-900 rounded-lg shadow-inner active:scale-95 hover:text-red-400 disabled:opacity-30 border border-slate-700"><Trash2 size={16}/></button>
+                </div>
               </div>
             </div>
             
@@ -865,9 +930,7 @@ const App = () => {
     tags: sortedTags.filter(t => t.group === cat)
   })).filter(t => t.tags.length > 0);
 
-  // ★ 変更：全10種の大分類（MainCategories）を展開する10角形レーダーチャート
   const RadarChart = () => {
-    // 定義済みの全10種をセット
     const radarCategories = MainCategories;
     const data = radarCategories.map(cat => {
       const count = memos.filter(m => (userSettings.genres[m.genre]?.group || 'その他') === cat).length;
@@ -877,7 +940,6 @@ const App = () => {
     const maxVal = Math.max(...data.map(d => d.count), 5);
     const centerX = 150;
     const centerY = 150;
-    // 10角形だと文字が外に広がるため、円の半径を100から90へ少し小さく調整
     const radius = 90; 
 
     const getPoint = (index, value) => {
@@ -905,7 +967,6 @@ const App = () => {
           })}
           {data.map((d, i) => {
             const angle = (Math.PI * 2 * i) / data.length - Math.PI / 2;
-            // ラベルの位置を絶妙に調整（文字が被らないように）
             const textRadius = radius + 25;
             const tx = centerX + textRadius * Math.cos(angle);
             const ty = centerY + textRadius * Math.sin(angle);
@@ -960,7 +1021,22 @@ const App = () => {
                   </span>
                 )}
               </button>
-              <button onClick={() => { setFormData(initialForm); setShowAdvanced(false); setShowNewGenre(false); setShowNewTag(false); setView('add'); }} className="bg-slate-800 text-yellow-400 p-2.5 rounded-xl shadow-[0_0_15px_rgba(234,179,8,0.3)] border border-yellow-500/50 active:scale-90 hover:scale-105 transition-all">
+              {/* ★ 変更：追加ボタンを押した際、ドラフト（一時保存）があれば復元する処理を追加 */}
+              <button onClick={() => { 
+                const draft = localStorage.getItem('voltVaultDraft');
+                if (draft) {
+                  try {
+                    const parsed = JSON.parse(draft);
+                    if (parsed.title || parsed.content || parsed.images?.length > 0) {
+                      setFormData(parsed);
+                    } else { setFormData(initialForm); }
+                  } catch(e) { setFormData(initialForm); }
+                } else { setFormData(initialForm); }
+                setShowAdvanced(false); 
+                setShowNewGenre(false); 
+                setShowNewTag(false); 
+                setView('add'); 
+              }} className="bg-slate-800 text-yellow-400 p-2.5 rounded-xl shadow-[0_0_15px_rgba(234,179,8,0.3)] border border-yellow-500/50 active:scale-90 hover:scale-105 transition-all">
                 <ClipperIcon size={22} />
               </button>
             </div>
@@ -1188,7 +1264,7 @@ const App = () => {
               
               <div className="text-center py-4 opacity-30">
                 <Gamepad2 size={32} className="mx-auto text-cyan-600 mb-2"/>
-                <p className="text-[10px] font-black text-cyan-600 uppercase tracking-widest">ELECTRIC CLIPPER MASTER v1.4</p>
+                <p className="text-[10px] font-black text-cyan-600 uppercase tracking-widest">ELECTRIC CLIPPER MASTER v1.5</p>
               </div>
             </div>
           )}
@@ -1304,6 +1380,20 @@ const App = () => {
             </header>
             
             <div className="p-6 space-y-7 max-w-xl mx-auto relative z-10">
+              {/* ★ 追加：一時保存されている場合の「リセット」ボタン */}
+              {view === 'add' && (formData.title || formData.content || formData.images.length > 0) && (
+                <div className="flex justify-end mb-[-1rem]">
+                  <button onClick={() => {
+                    if (window.confirm('入力内容をすべてリセットしますか？')) {
+                      setFormData(initialForm);
+                      localStorage.removeItem('voltVaultDraft');
+                    }
+                  }} className="text-[10px] text-red-400 font-bold border border-red-500/50 px-2.5 py-1.5 rounded-md bg-red-950/50 shadow-sm active:scale-95">
+                    <Trash2 size={12} className="inline mr-1"/>一時保存をクリア
+                  </button>
+                </div>
+              )}
+
               <div className="space-y-4">
                 <input 
                   list="title-history"
@@ -1332,20 +1422,29 @@ const App = () => {
                   </div>
                 </div>
 
+                {/* ★ 変更：追加時の色・アイコン指定をフルスペック化 */}
                 {showNewGenre && (
-                  <div className="bg-cyan-950/30 p-3 rounded-2xl border border-cyan-900 flex gap-2 items-center animate-in fade-in slide-in-from-top-2 shadow-inner">
-                    <select value={newGenreGroup} onChange={e=>setNewGenreGroup(e.target.value)} className="bg-slate-900 border border-slate-700 p-2 rounded-xl text-[10px] sm:text-xs font-bold text-slate-200 outline-none focus:border-cyan-500 shrink-0">
-                      {MainCategories.map(c => <option key={c} value={c}>{c}</option>)}
-                    </select>
-                    <input type="text" placeholder="新ジャンル名" value={newGenreName} onChange={e=>setNewGenreName(e.target.value)} className="w-full bg-slate-900 border border-slate-700 p-2 rounded-xl text-xs font-bold text-cyan-50 outline-none focus:border-cyan-500 min-w-0" />
-                    <button type="button" onClick={() => {
-                      if(newGenreName.trim()) {
-                        handleAddItem('genres', newGenreName.trim(), 'blue', 'Info', newGenreGroup);
-                        setFormData({...formData, genre: newGenreName.trim()});
-                        setNewGenreName('');
-                        setShowNewGenre(false);
-                      }
-                    }} className="bg-cyan-600 text-slate-900 px-3 py-2 rounded-xl text-xs font-black shadow-[0_0_10px_rgba(6,182,212,0.5)] active:scale-95 shrink-0">追加</button>
+                  <div className="bg-cyan-950/30 p-3 rounded-2xl border border-cyan-900 flex flex-col gap-2 animate-in fade-in slide-in-from-top-2 shadow-inner">
+                    <div className="flex gap-2">
+                      <select value={newGenreGroup} onChange={e=>setNewGenreGroup(e.target.value)} className="bg-slate-900 border border-slate-700 p-2 rounded-xl text-[10px] sm:text-xs font-bold text-slate-200 outline-none focus:border-cyan-500 shrink-0 w-24">
+                        {MainCategories.map(c => <option key={c} value={c}>{c}</option>)}
+                      </select>
+                      <input type="text" placeholder="新ジャンル名" value={newGenreName} onChange={e=>setNewGenreName(e.target.value)} className="w-full bg-slate-900 border border-slate-700 p-2 rounded-xl text-xs font-bold text-cyan-50 outline-none focus:border-cyan-500 min-w-0" />
+                    </div>
+                    <div className="flex gap-2 items-center">
+                      <ColorSelector value={newGenreColor} onChange={setNewGenreColor} />
+                      <IconSelector value={newGenreIcon} onChange={setNewGenreIcon} />
+                      <button type="button" onClick={() => {
+                        if(newGenreName.trim()) {
+                          handleAddItem('genres', newGenreName.trim(), newGenreColor, newGenreIcon, newGenreGroup);
+                          setFormData({...formData, genre: newGenreName.trim()});
+                          setNewGenreName('');
+                          setNewGenreColor('blue');
+                          setNewGenreIcon('Info');
+                          setShowNewGenre(false);
+                        }
+                      }} className="bg-cyan-600 text-slate-900 px-4 py-2.5 rounded-xl text-xs font-black shadow-[0_0_10px_rgba(6,182,212,0.5)] active:scale-95 shrink-0">追加</button>
+                    </div>
                   </div>
                 )}
 
@@ -1418,23 +1517,32 @@ const App = () => {
                   <button type="button" onClick={() => setShowNewTag(!showNewTag)} className="text-[10px] font-bold text-cyan-400 bg-slate-800 px-2.5 py-1.5 rounded-lg flex items-center gap-1 border border-cyan-900 shadow-[0_0_8px_rgba(6,182,212,0.2)] active:scale-95 transition-all"><Plus size={12}/>新規タグ作成</button>
                 </div>
 
+                {/* ★ 変更：追加時の色・アイコン指定をフルスペック化 */}
                 {showNewTag && (
-                  <div className="bg-cyan-950/30 p-3 rounded-2xl border border-cyan-900 flex gap-2 items-center animate-in fade-in slide-in-from-top-2 shadow-inner">
-                    <select value={newTagGroup} onChange={e=>setNewTagGroup(e.target.value)} className="bg-slate-900 border border-slate-700 p-2 rounded-xl text-[10px] sm:text-xs font-bold text-slate-200 outline-none focus:border-cyan-500 shrink-0">
-                      {MainCategories.map(c => <option key={c} value={c}>{c}</option>)}
-                    </select>
-                    <input type="text" placeholder="新タグ名" value={newTagName} onChange={e=>setNewTagName(e.target.value)} className="w-full bg-slate-900 border border-slate-700 p-2 rounded-xl text-xs font-bold text-cyan-50 outline-none focus:border-cyan-500 min-w-0" />
-                    <button type="button" onClick={() => {
-                      if(newTagName.trim()) {
-                        handleAddItem('tags', newTagName.trim(), 'gray', 'Tags', newTagGroup);
-                        const mats = formData.materials || [];
-                        if (!mats.includes(newTagName.trim())) {
-                          setFormData({...formData, materials: [...mats, newTagName.trim()]});
+                  <div className="bg-cyan-950/30 p-3 rounded-2xl border border-cyan-900 flex flex-col gap-2 animate-in fade-in slide-in-from-top-2 shadow-inner">
+                    <div className="flex gap-2">
+                      <select value={newTagGroup} onChange={e=>setNewTagGroup(e.target.value)} className="bg-slate-900 border border-slate-700 p-2 rounded-xl text-[10px] sm:text-xs font-bold text-slate-200 outline-none focus:border-cyan-500 shrink-0 w-24">
+                        {MainCategories.map(c => <option key={c} value={c}>{c}</option>)}
+                      </select>
+                      <input type="text" placeholder="新タグ名" value={newTagName} onChange={e=>setNewTagName(e.target.value)} className="w-full bg-slate-900 border border-slate-700 p-2 rounded-xl text-xs font-bold text-cyan-50 outline-none focus:border-cyan-500 min-w-0" />
+                    </div>
+                    <div className="flex gap-2 items-center">
+                      <ColorSelector value={newTagColor} onChange={setNewTagColor} />
+                      <IconSelector value={newTagIcon} onChange={setNewTagIcon} />
+                      <button type="button" onClick={() => {
+                        if(newTagName.trim()) {
+                          handleAddItem('tags', newTagName.trim(), newTagColor, newTagIcon, newTagGroup);
+                          const mats = formData.materials || [];
+                          if (!mats.includes(newTagName.trim())) {
+                            setFormData({...formData, materials: [...mats, newTagName.trim()]});
+                          }
+                          setNewTagName('');
+                          setNewTagColor('gray');
+                          setNewTagIcon('Tags');
+                          setShowNewTag(false);
                         }
-                        setNewTagName('');
-                        setShowNewTag(false);
-                      }
-                    }} className="bg-cyan-600 text-slate-900 px-3 py-2 rounded-xl text-xs font-black shadow-[0_0_10px_rgba(6,182,212,0.5)] active:scale-95 shrink-0">追加</button>
+                      }} className="bg-cyan-600 text-slate-900 px-4 py-2.5 rounded-xl text-xs font-black shadow-[0_0_10px_rgba(6,182,212,0.5)] active:scale-95 shrink-0">追加</button>
+                    </div>
                   </div>
                 )}
                 
