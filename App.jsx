@@ -14,7 +14,7 @@ import {
   Gamepad2, Sword, Crown, Trophy, Target, Dumbbell, Book, Star, Sparkles, Medal, Award,
   Move, ZoomIn, ZoomOut, RotateCcw, RotateCw,
   User, Bell, ChevronUp, CheckSquare, ArrowUp, ArrowDown,
-  Coffee, Eraser
+  Coffee, Eraser, Skull
 } from 'lucide-react';
 
 import { initializeApp } from 'firebase/app';
@@ -120,7 +120,7 @@ const defaultSettings = {
     '重要目標': { colorId: 'red', icon: 'Target', group: 'その他', order: 3 }
   },
   stats: {
-    exp: 0, level: 1, totalMemos: 0
+    exp: 0, level: 1, totalMemos: 0, clipperDurability: 100, lastMemoDate: '', streakDays: 0, completedSites: []
   }
 };
 
@@ -158,6 +158,13 @@ const App = () => {
   const [userSettings, setUserSettings] = useState(defaultSettings);
   const [levelUpData, setLevelUpData] = useState(null);
 
+  const [showBossDefeat, setShowBossDefeat] = useState(false);
+  const [bossExp, setBossExp] = useState(0);
+  const [encounterMemo, setEncounterMemo] = useState(null);
+
+  // ★ 追加：称号一覧モーダルの表示状態
+  const [showTrophiesModal, setShowTrophiesModal] = useState(false); 
+
   const uniqueSites = [...new Set(memos.map(m => String(m.site || "")).filter(Boolean))];
   const uniqueTitles = [...new Set(memos.map(m => {
     const title = String(m.title || "");
@@ -181,8 +188,20 @@ const App = () => {
     const unsubscribeMemos = onSnapshot(memosCol, 
       (snap) => {
         const data = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-        setMemos(data.sort((a, b) => (b.date || "").localeCompare(a.date || "")));
+        const sortedData = data.sort((a, b) => (b.date || "").localeCompare(a.date || ""));
+        setMemos(sortedData);
         setIsSyncing(false);
+
+        if (sortedData.length > 0 && !sessionStorage.getItem('encounteredToday')) {
+          const pending = sortedData.filter(m => m.needsReview && !m.isReviewed);
+          if (pending.length > 0) {
+            if (Math.random() < 0.4) {
+              const target = pending[Math.floor(Math.random() * pending.length)];
+              setEncounterMemo(target);
+            }
+          }
+          sessionStorage.setItem('encounteredToday', 'true');
+        }
       },
       (err) => { setError("SYNC FAILED. 通信環境を確認してください。"); setIsSyncing(false); }
     );
@@ -207,7 +226,7 @@ const App = () => {
           quickPhrases: data.quickPhrases || defaultSettings.quickPhrases,
           genres: genresData,
           tags: tagsData,
-          stats: data.stats || defaultSettings.stats
+          stats: { ...defaultSettings.stats, ...(data.stats || {}) }
         });
       }
     });
@@ -289,17 +308,47 @@ const App = () => {
       
       if (isNew) {
         const currentStats = userSettings.stats || defaultSettings.stats;
-        const newExp = currentStats.exp + 25;
-        const newLevel = Math.floor(newExp / 100) + 1;
         
-        if (newLevel > currentStats.level) {
+        const todayStr = new Date().toISOString().split('T')[0];
+        let newStreak = currentStats.streakDays || 0;
+        const lastDate = currentStats.lastMemoDate || '';
+        
+        if (lastDate !== todayStr) {
+          const yesterdayStr = new Date(Date.now() - 86400000).toISOString().split('T')[0];
+          if (lastDate === yesterdayStr) {
+            newStreak += 1;
+          } else {
+            newStreak = 1;
+          }
+        }
+
+        let earnedExp = 25;
+        if (newStreak >= 3) earnedExp += 10; 
+        if (newStreak >= 7) earnedExp += 15;
+
+        const currentDurability = currentStats.clipperDurability ?? 100;
+        if (currentDurability <= 20) earnedExp = Math.floor(earnedExp * 0.5); 
+
+        const newExp = (currentStats.exp || 0) + earnedExp;
+        const newLevel = Math.floor(newExp / 100) + 1;
+        const newDurability = Math.max(0, currentDurability - 5);
+
+        if (newLevel > (currentStats.level || 1)) {
           setLevelUpData({ level: newLevel, title: getTitle(newLevel) });
           setTimeout(() => setLevelUpData(null), 4000); 
         }
 
         const newSettings = {
           ...userSettings,
-          stats: { exp: newExp, level: newLevel, totalMemos: currentStats.totalMemos + 1 }
+          stats: { 
+            ...currentStats, 
+            exp: newExp, 
+            level: newLevel, 
+            totalMemos: (currentStats.totalMemos || 0) + 1, 
+            clipperDurability: newDurability,
+            lastMemoDate: todayStr,
+            streakDays: newStreak
+          }
         };
         await saveSettings(newSettings);
         localStorage.removeItem('voltVaultDraft');
@@ -326,6 +375,42 @@ const App = () => {
   const saveSettings = async (newSettings) => {
     setUserSettings(newSettings);
     await setDoc(doc(db, 'artifacts', currentAppId, 'public', 'data', 'settings', 'user'), newSettings);
+  };
+
+  const handleBossDefeat = async (siteName, memoCount) => {
+    if (!window.confirm(`「${siteName}」の討伐（現場完了）を報告しますか？`)) return;
+
+    const currentStats = userSettings.stats || defaultSettings.stats;
+    const currentCompleted = currentStats.completedSites || [];
+    
+    if (currentCompleted.includes(siteName)) return;
+
+    const bonusExp = memoCount * 50; 
+    setBossExp(bonusExp);
+    setShowBossDefeat(true);
+
+    const newExp = (currentStats.exp || 0) + bonusExp;
+    const newLevel = Math.floor(newExp / 100) + 1;
+
+    const newSettings = {
+      ...userSettings,
+      stats: {
+        ...currentStats,
+        exp: newExp,
+        level: newLevel,
+        completedSites: [...currentCompleted, siteName]
+      }
+    };
+
+    await saveSettings(newSettings);
+
+    setTimeout(() => {
+      setShowBossDefeat(false);
+      if (newLevel > (currentStats.level || 1)) {
+        setLevelUpData({ level: newLevel, title: getTitle(newLevel) });
+        setTimeout(() => setLevelUpData(null), 4000); 
+      }
+    }, 3000);
   };
 
   const filteredMemos = memos.filter(m => {
@@ -371,6 +456,88 @@ const App = () => {
     return acc;
   }, {});
 
+  const currentExp = userSettings.stats?.exp || 0;
+  const currentLevel = userSettings.stats?.level || 1;
+  const expPercentage = currentExp % 100;
+  const pendingReviews = memos.filter(m => m.needsReview && !m.isReviewed);
+
+  const sortedGenres = Object.entries(userSettings.genres)
+    .map(([k, v]) => ({ key: k, ...v }))
+    .sort((a, b) => a.order - b.order);
+
+  const groupedGenresForm = MainCategories.map(cat => ({
+    category: cat,
+    genres: sortedGenres.filter(g => g.group === cat)
+  })).filter(g => g.genres.length > 0);
+
+  const sortedTags = Object.entries(userSettings.tags)
+    .map(([k, v]) => ({ key: k, ...v }))
+    .sort((a, b) => a.order - b.order);
+
+  const groupedTagsForm = MainCategories.map(cat => ({
+    category: cat,
+    tags: sortedTags.filter(t => t.group === cat)
+  })).filter(t => t.tags.length > 0);
+
+  const getWeaponStyle = (level) => {
+    if (level >= 50) return { bg: 'bg-cyan-900', text: 'text-cyan-300', border: 'border-cyan-400', shadow: 'shadow-[0_0_20px_rgba(34,211,238,0.8)]' };
+    if (level >= 20) return { bg: 'bg-yellow-900', text: 'text-yellow-400', border: 'border-yellow-500', shadow: 'shadow-[0_0_15px_rgba(250,204,21,0.5)]' };
+    if (level >= 10) return { bg: 'bg-orange-950', text: 'text-orange-400', border: 'border-orange-500', shadow: 'shadow-[0_0_10px_rgba(251,146,60,0.4)]' };
+    return { bg: 'bg-slate-800', text: 'text-slate-400', border: 'border-slate-600', shadow: 'shadow-md' };
+  };
+  const weaponStyle = getWeaponStyle(currentLevel);
+
+  const trophies = [
+    { id: 1, reqText: '1件記録', name: '現場デビュー', icon: HardHat, color: 'blue', isUnlocked: () => memos.length >= 1 },
+    { id: 2, reqText: '5件記録', name: '記録の虫', icon: Book, color: 'green', isUnlocked: () => memos.length >= 5 },
+    { id: 3, reqText: '20件記録', name: '現場の鬼', icon: Flame, color: 'orange', isUnlocked: () => memos.length >= 20 },
+    { id: 4, reqText: '50件記録', name: '無双の親方', icon: Crown, color: 'yellow', isUnlocked: () => memos.length >= 50 },
+    { id: 5, reqText: '100件記録', name: '伝説の電設王', icon: Zap, color: 'cyan', isUnlocked: () => memos.length >= 100 },
+    { id: 6, reqText: '3日連続', name: '継続の力', icon: Clock, color: 'purple', isUnlocked: () => (userSettings.stats?.streakDays || 0) >= 3 },
+    { id: 7, reqText: '趣味5件', name: '文武両道', icon: Dumbbell, color: 'pink', isUnlocked: () => memos.filter(m => userSettings.genres[m.genre]?.group === '趣味').length >= 5 },
+    { id: 8, reqText: '現場討伐', name: 'ボスハンター', icon: Target, color: 'red', isUnlocked: () => (userSettings.stats?.completedSites?.length || 0) >= 1 }
+  ];
+
+  // ★ 追加：称号一覧をいつでも確認できるモーダル
+  const TrophiesModal = () => {
+    if (!showTrophiesModal) return null;
+    return (
+      <div className="fixed inset-0 z-[150] flex flex-col items-center justify-center bg-slate-950/90 p-4 backdrop-blur-md animate-in fade-in duration-300">
+        <div className="w-full max-w-sm bg-slate-900 border border-slate-700 rounded-3xl p-5 shadow-[0_0_30px_rgba(6,182,212,0.2)] flex flex-col max-h-[80vh]">
+          <div className="flex justify-between items-center mb-4 shrink-0">
+            <h2 className="text-lg font-black text-cyan-400 tracking-widest flex items-center gap-2"><Trophy size={20}/> LICENSES & TROPHIES</h2>
+            <button onClick={() => setShowTrophiesModal(false)} className="text-slate-500 hover:text-cyan-400 active:scale-90 transition-transform"><X size={24}/></button>
+          </div>
+          
+          <div className="overflow-y-auto pr-2 space-y-3 flex-1" style={{ scrollbarWidth: 'none' }}>
+            {trophies.map(t => {
+              const isUnlocked = t.isUnlocked();
+              const IconComp = t.icon;
+              const tColor = ColorMap[t.color] || ColorMap.gray;
+              
+              return (
+                <div key={t.id} className={`flex items-center gap-4 p-3 rounded-2xl border transition-all ${isUnlocked ? 'bg-slate-800 border-slate-600 shadow-inner' : 'bg-slate-900 border-slate-800 opacity-60 grayscale'}`}>
+                  <div className={`w-12 h-12 shrink-0 rounded-full flex items-center justify-center relative ${isUnlocked ? `${tColor.light} border ${tColor.border} shadow-[0_0_10px_currentColor] ${tColor.text}` : 'bg-slate-800 border border-slate-600 text-slate-500'}`}>
+                    {isUnlocked ? <IconComp size={20} /> : <Lock size={16} />}
+                  </div>
+                  <div className="flex flex-col min-w-0">
+                    <span className={`text-sm font-black truncate ${isUnlocked ? 'text-slate-100' : 'text-slate-500'}`}>
+                      {isUnlocked ? t.name : '??? (未開放)'}
+                    </span>
+                    <span className={`text-[10px] font-bold ${isUnlocked ? 'text-cyan-600' : 'text-slate-600'}`}>
+                      条件: {t.reqText}
+                    </span>
+                  </div>
+                  {isUnlocked && <CheckCircle size={16} className="ml-auto text-green-500 shrink-0 drop-shadow-[0_0_5px_rgba(34,197,94,0.5)]"/>}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   const LevelUpModal = () => {
     if (!levelUpData) return null;
     return (
@@ -389,23 +556,72 @@ const App = () => {
     );
   };
 
+  const RadarChart = () => {
+    const radarCategories = MainCategories;
+    const data = radarCategories.map(cat => {
+      const count = memos.filter(m => (userSettings.genres[m.genre]?.group || 'その他') === cat).length;
+      return { name: cat, count };
+    });
+    
+    const maxVal = Math.max(...data.map(d => d.count), 5);
+    const centerX = 150;
+    const centerY = 150;
+    const radius = 90; 
+
+    const getPoint = (index, value) => {
+      const angle = (Math.PI * 2 * index) / data.length - Math.PI / 2;
+      const r = (value / maxVal) * radius;
+      return `${centerX + r * Math.cos(angle)},${centerY + r * Math.sin(angle)}`;
+    };
+
+    const polygonPoints = data.map((d, i) => getPoint(i, d.count)).join(' ');
+    const bgPolygonPoints = data.map((_, i) => getPoint(i, maxVal)).join(' ');
+    const midBgPolygonPoints = data.map((_, i) => getPoint(i, maxVal * 0.5)).join(' ');
+
+    return (
+      <div className="relative w-full max-w-xs mx-auto aspect-square mb-6">
+        <svg viewBox="0 0 300 300" className="w-full h-full drop-shadow-[0_0_15px_rgba(6,182,212,0.3)]">
+          <polygon points={bgPolygonPoints} fill="rgba(15,23,42,0.8)" stroke="#1e293b" strokeWidth="2" />
+          <polygon points={midBgPolygonPoints} fill="none" stroke="#1e293b" strokeWidth="1" strokeDasharray="4 4" />
+          {data.map((_, i) => (
+            <line key={i} x1={centerX} y1={centerY} x2={getPoint(i, maxVal).split(',')[0]} y2={getPoint(i, maxVal).split(',')[1]} stroke="#1e293b" strokeWidth="1" />
+          ))}
+          <polygon points={polygonPoints} fill="rgba(34,211,238,0.3)" stroke="#22d3ee" strokeWidth="3" className="animate-pulse" />
+          {data.map((d, i) => {
+            const [x, y] = getPoint(i, d.count).split(',');
+            return <circle key={`dot-${i}`} cx={x} cy={y} r="4" fill="#facc15" className="drop-shadow-[0_0_5px_rgba(250,204,21,1)]" />;
+          })}
+          {data.map((d, i) => {
+            const angle = (Math.PI * 2 * i) / data.length - Math.PI / 2;
+            const textRadius = radius + 25;
+            const tx = centerX + textRadius * Math.cos(angle);
+            const ty = centerY + textRadius * Math.sin(angle);
+            return (
+              <text key={`label-${i}`} x={tx} y={ty} fill="#94a3b8" fontSize="10" fontWeight="900" textAnchor="middle" dominantBaseline="middle" className="drop-shadow-md">
+                {d.name}
+              </text>
+            );
+          })}
+        </svg>
+      </div>
+    );
+  };
+
   const [markupModal, setMarkupModal] = useState({ isOpen: false, imgIndex: null, dataUrl: null });
   
-  // ★ 高解像度・フリーズ対策済みの最新画像エディター
   const MarkupModalCanvas = () => {
     const canvasRef = useRef(null);
     const containerRef = useRef(null);
     const [isDrawing, setIsDrawing] = useState(false);
     const [mode, setMode] = useState('draw'); 
     const [zoom, setZoom] = useState(1);
-    const [dimensions, setDimensions] = useState({ width: 0, height: 0 }); // これは実際の画像サイズ（1200px等）を保持
+    const [dimensions, setDimensions] = useState({ width: 0, height: 0 });
     
     const [textInput, setTextInput] = useState(null);
     const [strokes, setStrokes] = useState([]);
     const [redoStack, setRedoStack] = useState([]); 
     const currentStrokeRef = useRef(null);
     
-    // ★ ベース画像をキャッシュし、高画質を保持
     const baseImageRef = useRef(null);
 
     const [penColor, setPenColor] = useState('#ef4444'); 
@@ -420,7 +636,6 @@ const App = () => {
       if (!markupModal.dataUrl) return;
       const img = new Image();
       img.onload = () => {
-        // ★ 変更：スマホの画面幅に縮小せず、実際の解像度（1200px等）をそのままキャンバスの大きさに設定
         setDimensions({ width: img.width, height: img.height });
         baseImageRef.current = img; 
       };
@@ -475,7 +690,6 @@ const App = () => {
 
     useEffect(() => { redrawAll(); }, [dimensions, strokes]);
 
-    // ★ 変更：安全に座標を計算する処理（NaNエラー・フリーズを完全防止）
     const getPos = (e) => {
       if (!canvasRef.current) return { x: 0, y: 0 };
       const r = canvasRef.current.getBoundingClientRect();
@@ -504,7 +718,6 @@ const App = () => {
       if (mode !== 'draw' && mode !== 'eraser') return;
       setIsDrawing(true); 
       
-      // キャンバスの大きさに応じてペンの太さを自動調整（1200pxなら約10pxの太さ）
       const baseLineWidth = dimensions.width ? Math.max(4, dimensions.width * 0.008) : 4;
 
       currentStrokeRef.current = { 
@@ -585,7 +798,6 @@ const App = () => {
     };
 
     const handleSaveImage = () => {
-      // ★ 保存時も高画質のまま（0.8）保存します
       const newDataUrl = canvasRef.current.toDataURL('image/jpeg', 0.8);
       const newImages = [...formData.images];
       newImages[markupModal.imgIndex] = newDataUrl;
@@ -684,7 +896,7 @@ const App = () => {
                       left: `${(textInput.x / dimensions.width) * 100}%`,
                       top: `${(textInput.y / dimensions.height) * 100}%`,
                       color: penColor,
-                      fontSize: `${Math.max(16, 24 / zoom) * zoom}px`, // スマホでの表示用サイズ
+                      fontSize: `${Math.max(16, 24 / zoom) * zoom}px`, 
                       fontWeight: '900',
                       background: 'rgba(0,0,0,0.6)',
                       border: '2px dashed #06b6d4',
@@ -725,14 +937,12 @@ const App = () => {
           const img = new Image();
           img.onload = () => {
             const canvas = document.createElement('canvas');
-            // ★ 高画質化：最大幅を1200pxに引き上げました
             const MAX_WIDTH = 1200; 
             const scale = Math.min(MAX_WIDTH / img.width, 1);
             canvas.width = img.width * scale;
             canvas.height = img.height * scale;
             const ctx = canvas.getContext('2d');
             ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-            // ★ 画質を0.8に引き上げ、ぼやけないようにしました
             resolve(canvas.toDataURL('image/jpeg', 0.8));
           };
           img.src = event.target.result;
@@ -1027,89 +1237,6 @@ const App = () => {
     )
   };
 
-  const currentExp = userSettings.stats?.exp || 0;
-  const currentLevel = userSettings.stats?.level || 1;
-  const expPercentage = currentExp % 100;
-  const pendingReviews = memos.filter(m => m.needsReview && !m.isReviewed);
-
-  const sortedGenres = Object.entries(userSettings.genres)
-    .map(([k, v]) => ({ key: k, ...v }))
-    .sort((a, b) => a.order - b.order);
-
-  const groupedGenresForm = MainCategories.map(cat => ({
-    category: cat,
-    genres: sortedGenres.filter(g => g.group === cat)
-  })).filter(g => g.genres.length > 0);
-
-  const sortedTags = Object.entries(userSettings.tags)
-    .map(([k, v]) => ({ key: k, ...v }))
-    .sort((a, b) => a.order - b.order);
-
-  const groupedTagsForm = MainCategories.map(cat => ({
-    category: cat,
-    tags: sortedTags.filter(t => t.group === cat)
-  })).filter(t => t.tags.length > 0);
-
-  const RadarChart = () => {
-    const radarCategories = MainCategories;
-    const data = radarCategories.map(cat => {
-      const count = memos.filter(m => (userSettings.genres[m.genre]?.group || 'その他') === cat).length;
-      return { name: cat, count };
-    });
-    
-    const maxVal = Math.max(...data.map(d => d.count), 5);
-    const centerX = 150;
-    const centerY = 150;
-    const radius = 90; 
-
-    const getPoint = (index, value) => {
-      const angle = (Math.PI * 2 * index) / data.length - Math.PI / 2;
-      const r = (value / maxVal) * radius;
-      return `${centerX + r * Math.cos(angle)},${centerY + r * Math.sin(angle)}`;
-    };
-
-    const polygonPoints = data.map((d, i) => getPoint(i, d.count)).join(' ');
-    const bgPolygonPoints = data.map((_, i) => getPoint(i, maxVal)).join(' ');
-    const midBgPolygonPoints = data.map((_, i) => getPoint(i, maxVal * 0.5)).join(' ');
-
-    return (
-      <div className="relative w-full max-w-xs mx-auto aspect-square mb-6">
-        <svg viewBox="0 0 300 300" className="w-full h-full drop-shadow-[0_0_15px_rgba(6,182,212,0.3)]">
-          <polygon points={bgPolygonPoints} fill="rgba(15,23,42,0.8)" stroke="#1e293b" strokeWidth="2" />
-          <polygon points={midBgPolygonPoints} fill="none" stroke="#1e293b" strokeWidth="1" strokeDasharray="4 4" />
-          {data.map((_, i) => (
-            <line key={i} x1={centerX} y1={centerY} x2={getPoint(i, maxVal).split(',')[0]} y2={getPoint(i, maxVal).split(',')[1]} stroke="#1e293b" strokeWidth="1" />
-          ))}
-          <polygon points={polygonPoints} fill="rgba(34,211,238,0.3)" stroke="#22d3ee" strokeWidth="3" className="animate-pulse" />
-          {data.map((d, i) => {
-            const [x, y] = getPoint(i, d.count).split(',');
-            return <circle key={`dot-${i}`} cx={x} cy={y} r="4" fill="#facc15" className="drop-shadow-[0_0_5px_rgba(250,204,21,1)]" />;
-          })}
-          {data.map((d, i) => {
-            const angle = (Math.PI * 2 * i) / data.length - Math.PI / 2;
-            const textRadius = radius + 25;
-            const tx = centerX + textRadius * Math.cos(angle);
-            const ty = centerY + textRadius * Math.sin(angle);
-            return (
-              <text key={`label-${i}`} x={tx} y={ty} fill="#94a3b8" fontSize="10" fontWeight="900" textAnchor="middle" dominantBaseline="middle" className="drop-shadow-md">
-                {d.name}
-              </text>
-            );
-          })}
-        </svg>
-      </div>
-    );
-  };
-
-  // ★ 称号（トロフィー）データ
-  const trophies = [
-    { id: 1, req: 1, name: '現場デビュー', icon: HardHat, color: 'blue' },
-    { id: 2, req: 5, name: '記録の虫', icon: Book, color: 'green' },
-    { id: 3, req: 20, name: '現場の鬼', icon: Flame, color: 'orange' },
-    { id: 4, req: 50, name: '無双の親方', icon: Crown, color: 'yellow' },
-    { id: 5, req: 100, name: '伝説の電設王', icon: Zap, color: 'cyan' }
-  ];
-
   return (
     <div className="min-h-screen bg-slate-950 pb-28 text-slate-200 font-sans antialiased selection:bg-cyan-500/30 relative">
       
@@ -1121,7 +1248,42 @@ const App = () => {
 
       <div className="relative z-10">
         <LevelUpModal />
+        <TrophiesModal /> {/* ★ 追加：称号モーダル */}
         {markupModal.isOpen && <MarkupModalCanvas />}
+
+        {/* ★ ボス討伐演出 */}
+        {showBossDefeat && (
+          <div className="fixed inset-0 z-[200] flex items-center justify-center bg-red-950/90 overflow-hidden backdrop-blur-sm">
+            <div className="absolute inset-0 bg-red-500 animate-ping mix-blend-overlay opacity-20"></div>
+            <div className="text-center animate-in zoom-in duration-500">
+              <Zap size={120} className="text-yellow-400 mx-auto animate-pulse drop-shadow-[0_0_30px_rgba(250,204,21,1)]" fill="currentColor"/>
+              <h1 className="text-5xl font-black text-white mt-4 italic tracking-tighter drop-shadow-[0_0_15px_rgba(239,68,68,1)]">現場討伐完了!!</h1>
+              <p className="text-yellow-400 font-black mt-4 text-2xl drop-shadow-md">BONUS EXP +{bossExp}</p>
+            </div>
+          </div>
+        )}
+
+        {/* ★ エンカウント演出 */}
+        {encounterMemo && (
+          <div className="fixed inset-0 z-[150] flex items-center justify-center bg-slate-950/80 p-4 backdrop-blur-sm animate-in fade-in">
+            <div className="bg-slate-900 border-2 border-red-500 rounded-3xl p-6 w-full max-w-sm shadow-[0_0_30px_rgba(239,68,68,0.5)]">
+              <h3 className="text-red-400 font-black text-xl mb-2 animate-pulse flex items-center gap-2"><AlertCircle /> WARNING!</h3>
+              <p className="text-slate-300 text-sm font-bold mb-4">野生の「未確認メモ」が飛び出してきた！</p>
+              <div className="bg-slate-950 p-4 rounded-xl border border-slate-800 mb-6 shadow-inner">
+                <p className="text-cyan-400 font-black text-lg truncate">{encounterMemo.title}</p>
+                <p className="text-slate-500 text-xs mt-1 truncate">📍 {encounterMemo.site}</p>
+              </div>
+              <div className="flex gap-2">
+                <button onClick={() => setEncounterMemo(null)} className="flex-1 bg-slate-800 text-slate-400 py-3 rounded-xl font-bold active:scale-95 transition-transform">逃げる</button>
+                <button onClick={() => {
+                  setSelectedMemo(encounterMemo);
+                  setView('detail');
+                  setEncounterMemo(null);
+                }} className="flex-1 bg-red-600 text-white py-3 rounded-xl font-black shadow-[0_0_15px_rgba(239,68,68,0.5)] active:scale-95 transition-transform">立ち向かう</button>
+              </div>
+            </div>
+          </div>
+        )}
         
         <header className="bg-slate-900 border-b border-cyan-500/30 text-white px-5 py-4 rounded-b-3xl shadow-[0_0_20px_rgba(6,182,212,0.15)] sticky top-0 z-20 overflow-hidden relative">
           <div className="absolute top-0 right-0 opacity-5 pointer-events-none"><Zap size={150} className="-mt-10 -mr-10 rotate-12 text-cyan-400" /></div>
@@ -1168,17 +1330,25 @@ const App = () => {
                 setShowNewGenre(false); 
                 setShowNewTag(false); 
                 setView('add'); 
-              }} className="bg-slate-800 text-yellow-400 p-2.5 rounded-xl shadow-[0_0_15px_rgba(234,179,8,0.3)] border border-yellow-500/50 active:scale-90 hover:scale-105 transition-all">
+              }} className={`${weaponStyle.bg} ${weaponStyle.text} p-2.5 rounded-xl ${weaponStyle.shadow} border ${weaponStyle.border} active:scale-90 hover:scale-105 transition-all`}>
                 <ClipperIcon size={22} />
               </button>
             </div>
           </div>
 
-          <div className="bg-slate-950/50 rounded-xl p-2 mb-3 backdrop-blur-md border border-cyan-900/50 shadow-inner relative z-10">
+          {/* ★ 変更：レベルバーをタップできるようにし、クリックで称号一覧を表示 */}
+          <div 
+            onClick={() => setShowTrophiesModal(true)}
+            className="bg-slate-950/50 rounded-xl p-2 mb-3 backdrop-blur-md border border-cyan-900/50 shadow-inner relative z-10 cursor-pointer hover:bg-slate-900/80 active:scale-[0.98] transition-all"
+          >
             <div className="flex justify-between items-center mb-1.5">
               <div className="flex items-center gap-2">
                 <span className="bg-yellow-500/20 border border-yellow-500 text-yellow-400 text-[9px] font-black px-1.5 py-0.5 rounded flex items-center gap-0.5 shadow-[0_0_5px_rgba(234,179,8,0.3)]"><Trophy size={10}/> Lv.{currentLevel}</span>
                 <span className="text-[10px] font-bold text-cyan-50 tracking-wide truncate max-w-[120px]">{getTitle(currentLevel)}</span>
+                {/* ★ ストリーク表示 */}
+                {(userSettings.stats?.streakDays || 0) > 0 && (
+                  <span className="bg-orange-500/20 border border-orange-500 text-orange-400 text-[9px] font-black px-1.5 py-0.5 rounded flex items-center gap-0.5 shadow-[0_0_5px_rgba(249,115,22,0.3)]"><Flame size={10}/> {userSettings.stats.streakDays}連コンボ</span>
+                )}
               </div>
               <span className="text-[8px] font-bold text-cyan-600 uppercase tracking-widest">DATA: {userSettings.stats?.totalMemos || 0}</span>
             </div>
@@ -1293,7 +1463,20 @@ const App = () => {
                           {listMode === 'material' && <Tags size={14} className="text-cyan-500"/>}
                           {groupKey}
                         </h3>
-                        <span className="text-[9px] font-bold bg-slate-800 border border-slate-600 text-cyan-400 px-2 py-1 rounded-full shadow-inner">{groupMemos.length} FILES</span>
+                        <div className="flex items-center gap-2">
+                          <span className="text-[9px] font-bold bg-slate-800 border border-slate-600 text-cyan-400 px-2 py-1 rounded-full shadow-inner">{groupMemos.length} FILES</span>
+                          {/* ★ 現場討伐ボタン */}
+                          {listMode === 'site' && groupKey !== 'NO SITE DATA' && !(userSettings.stats?.completedSites || []).includes(groupKey) && (
+                            <button onClick={(e) => { e.stopPropagation(); handleBossDefeat(groupKey, groupMemos.length); }} className="bg-red-900/50 text-red-400 border border-red-500 text-[9px] font-black px-2 py-1 rounded-md shadow-[0_0_10px_rgba(239,68,68,0.3)] active:scale-95 flex items-center gap-1">
+                              <Skull size={10}/>討伐(完了)
+                            </button>
+                          )}
+                          {listMode === 'site' && (userSettings.stats?.completedSites || []).includes(groupKey) && (
+                            <span className="bg-green-900/30 text-green-500 border border-green-500/50 text-[9px] font-black px-2 py-1 rounded-md shadow-inner flex items-center gap-1">
+                              <Check size={10}/>討伐済
+                            </span>
+                          )}
+                        </div>
                       </div>
                       <div className="p-3 space-y-2">
                         {groupMemos.map(memo => (
@@ -1337,23 +1520,23 @@ const App = () => {
                 <RadarChart />
                 
                 <div className="grid grid-cols-2 gap-4 mt-6">
-                  <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800 shadow-inner">
+                  <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800 shadow-inner flex flex-col items-center">
                     <p className="text-[10px] font-black text-cyan-700 mb-1">TOTAL LOGS</p>
-                    <p className="text-2xl font-black text-cyan-400">{memos.length}</p>
+                    <p className="text-3xl font-black text-cyan-400 drop-shadow-[0_0_5px_rgba(34,211,238,0.5)]">{memos.length}</p>
                   </div>
-                  <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800 shadow-inner">
+                  <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800 shadow-inner flex flex-col items-center">
                     <p className="text-[10px] font-black text-yellow-600 mb-1">CURRENT LEVEL</p>
-                    <p className="text-2xl font-black text-yellow-400">{currentLevel}</p>
+                    <p className="text-3xl font-black text-yellow-400 drop-shadow-[0_0_5px_rgba(250,204,21,0.5)]">{currentLevel}</p>
                   </div>
                 </div>
               </div>
 
-              {/* ★ 変更：称号の「開放・未開放」を視覚的に分かりやすくしました */}
+              {/* ★ 称号リストの稼働 */}
               <div className="bg-slate-900/80 backdrop-blur-sm p-6 rounded-[2.5rem] border border-slate-700 shadow-lg">
                 <h3 className="text-center text-xs font-black text-slate-400 tracking-widest mb-4">LICENSES & TROPHIES</h3>
                 <div className="flex gap-4 overflow-x-auto pb-2 px-2 snap-x">
                   {trophies.map(t => {
-                    const isUnlocked = memos.length >= t.req;
+                    const isUnlocked = t.isUnlocked();
                     const IconComp = t.icon;
                     const tColor = ColorMap[t.color] || ColorMap.gray;
                     
@@ -1363,11 +1546,44 @@ const App = () => {
                           {isUnlocked ? <IconComp size={24} /> : <Lock size={20} />}
                         </div>
                         <span className={`text-[9px] font-black whitespace-nowrap ${isUnlocked ? 'text-slate-200' : 'text-slate-500'}`}>
-                          {isUnlocked ? t.name : `あと ${t.req - memos.length}件で開放`}
+                          {isUnlocked ? t.name : `条件: ${t.reqText}`}
                         </span>
                       </div>
                     );
                   })}
+                </div>
+              </div>
+
+              {/* ★ 武器のメンテナンスコーナー */}
+              <div className="bg-slate-900/80 backdrop-blur-sm p-6 rounded-[2.5rem] border border-slate-700 shadow-lg">
+                <h3 className="text-center text-xs font-black text-slate-400 tracking-widest mb-4">WEAPON MAINTENANCE</h3>
+                <div className="bg-slate-950 p-5 rounded-2xl border border-slate-800 shadow-inner flex flex-col items-center relative overflow-hidden">
+                  <ClipperIcon size={48} className={`mb-4 ${weaponStyle.text} ${weaponStyle.shadow} transition-all duration-1000`} />
+                  <p className="text-xs font-black text-slate-300 mb-2 tracking-widest">耐久度 / 切れ味</p>
+                  
+                  <div className="w-full bg-slate-800 rounded-full h-2 mb-4 overflow-hidden shadow-inner">
+                    <div 
+                      className={`h-2 rounded-full transition-all duration-500 ${
+                        (userSettings.stats?.clipperDurability ?? 100) > 50 ? 'bg-cyan-400 shadow-[0_0_10px_rgba(34,211,238,0.8)]' : 
+                        (userSettings.stats?.clipperDurability ?? 100) > 20 ? 'bg-yellow-400 shadow-[0_0_10px_rgba(250,204,21,0.8)]' : 
+                        'bg-red-500 shadow-[0_0_10px_rgba(239,68,68,0.8)] animate-pulse'
+                      }`} 
+                      style={{ width: `${userSettings.stats?.clipperDurability ?? 100}%` }}
+                    ></div>
+                  </div>
+
+                  <button 
+                    onClick={() => {
+                      if ((userSettings.stats?.clipperDurability ?? 100) >= 100) {
+                         alert('今のところ完璧な切れ味です！'); return;
+                      }
+                      saveSettings({ ...userSettings, stats: { ...userSettings.stats, clipperDurability: 100 } });
+                      alert('クリッパーのメンテナンスを完了しました！切れ味が全回復！');
+                    }} 
+                    className="w-full bg-slate-800 border border-slate-600 text-cyan-400 px-4 py-3 rounded-xl font-black text-xs uppercase tracking-widest active:scale-[0.98] hover:bg-slate-700 transition-all flex justify-center items-center gap-2 shadow-md"
+                  >
+                    <Wrench size={16}/> 研磨・注油する
+                  </button>
                 </div>
               </div>
             </div>
@@ -1419,7 +1635,7 @@ const App = () => {
               
               <div className="text-center py-4 opacity-30">
                 <Gamepad2 size={32} className="mx-auto text-cyan-600 mb-2"/>
-                <p className="text-[10px] font-black text-cyan-600 uppercase tracking-widest">ELECTRIC CLIPPER MASTER v1.8</p>
+                <p className="text-[10px] font-black text-cyan-600 uppercase tracking-widest">ELECTRIC CLIPPER MASTER v2.0</p>
               </div>
             </div>
           )}
