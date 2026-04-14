@@ -12,7 +12,7 @@ import {
   Phone, Car, Clock, Lock, Unlock, Sun, Moon, ChevronDown,
   Snowflake, Paintbrush, Link, Milestone, Layers,
   Gamepad2, Sword, Crown, Trophy, Target, Dumbbell, Book, Star, Sparkles, Medal, Award,
-  Move, ZoomIn, ZoomOut, RotateCcw,
+  Move, ZoomIn, ZoomOut, RotateCcw, RotateCw,
   User, Bell, ChevronUp, CheckSquare, ArrowUp, ArrowDown,
   Coffee, Eraser
 } from 'lucide-react';
@@ -401,7 +401,11 @@ const App = () => {
     
     const [textInput, setTextInput] = useState(null);
     const [strokes, setStrokes] = useState([]);
+    const [redoStack, setRedoStack] = useState([]); // ★ 追加：進む用の履歴
     const currentStrokeRef = useRef(null);
+    
+    // ★ 追加：ベース画像をキャッシュして再描画を高速化するためのRef
+    const baseImageRef = useRef(null);
 
     const [penColor, setPenColor] = useState('#ef4444'); 
     const PEN_COLORS = [
@@ -418,56 +422,56 @@ const App = () => {
         const screenW = Math.min(window.innerWidth - 48, 800); 
         const scale = screenW / img.width;
         setDimensions({ width: screenW, height: img.height * scale });
+        baseImageRef.current = img; // ★ ベース画像を保持
       };
       img.src = markupModal.dataUrl;
     }, [markupModal.dataUrl]);
 
-    // ★ 変更：消しゴム機能に対応するため、オフスクリーンキャンバスを利用して安全に再描画する処理
+    // ★ 変更：キャッシュしたベース画像を使って同期的に高速再描画
     const redrawAll = (strokesToDraw = strokes) => {
-      if (!dimensions.width || !canvasRef.current) return;
+      if (!dimensions.width || !canvasRef.current || !baseImageRef.current) return;
       const canvas = canvasRef.current;
       const ctx = canvas.getContext('2d');
 
-      const img = new Image();
-      img.onload = () => {
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      // ベース画像を瞬時に描画
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(baseImageRef.current, 0, 0, canvas.width, canvas.height);
 
-        const offscreen = document.createElement('canvas');
-        offscreen.width = canvas.width;
-        offscreen.height = canvas.height;
-        const offCtx = offscreen.getContext('2d');
+      // オフスクリーンキャンバスでストロークと消しゴムを処理
+      const offscreen = document.createElement('canvas');
+      offscreen.width = canvas.width;
+      offscreen.height = canvas.height;
+      const offCtx = offscreen.getContext('2d');
 
-        strokesToDraw.forEach(stroke => {
-          if (stroke.type === 'draw' || stroke.type === 'eraser') {
-            offCtx.strokeStyle = stroke.type === 'eraser' ? 'rgba(0,0,0,1)' : stroke.color;
-            offCtx.lineWidth = stroke.width;
-            offCtx.lineJoin = 'round';
-            offCtx.lineCap = 'round';
-            // 消しゴムの場合は合成モードを destination-out にして描画線を透明にする
-            offCtx.globalCompositeOperation = stroke.type === 'eraser' ? 'destination-out' : 'source-over';
-            offCtx.beginPath();
-            stroke.points.forEach((p, i) => {
-              if (i === 0) offCtx.moveTo(p.x, p.y);
-              else offCtx.lineTo(p.x, p.y);
-            });
-            offCtx.stroke();
-          } else if (stroke.type === 'text') {
-            offCtx.globalCompositeOperation = 'source-over';
-            offCtx.fillStyle = stroke.color;
-            offCtx.font = `900 ${stroke.fontSize}px sans-serif`;
-            offCtx.textBaseline = 'top';
-            const lines = stroke.text.split('\n');
-            lines.forEach((line, index) => {
-               offCtx.fillText(line, stroke.x, stroke.y + (index * stroke.fontSize * 1.2));
-            });
-          }
-        });
+      strokesToDraw.forEach(stroke => {
+        if (stroke.type === 'draw' || stroke.type === 'eraser') {
+          offCtx.strokeStyle = stroke.type === 'eraser' ? 'rgba(0,0,0,1)' : stroke.color;
+          offCtx.lineWidth = stroke.width;
+          offCtx.lineJoin = 'round';
+          offCtx.lineCap = 'round';
+          // 消しゴムの場合は線を見えなくする（ベース画像は別レイヤーなので消えない）
+          offCtx.globalCompositeOperation = stroke.type === 'eraser' ? 'destination-out' : 'source-over';
+          offCtx.beginPath();
+          stroke.points.forEach((p, i) => {
+            if (i === 0) offCtx.moveTo(p.x, p.y);
+            else offCtx.lineTo(p.x, p.y);
+          });
+          offCtx.stroke();
+        } else if (stroke.type === 'text') {
+          offCtx.globalCompositeOperation = 'source-over';
+          offCtx.fillStyle = stroke.color;
+          offCtx.font = `900 ${stroke.fontSize}px sans-serif`;
+          offCtx.textBaseline = 'top';
+          const lines = stroke.text.split('\n');
+          lines.forEach((line, index) => {
+             offCtx.fillText(line, stroke.x, stroke.y + (index * stroke.fontSize * 1.2));
+          });
+        }
+      });
 
-        ctx.globalCompositeOperation = 'source-over';
-        ctx.drawImage(offscreen, 0, 0);
-      };
-      img.src = markupModal.dataUrl;
+      // 最後にメインキャンバスにストロークを重ねる
+      ctx.globalCompositeOperation = 'source-over';
+      ctx.drawImage(offscreen, 0, 0);
     };
 
     useEffect(() => { redrawAll(); }, [dimensions, strokes]);
@@ -492,9 +496,21 @@ const App = () => {
       currentStrokeRef.current = { 
         type: mode, 
         color: penColor, 
-        width: (mode === 'eraser' ? 20 : 4) / zoom, // 消しゴムは太めに設定
+        width: (mode === 'eraser' ? 20 : 4) / zoom,
         points: [p] 
       };
+
+      // ★ 追加：タップしただけでも「点」が描画されるようにする
+      if (mode === 'draw') {
+        const ctx = canvasRef.current.getContext('2d'); 
+        ctx.fillStyle = penColor;
+        ctx.globalCompositeOperation = 'source-over';
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, (4 / zoom) / 2, 0, Math.PI * 2);
+        ctx.fill();
+      } else if (mode === 'eraser') {
+        redrawAll([...strokes, currentStrokeRef.current]);
+      }
     };
     
     const draw = (e) => { 
@@ -506,10 +522,10 @@ const App = () => {
         currentStrokeRef.current.points.push(p);
         
         if (mode === 'eraser') {
-          // 消しゴム中は背景を消さないよう常に全体を再描画
+          // 消しゴムは高速な再描画で反映
           redrawAll([...strokes, currentStrokeRef.current]);
         } else {
-          // ペン書きはパフォーマンスのため直接描画
+          // ペンは直接描画してパフォーマンスを最優先
           const ctx = canvasRef.current.getContext('2d'); 
           ctx.strokeStyle = penColor;
           ctx.lineWidth = 4 / zoom;
@@ -530,18 +546,30 @@ const App = () => {
     const stopDrawing = () => { 
       if (isDrawing && currentStrokeRef.current) {
         setStrokes(prev => [...prev, currentStrokeRef.current]);
+        setRedoStack([]); // ★ 追加：新しく書いたら「進む」の履歴はリセット
         currentStrokeRef.current = null;
       }
       setIsDrawing(false); 
     };
 
     const handleUndo = () => {
+      if (strokes.length === 0) return;
+      const lastStroke = strokes[strokes.length - 1];
       setStrokes(prev => prev.slice(0, -1));
+      setRedoStack(prev => [...prev, lastStroke]); // ★ 変更：戻した線を「進む」用に保存
+    };
+
+    const handleRedo = () => {
+      if (redoStack.length === 0) return;
+      const nextStroke = redoStack[redoStack.length - 1];
+      setRedoStack(prev => prev.slice(0, -1));
+      setStrokes(prev => [...prev, nextStroke]); // ★ 追加：一つ進む処理
     };
 
     const handleClearAll = () => {
       if(window.confirm('書き込みをすべて消去しますか？')) {
         setStrokes([]);
+        setRedoStack([]); // ★ 追加：全消去時は進む履歴もリセット
       }
     };
 
@@ -567,7 +595,6 @@ const App = () => {
                 <button onClick={() => setMode('draw')} className={`p-2 rounded-md transition-colors flex items-center gap-1 ${mode === 'draw' ? 'bg-cyan-900/50 text-cyan-400 shadow-inner' : 'text-slate-500 hover:text-cyan-400'}`}>
                   <PenTool size={16}/>
                 </button>
-                {/* ★ 追加：消しゴムツール */}
                 <button onClick={() => setMode('eraser')} className={`p-2 rounded-md transition-colors flex items-center gap-1 ${mode === 'eraser' ? 'bg-cyan-900/50 text-cyan-400 shadow-inner' : 'text-slate-500 hover:text-cyan-400'}`}>
                   <Eraser size={16}/>
                 </button>
@@ -594,6 +621,9 @@ const App = () => {
               <div className="flex gap-2 items-center">
                 <button onClick={handleUndo} disabled={strokes.length === 0} className="px-3 py-2 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all text-slate-300 bg-slate-800 hover:text-yellow-400 disabled:opacity-30 border border-slate-700 active:scale-95">
                   <RotateCcw size={14}/> 戻る
+                </button>
+                <button onClick={handleRedo} disabled={redoStack.length === 0} className="px-3 py-2 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all text-slate-300 bg-slate-800 hover:text-cyan-400 disabled:opacity-30 border border-slate-700 active:scale-95">
+                  <RotateCw size={14}/> 進む
                 </button>
                 <button onClick={handleClearAll} disabled={strokes.length === 0} className="px-3 py-2 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all text-slate-300 bg-slate-800 hover:text-red-400 disabled:opacity-30 border border-slate-700 active:scale-95">
                   <Trash2 size={14}/> 消去
@@ -639,6 +669,7 @@ const App = () => {
                           y: textInput.y, 
                           fontSize: Math.max(16, 24 / zoom)
                         }]);
+                        setRedoStack([]); // ★ 追加：文字を入れたら進む履歴はリセット
                       }
                       setTextInput(null);
                     }}
@@ -1080,9 +1111,7 @@ const App = () => {
 
           <div className="flex justify-between items-center mb-3 relative z-10">
             <div className="flex items-center gap-3">
-              {/* ★ 変更：3つのアイコンを消して、社長特製のホーム画面アイコン画像に変更 */}
               <div className="shrink-0 relative">
-                {/* 後ろでぼんやり光るネオンエフェクト */}
                 <div className="absolute inset-0 bg-cyan-400 blur-md opacity-40 rounded-xl"></div>
                 <img 
                   src="https://raw.githubusercontent.com/TEASTREAM-FURADIN/VoltVault/main/apple-touch-icon.png.png" 
