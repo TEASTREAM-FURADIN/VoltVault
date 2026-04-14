@@ -14,7 +14,7 @@ import {
   Gamepad2, Sword, Crown, Trophy, Target, Dumbbell, Book, Star, Sparkles, Medal, Award,
   Move, ZoomIn, ZoomOut, RotateCcw,
   User, Bell, ChevronUp, CheckSquare, ArrowUp, ArrowDown,
-  Coffee
+  Coffee, Eraser
 } from 'lucide-react';
 
 import { initializeApp } from 'firebase/app';
@@ -222,7 +222,6 @@ const App = () => {
   };
   const [formData, setFormData] = useState(initialForm);
 
-  // ★ その場でのジャンル・タグ追加用のカラー・アイコン状態を追加
   const [showNewGenre, setShowNewGenre] = useState(false);
   const [newGenreName, setNewGenreName] = useState('');
   const [newGenreGroup, setNewGenreGroup] = useState(MainCategories[0]);
@@ -235,7 +234,6 @@ const App = () => {
   const [newTagColor, setNewTagColor] = useState('gray');
   const [newTagIcon, setNewTagIcon] = useState('Tags');
 
-  // ★ オートセーブ（一時保存）の処理
   useEffect(() => {
     if (view === 'add') {
       const timeoutId = setTimeout(() => {
@@ -304,7 +302,6 @@ const App = () => {
           stats: { exp: newExp, level: newLevel, totalMemos: currentStats.totalMemos + 1 }
         };
         await saveSettings(newSettings);
-        // ★ 保存に成功したらドラフトを消去
         localStorage.removeItem('voltVaultDraft');
       }
 
@@ -402,10 +399,7 @@ const App = () => {
     const [zoom, setZoom] = useState(1);
     const [dimensions, setDimensions] = useState({ width: 0, height: 0 });
     
-    // ★ 追加：テキスト入力用の状態
     const [textInput, setTextInput] = useState(null);
-
-    // ★ 追加：Undo（一つ戻る）機能のための履歴管理
     const [strokes, setStrokes] = useState([]);
     const currentStrokeRef = useRef(null);
 
@@ -428,51 +422,55 @@ const App = () => {
       img.src = markupModal.dataUrl;
     }, [markupModal.dataUrl]);
 
-    // ★ 変更：ベース画像と、現在記憶されている履歴（strokes）をすべて再描画する関数
+    // ★ 変更：消しゴム機能に対応するため、オフスクリーンキャンバスを利用して安全に再描画する処理
     const redrawAll = (strokesToDraw = strokes) => {
       if (!dimensions.width || !canvasRef.current) return;
       const canvas = canvasRef.current;
       const ctx = canvas.getContext('2d');
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
 
       const img = new Image();
       img.onload = () => {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
         ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+        const offscreen = document.createElement('canvas');
+        offscreen.width = canvas.width;
+        offscreen.height = canvas.height;
+        const offCtx = offscreen.getContext('2d');
+
         strokesToDraw.forEach(stroke => {
-          if (stroke.type === 'path') {
-            ctx.strokeStyle = stroke.color;
-            ctx.lineWidth = stroke.width;
-            ctx.lineJoin = 'round';
-            ctx.lineCap = 'round';
-            ctx.beginPath();
+          if (stroke.type === 'draw' || stroke.type === 'eraser') {
+            offCtx.strokeStyle = stroke.type === 'eraser' ? 'rgba(0,0,0,1)' : stroke.color;
+            offCtx.lineWidth = stroke.width;
+            offCtx.lineJoin = 'round';
+            offCtx.lineCap = 'round';
+            // 消しゴムの場合は合成モードを destination-out にして描画線を透明にする
+            offCtx.globalCompositeOperation = stroke.type === 'eraser' ? 'destination-out' : 'source-over';
+            offCtx.beginPath();
             stroke.points.forEach((p, i) => {
-              if (i === 0) ctx.moveTo(p.x, p.y);
-              else ctx.lineTo(p.x, p.y);
+              if (i === 0) offCtx.moveTo(p.x, p.y);
+              else offCtx.lineTo(p.x, p.y);
             });
-            ctx.stroke();
+            offCtx.stroke();
           } else if (stroke.type === 'text') {
-            ctx.fillStyle = stroke.color;
-            ctx.font = `900 ${stroke.fontSize}px sans-serif`;
-            ctx.textBaseline = 'top';
+            offCtx.globalCompositeOperation = 'source-over';
+            offCtx.fillStyle = stroke.color;
+            offCtx.font = `900 ${stroke.fontSize}px sans-serif`;
+            offCtx.textBaseline = 'top';
             const lines = stroke.text.split('\n');
             lines.forEach((line, index) => {
-               ctx.fillText(line, stroke.x, stroke.y + (index * stroke.fontSize * 1.2));
+               offCtx.fillText(line, stroke.x, stroke.y + (index * stroke.fontSize * 1.2));
             });
           }
         });
+
+        ctx.globalCompositeOperation = 'source-over';
+        ctx.drawImage(offscreen, 0, 0);
       };
       img.src = markupModal.dataUrl;
     };
 
-    useEffect(() => { redrawAll(); }, [dimensions]);
-
-    useEffect(() => {
-      if (canvasRef.current) {
-        const ctx = canvasRef.current.getContext('2d');
-        ctx.lineWidth = 4 / zoom;
-        ctx.strokeStyle = penColor;
-      }
-    }, [zoom, penColor]);
+    useEffect(() => { redrawAll(); }, [dimensions, strokes]);
 
     const getPos = (e) => {
       const r = canvasRef.current.getBoundingClientRect();
@@ -485,29 +483,48 @@ const App = () => {
 
     const startDrawing = (e) => { 
       const p = getPos(e); 
-      // ★ 追加：テキストモードの場合は、タップした位置に入力枠を出す
       if (mode === 'text') {
         setTextInput({ x: p.x, y: p.y, text: '' });
         return;
       }
-      if (mode !== 'draw') return;
+      if (mode !== 'draw' && mode !== 'eraser') return;
       setIsDrawing(true); 
-      const ctx = canvasRef.current.getContext('2d'); 
-      ctx.beginPath(); 
-      ctx.moveTo(p.x, p.y); 
-      // ★ 変更：履歴として保存開始（typeを追加）
-      currentStrokeRef.current = { type: 'path', color: penColor, width: 4 / zoom, points: [p] };
+      currentStrokeRef.current = { 
+        type: mode, 
+        color: penColor, 
+        width: (mode === 'eraser' ? 20 : 4) / zoom, // 消しゴムは太めに設定
+        points: [p] 
+      };
     };
     
     const draw = (e) => { 
-      if (!isDrawing || mode !== 'draw') return; 
+      if (!isDrawing || (mode !== 'draw' && mode !== 'eraser')) return; 
       e.preventDefault(); 
       const p = getPos(e); 
-      const ctx = canvasRef.current.getContext('2d'); 
-      ctx.lineTo(p.x, p.y); 
-      ctx.stroke(); 
-      // ★ 履歴に座標を追加
-      if (currentStrokeRef.current) currentStrokeRef.current.points.push(p);
+      
+      if (currentStrokeRef.current) {
+        currentStrokeRef.current.points.push(p);
+        
+        if (mode === 'eraser') {
+          // 消しゴム中は背景を消さないよう常に全体を再描画
+          redrawAll([...strokes, currentStrokeRef.current]);
+        } else {
+          // ペン書きはパフォーマンスのため直接描画
+          const ctx = canvasRef.current.getContext('2d'); 
+          ctx.strokeStyle = penColor;
+          ctx.lineWidth = 4 / zoom;
+          ctx.lineJoin = 'round';
+          ctx.lineCap = 'round';
+          ctx.globalCompositeOperation = 'source-over';
+          ctx.beginPath();
+          const pts = currentStrokeRef.current.points;
+          if (pts.length >= 2) {
+             ctx.moveTo(pts[pts.length-2].x, pts[pts.length-2].y);
+             ctx.lineTo(pts[pts.length-1].x, pts[pts.length-1].y);
+             ctx.stroke();
+          }
+        }
+      }
     };
     
     const stopDrawing = () => { 
@@ -518,20 +535,13 @@ const App = () => {
       setIsDrawing(false); 
     };
 
-    // ★ 追加：一つ戻る（Undo）処理
     const handleUndo = () => {
-      setStrokes(prev => {
-        const newStrokes = prev.slice(0, -1);
-        redrawAll(newStrokes);
-        return newStrokes;
-      });
+      setStrokes(prev => prev.slice(0, -1));
     };
 
-    // ★ 追加：全消去処理
     const handleClearAll = () => {
       if(window.confirm('書き込みをすべて消去しますか？')) {
         setStrokes([]);
-        redrawAll([]);
       }
     };
 
@@ -552,11 +562,14 @@ const App = () => {
           </div>
 
           <div className="flex flex-col gap-2 bg-slate-800 p-2 rounded-xl border border-slate-700">
-            {/* ★ 変更：ツールバーを2段に分けて、スマホでもボタンが隠れないように整理 */}
             <div className="flex justify-between items-center bg-slate-900 p-1.5 rounded-lg border border-slate-700 shadow-inner">
               <div className="flex items-center gap-1">
                 <button onClick={() => setMode('draw')} className={`p-2 rounded-md transition-colors flex items-center gap-1 ${mode === 'draw' ? 'bg-cyan-900/50 text-cyan-400 shadow-inner' : 'text-slate-500 hover:text-cyan-400'}`}>
                   <PenTool size={16}/>
+                </button>
+                {/* ★ 追加：消しゴムツール */}
+                <button onClick={() => setMode('eraser')} className={`p-2 rounded-md transition-colors flex items-center gap-1 ${mode === 'eraser' ? 'bg-cyan-900/50 text-cyan-400 shadow-inner' : 'text-slate-500 hover:text-cyan-400'}`}>
+                  <Eraser size={16}/>
                 </button>
                 <button onClick={() => setMode('text')} className={`p-2 rounded-md transition-colors flex items-center gap-1 ${mode === 'text' ? 'bg-cyan-900/50 text-cyan-400 shadow-inner' : 'text-slate-500 hover:text-cyan-400'}`}>
                   <Type size={16}/>
@@ -579,7 +592,6 @@ const App = () => {
                 </button>
               </div>
               <div className="flex gap-2 items-center">
-                {/* ★ 変更：戻る・消去を文字付きの独立したボタンに変更し、押しやすくしました */}
                 <button onClick={handleUndo} disabled={strokes.length === 0} className="px-3 py-2 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all text-slate-300 bg-slate-800 hover:text-yellow-400 disabled:opacity-30 border border-slate-700 active:scale-95">
                   <RotateCcw size={14}/> 戻る
                 </button>
@@ -596,7 +608,7 @@ const App = () => {
             </div>
           </div>
 
-          <div ref={containerRef} className={`flex-1 overflow-auto rounded-xl border-2 border-slate-700 bg-slate-950 shadow-inner relative touch-pan-x touch-pan-y ${mode === 'draw' || mode === 'text' ? 'touch-none' : ''}`}>
+          <div ref={containerRef} className={`flex-1 overflow-auto rounded-xl border-2 border-slate-700 bg-slate-950 shadow-inner relative touch-pan-x touch-pan-y ${mode === 'draw' || mode === 'text' || mode === 'eraser' ? 'touch-none' : ''}`}>
             {dimensions.width > 0 && (
               <div style={{ width: dimensions.width * zoom, height: dimensions.height * zoom, position: 'relative' }}>
                 <canvas
@@ -606,13 +618,12 @@ const App = () => {
                   style={{
                     transform: `scale(${zoom})`,
                     transformOrigin: 'top left',
-                    touchAction: mode === 'draw' || mode === 'text' ? 'none' : 'auto'
+                    touchAction: mode === 'draw' || mode === 'text' || mode === 'eraser' ? 'none' : 'auto'
                   }}
-                  className={`absolute top-0 left-0 shadow-lg ${mode === 'draw' ? 'cursor-crosshair' : mode === 'text' ? 'cursor-text' : 'cursor-grab'}`}
+                  className={`absolute top-0 left-0 shadow-lg ${mode === 'draw' ? 'cursor-crosshair' : mode === 'text' ? 'cursor-text' : mode === 'eraser' ? 'cursor-cell' : 'cursor-grab'}`}
                   onMouseDown={startDrawing} onMouseMove={draw} onMouseUp={stopDrawing} onMouseLeave={stopDrawing}
                   onTouchStart={startDrawing} onTouchMove={draw} onTouchEnd={stopDrawing}
                 />
-                {/* ★ 追加：テキスト入力用ボックス */}
                 {textInput && (
                   <textarea
                     autoFocus
@@ -628,8 +639,6 @@ const App = () => {
                           y: textInput.y, 
                           fontSize: Math.max(16, 24 / zoom)
                         }]);
-                        // onBlur後にすぐに再描画されるようにsetTimeoutを利用
-                        setTimeout(() => redrawAll([...strokes, { type: 'text', color: penColor, text: textInput.text, x: textInput.x, y: textInput.y, fontSize: Math.max(16, 24 / zoom) }]), 0);
                       }
                       setTextInput(null);
                     }}
@@ -1070,11 +1079,17 @@ const App = () => {
           <div className="absolute top-0 right-0 opacity-5 pointer-events-none"><Zap size={150} className="-mt-10 -mr-10 rotate-12 text-cyan-400" /></div>
 
           <div className="flex justify-between items-center mb-3 relative z-10">
-            <div className="flex items-center gap-2">
-              <div className="bg-slate-950 px-2.5 py-1.5 rounded-xl shadow-[0_0_15px_rgba(34,211,238,0.2)] flex items-center gap-1 border border-cyan-500/50">
-                <TeaCupIcon className="text-green-400 drop-shadow-[0_0_5px_rgba(74,222,128,0.8)]" size={16} strokeWidth={2.5}/>
-                <FileText className="text-blue-400 drop-shadow-[0_0_5px_rgba(96,165,250,0.8)]" size={16} strokeWidth={2.5}/>
-                <Zap className="text-yellow-400 drop-shadow-[0_0_8px_rgba(250,204,21,0.8)]" size={18} fill="currentColor"/>
+            <div className="flex items-center gap-3">
+              {/* ★ 変更：3つのアイコンを消して、社長特製のホーム画面アイコン画像に変更 */}
+              <div className="shrink-0 relative">
+                {/* 後ろでぼんやり光るネオンエフェクト */}
+                <div className="absolute inset-0 bg-cyan-400 blur-md opacity-40 rounded-xl"></div>
+                <img 
+                  src="https://raw.githubusercontent.com/TEASTREAM-FURADIN/VoltVault/main/apple-touch-icon.png.png" 
+                  alt="苦菩茶の極意" 
+                  className="w-10 h-10 rounded-xl border border-cyan-400/60 object-cover relative z-10 shadow-[0_0_10px_rgba(0,0,0,0.8)]"
+                  onError={(e) => { e.target.src = '/apple-touch-icon.png'; }}
+                />
               </div>
               <div>
                 <h1 className="text-xl font-black italic tracking-tighter leading-none text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-blue-500 drop-shadow-[0_0_2px_rgba(34,211,238,0.8)]">苦菩茶の極意</h1>
@@ -1093,7 +1108,6 @@ const App = () => {
                   </span>
                 )}
               </button>
-              {/* ★ 変更：追加ボタンを押した際、ドラフト（一時保存）があれば復元する処理を追加 */}
               <button onClick={() => { 
                 const draft = localStorage.getItem('voltVaultDraft');
                 if (draft) {
@@ -1336,7 +1350,7 @@ const App = () => {
               
               <div className="text-center py-4 opacity-30">
                 <Gamepad2 size={32} className="mx-auto text-cyan-600 mb-2"/>
-                <p className="text-[10px] font-black text-cyan-600 uppercase tracking-widest">ELECTRIC CLIPPER MASTER v1.5</p>
+                <p className="text-[10px] font-black text-cyan-600 uppercase tracking-widest">ELECTRIC CLIPPER MASTER v1.6</p>
               </div>
             </div>
           )}
@@ -1452,7 +1466,6 @@ const App = () => {
             </header>
             
             <div className="p-6 space-y-7 max-w-xl mx-auto relative z-10">
-              {/* ★ 追加：一時保存されている場合の「リセット」ボタン */}
               {view === 'add' && (formData.title || formData.content || formData.images.length > 0) && (
                 <div className="flex justify-end mb-[-1rem]">
                   <button onClick={() => {
@@ -1494,7 +1507,6 @@ const App = () => {
                   </div>
                 </div>
 
-                {/* ★ 変更：追加時の色・アイコン指定をフルスペック化 */}
                 {showNewGenre && (
                   <div className="bg-cyan-950/30 p-3 rounded-2xl border border-cyan-900 flex flex-col gap-2 animate-in fade-in slide-in-from-top-2 shadow-inner">
                     <div className="flex gap-2">
@@ -1589,7 +1601,6 @@ const App = () => {
                   <button type="button" onClick={() => setShowNewTag(!showNewTag)} className="text-[10px] font-bold text-cyan-400 bg-slate-800 px-2.5 py-1.5 rounded-lg flex items-center gap-1 border border-cyan-900 shadow-[0_0_8px_rgba(6,182,212,0.2)] active:scale-95 transition-all"><Plus size={12}/>新規タグ作成</button>
                 </div>
 
-                {/* ★ 変更：追加時の色・アイコン指定をフルスペック化 */}
                 {showNewTag && (
                   <div className="bg-cyan-950/30 p-3 rounded-2xl border border-cyan-900 flex flex-col gap-2 animate-in fade-in slide-in-from-top-2 shadow-inner">
                     <div className="flex gap-2">
@@ -1668,7 +1679,8 @@ const App = () => {
       </div>
 
       {/* --- ボトムナビゲーション --- */}
-      {!markupModal.isOpen && (
+      {/* ★ 新規メモ・編集画面中は表示されないように隠します */}
+      {!markupModal.isOpen && view !== 'add' && view !== 'edit' && (
         <nav className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-slate-900/90 backdrop-blur-xl border border-slate-700 rounded-full p-2 flex items-center shadow-[0_0_20px_rgba(0,0,0,0.8)] z-40 w-max gap-2">
           <button onClick={() => setView('list')} className={`flex items-center gap-2 px-6 py-3 rounded-full transition-all duration-300 ${view === 'list' ? 'bg-cyan-600 text-slate-900 shadow-[0_0_15px_rgba(6,182,212,0.5)]' : 'text-slate-400 hover:text-cyan-400'}`}>
             <ClipboardList size={20} strokeWidth={view === 'list' ? 2.5 : 2} />
