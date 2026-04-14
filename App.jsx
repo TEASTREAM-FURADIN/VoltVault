@@ -391,19 +391,21 @@ const App = () => {
 
   const [markupModal, setMarkupModal] = useState({ isOpen: false, imgIndex: null, dataUrl: null });
   
+  // ★ 高解像度・フリーズ対策済みの最新画像エディター
   const MarkupModalCanvas = () => {
     const canvasRef = useRef(null);
     const containerRef = useRef(null);
     const [isDrawing, setIsDrawing] = useState(false);
     const [mode, setMode] = useState('draw'); 
     const [zoom, setZoom] = useState(1);
-    const [dimensions, setDimensions] = useState({ width: 0, height: 0 });
+    const [dimensions, setDimensions] = useState({ width: 0, height: 0 }); // これは実際の画像サイズ（1200px等）を保持
     
     const [textInput, setTextInput] = useState(null);
     const [strokes, setStrokes] = useState([]);
     const [redoStack, setRedoStack] = useState([]); 
     const currentStrokeRef = useRef(null);
     
+    // ★ ベース画像をキャッシュし、高画質を保持
     const baseImageRef = useRef(null);
 
     const [penColor, setPenColor] = useState('#ef4444'); 
@@ -418,9 +420,8 @@ const App = () => {
       if (!markupModal.dataUrl) return;
       const img = new Image();
       img.onload = () => {
-        const screenW = Math.min(window.innerWidth - 48, 800); 
-        const scale = screenW / img.width;
-        setDimensions({ width: screenW, height: img.height * scale });
+        // ★ 変更：スマホの画面幅に縮小せず、実際の解像度（1200px等）をそのままキャンバスの大きさに設定
+        setDimensions({ width: img.width, height: img.height });
         baseImageRef.current = img; 
       };
       img.src = markupModal.dataUrl;
@@ -447,20 +448,24 @@ const App = () => {
           offCtx.lineCap = 'round';
           offCtx.globalCompositeOperation = stroke.type === 'eraser' ? 'destination-out' : 'source-over';
           offCtx.beginPath();
-          stroke.points.forEach((p, i) => {
-            if (i === 0) offCtx.moveTo(p.x, p.y);
-            else offCtx.lineTo(p.x, p.y);
-          });
-          offCtx.stroke();
+          if (stroke.points && stroke.points.length > 0) {
+            stroke.points.forEach((p, i) => {
+              if (i === 0) offCtx.moveTo(p.x, p.y);
+              else offCtx.lineTo(p.x, p.y);
+            });
+            offCtx.stroke();
+          }
         } else if (stroke.type === 'text') {
           offCtx.globalCompositeOperation = 'source-over';
           offCtx.fillStyle = stroke.color;
           offCtx.font = `900 ${stroke.fontSize}px sans-serif`;
           offCtx.textBaseline = 'top';
-          const lines = stroke.text.split('\n');
-          lines.forEach((line, index) => {
-             offCtx.fillText(line, stroke.x, stroke.y + (index * stroke.fontSize * 1.2));
-          });
+          if (stroke.text) {
+            const lines = stroke.text.split('\n');
+            lines.forEach((line, index) => {
+               offCtx.fillText(line, stroke.x, stroke.y + (index * stroke.fontSize * 1.2));
+            });
+          }
         }
       });
 
@@ -470,10 +475,21 @@ const App = () => {
 
     useEffect(() => { redrawAll(); }, [dimensions, strokes]);
 
+    // ★ 変更：安全に座標を計算する処理（NaNエラー・フリーズを完全防止）
     const getPos = (e) => {
+      if (!canvasRef.current) return { x: 0, y: 0 };
       const r = canvasRef.current.getBoundingClientRect();
-      const clientX = e.clientX || (e.touches && e.touches[0].clientX);
-      const clientY = e.clientY || (e.touches && e.touches[0].clientY);
+      let clientX, clientY;
+      if (e.touches && e.touches.length > 0) {
+        clientX = e.touches[0].clientX;
+        clientY = e.touches[0].clientY;
+      } else if (e.changedTouches && e.changedTouches.length > 0) {
+        clientX = e.changedTouches[0].clientX;
+        clientY = e.changedTouches[0].clientY;
+      } else {
+        clientX = e.clientX || 0;
+        clientY = e.clientY || 0;
+      }
       const scaleX = canvasRef.current.width / r.width;
       const scaleY = canvasRef.current.height / r.height;
       return { x: (clientX - r.left) * scaleX, y: (clientY - r.top) * scaleY };
@@ -487,10 +503,14 @@ const App = () => {
       }
       if (mode !== 'draw' && mode !== 'eraser') return;
       setIsDrawing(true); 
+      
+      // キャンバスの大きさに応じてペンの太さを自動調整（1200pxなら約10pxの太さ）
+      const baseLineWidth = dimensions.width ? Math.max(4, dimensions.width * 0.008) : 4;
+
       currentStrokeRef.current = { 
         type: mode, 
         color: penColor, 
-        width: (mode === 'eraser' ? 20 : 4) / zoom,
+        width: (mode === 'eraser' ? baseLineWidth * 5 : baseLineWidth) / zoom,
         points: [p] 
       };
 
@@ -499,7 +519,7 @@ const App = () => {
         ctx.fillStyle = penColor;
         ctx.globalCompositeOperation = 'source-over';
         ctx.beginPath();
-        ctx.arc(p.x, p.y, (4 / zoom) / 2, 0, Math.PI * 2);
+        ctx.arc(p.x, p.y, (baseLineWidth / zoom) / 2, 0, Math.PI * 2);
         ctx.fill();
       } else if (mode === 'eraser') {
         redrawAll([...strokes, currentStrokeRef.current]);
@@ -519,7 +539,7 @@ const App = () => {
         } else {
           const ctx = canvasRef.current.getContext('2d'); 
           ctx.strokeStyle = penColor;
-          ctx.lineWidth = 4 / zoom;
+          ctx.lineWidth = currentStrokeRef.current.width;
           ctx.lineJoin = 'round';
           ctx.lineCap = 'round';
           ctx.globalCompositeOperation = 'source-over';
@@ -565,7 +585,8 @@ const App = () => {
     };
 
     const handleSaveImage = () => {
-      const newDataUrl = canvasRef.current.toDataURL('image/jpeg', 0.4);
+      // ★ 保存時も高画質のまま（0.8）保存します
+      const newDataUrl = canvasRef.current.toDataURL('image/jpeg', 0.8);
       const newImages = [...formData.images];
       newImages[markupModal.imgIndex] = newDataUrl;
       setFormData({...formData, images: newImages});
@@ -574,13 +595,13 @@ const App = () => {
 
     return (
       <div className="fixed inset-0 bg-slate-950 z-[100] flex flex-col items-center justify-center p-2 sm:p-4 animate-in fade-in">
-        <div className="w-full max-w-lg bg-slate-900 rounded-[2rem] p-3 flex flex-col gap-3 shadow-[0_0_30px_rgba(6,182,212,0.2)] border border-cyan-900/50 h-[92dvh] max-h-[800px]">
-          <div className="flex justify-between items-center px-2 pt-1">
+        <div className="w-full max-w-lg bg-slate-900 rounded-[2rem] p-3 flex flex-col gap-3 shadow-[0_0_30px_rgba(6,182,212,0.2)] border border-cyan-900/50 absolute top-4 bottom-4">
+          <div className="flex justify-between items-center px-2 pt-1 shrink-0">
             <h3 className="font-black text-cyan-400 flex items-center gap-2 tracking-widest"><Edit3 size={18}/> MARKUP TERMINAL</h3>
             <button onClick={() => setMarkupModal({ isOpen: false })} className="text-slate-500 hover:text-cyan-400"><X size={28}/></button>
           </div>
 
-          <div className="flex flex-col gap-2 bg-slate-800 p-2 rounded-xl border border-slate-700">
+          <div className="flex flex-col gap-2 bg-slate-800 p-2 rounded-xl border border-slate-700 shrink-0">
             <div className="flex justify-between items-center bg-slate-900 p-1.5 rounded-lg border border-slate-700 shadow-inner">
               <div className="flex items-center gap-1">
                 <button onClick={() => setMode('draw')} className={`p-2 rounded-md transition-colors flex items-center gap-1 ${mode === 'draw' ? 'bg-cyan-900/50 text-cyan-400 shadow-inner' : 'text-slate-500 hover:text-cyan-400'}`}>
@@ -621,27 +642,21 @@ const App = () => {
                 </button>
               </div>
             </div>
-
-            <div className="flex gap-2 items-center justify-center bg-slate-900 py-1.5 rounded-lg border border-slate-700 shadow-inner">
-              <button onClick={() => setZoom(z => Math.max(1, z - 0.5))} className="p-1 text-slate-400 active:scale-95 hover:text-cyan-400"><ZoomOut size={16}/></button>
-              <span className="text-[10px] font-black w-12 text-center text-cyan-400 drop-shadow-[0_0_5px_rgba(34,211,238,0.5)]">{Math.round(zoom * 100)}%</span>
-              <button onClick={() => setZoom(z => Math.min(4, z + 0.5))} className="p-1 text-slate-400 active:scale-95 hover:text-cyan-400"><ZoomIn size={16}/></button>
-            </div>
           </div>
 
-          <div ref={containerRef} className={`flex-1 overflow-auto rounded-xl border-2 border-slate-700 bg-slate-950 shadow-inner relative touch-pan-x touch-pan-y ${mode === 'draw' || mode === 'text' || mode === 'eraser' ? 'touch-none' : ''}`}>
+          <div ref={containerRef} className={`flex-1 overflow-auto rounded-xl border-2 border-slate-700 bg-slate-950 shadow-inner relative ${mode === 'draw' || mode === 'text' || mode === 'eraser' ? 'touch-none' : ''}`}>
             {dimensions.width > 0 && (
-              <div style={{ width: dimensions.width * zoom, height: dimensions.height * zoom, position: 'relative' }}>
+              <div style={{ width: `${100 * zoom}%`, minHeight: '100%', position: 'relative' }}>
                 <canvas
                   ref={canvasRef}
                   width={dimensions.width}
                   height={dimensions.height}
                   style={{
-                    transform: `scale(${zoom})`,
-                    transformOrigin: 'top left',
-                    touchAction: mode === 'draw' || mode === 'text' || mode === 'eraser' ? 'none' : 'auto'
+                    width: '100%',
+                    height: 'auto',
+                    display: 'block'
                   }}
-                  className={`absolute top-0 left-0 shadow-lg ${mode === 'draw' ? 'cursor-crosshair' : mode === 'text' ? 'cursor-text' : mode === 'eraser' ? 'cursor-cell' : 'cursor-grab'}`}
+                  className={`shadow-lg ${mode === 'draw' ? 'cursor-crosshair' : mode === 'text' ? 'cursor-text' : mode === 'eraser' ? 'cursor-cell' : 'cursor-grab'}`}
                   onMouseDown={startDrawing} onMouseMove={draw} onMouseUp={stopDrawing} onMouseLeave={stopDrawing}
                   onTouchStart={startDrawing} onTouchMove={draw} onTouchEnd={stopDrawing}
                 />
@@ -651,14 +666,14 @@ const App = () => {
                     value={textInput.text}
                     onChange={(e) => setTextInput({ ...textInput, text: e.target.value })}
                     onBlur={() => {
-                      if (textInput.text.trim()) {
+                      if (textInput.text && textInput.text.trim()) {
                         setStrokes(prev => [...prev, { 
                           type: 'text', 
                           color: penColor, 
                           text: textInput.text, 
                           x: textInput.x, 
                           y: textInput.y, 
-                          fontSize: Math.max(16, 24 / zoom)
+                          fontSize: Math.max(32, dimensions.width * 0.04 / zoom)
                         }]);
                         setRedoStack([]); 
                       }
@@ -666,10 +681,10 @@ const App = () => {
                     }}
                     style={{
                       position: 'absolute',
-                      left: textInput.x * zoom,
-                      top: textInput.y * zoom,
+                      left: `${(textInput.x / dimensions.width) * 100}%`,
+                      top: `${(textInput.y / dimensions.height) * 100}%`,
                       color: penColor,
-                      fontSize: `${Math.max(16, 24 / zoom) * zoom}px`,
+                      fontSize: `${Math.max(16, 24 / zoom) * zoom}px`, // スマホでの表示用サイズ
                       fontWeight: '900',
                       background: 'rgba(0,0,0,0.6)',
                       border: '2px dashed #06b6d4',
@@ -710,13 +725,15 @@ const App = () => {
           const img = new Image();
           img.onload = () => {
             const canvas = document.createElement('canvas');
-            const MAX_WIDTH = 600; 
+            // ★ 高画質化：最大幅を1200pxに引き上げました
+            const MAX_WIDTH = 1200; 
             const scale = Math.min(MAX_WIDTH / img.width, 1);
             canvas.width = img.width * scale;
             canvas.height = img.height * scale;
             const ctx = canvas.getContext('2d');
             ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-            resolve(canvas.toDataURL('image/jpeg', 0.4));
+            // ★ 画質を0.8に引き上げ、ぼやけないようにしました
+            resolve(canvas.toDataURL('image/jpeg', 0.8));
           };
           img.src = event.target.result;
         };
@@ -1084,6 +1101,15 @@ const App = () => {
     );
   };
 
+  // ★ 称号（トロフィー）データ
+  const trophies = [
+    { id: 1, req: 1, name: '現場デビュー', icon: HardHat, color: 'blue' },
+    { id: 2, req: 5, name: '記録の虫', icon: Book, color: 'green' },
+    { id: 3, req: 20, name: '現場の鬼', icon: Flame, color: 'orange' },
+    { id: 4, req: 50, name: '無双の親方', icon: Crown, color: 'yellow' },
+    { id: 5, req: 100, name: '伝説の電設王', icon: Zap, color: 'cyan' }
+  ];
+
   return (
     <div className="min-h-screen bg-slate-950 pb-28 text-slate-200 font-sans antialiased selection:bg-cyan-500/30 relative">
       
@@ -1112,7 +1138,6 @@ const App = () => {
                 />
               </div>
               <div>
-                {/* ★ 変更：文字が斜めにはみ出て見えなくなる現象を防ぐために右側の余白（pr-2）を追加 */}
                 <h1 className="text-xl font-black italic tracking-tighter leading-none text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-blue-500 drop-shadow-[0_0_2px_rgba(34,211,238,0.8)] pr-2">苦菩茶の極意</h1>
                 <div className="flex items-center gap-1 text-[8px] font-black text-cyan-600 mt-1 uppercase tracking-widest">
                   {isSyncing ? <Loader2 size={8} className="animate-spin" /> : <Cloud size={8} />}
@@ -1323,46 +1348,26 @@ const App = () => {
                 </div>
               </div>
 
-              {/* ★ 追加アイデア実装：称号＆トロフィーコレクションのプロトタイプ */}
+              {/* ★ 変更：称号の「開放・未開放」を視覚的に分かりやすくしました */}
               <div className="bg-slate-900/80 backdrop-blur-sm p-6 rounded-[2.5rem] border border-slate-700 shadow-lg">
                 <h3 className="text-center text-xs font-black text-slate-400 tracking-widest mb-4">LICENSES & TROPHIES</h3>
                 <div className="flex gap-4 overflow-x-auto pb-2 px-2 snap-x">
-                  <div className="flex flex-col items-center min-w-[5rem] snap-center">
-                    <div className="w-14 h-14 rounded-full bg-yellow-500/20 border border-yellow-500 flex items-center justify-center shadow-[0_0_15px_rgba(234,179,8,0.3)] mb-2 relative">
-                       <Zap size={24} className="text-yellow-400"/>
-                    </div>
-                    <span className="text-[9px] font-black text-slate-200">第一種接近</span>
-                  </div>
-                  {memos.length >= 5 ? (
-                    <div className="flex flex-col items-center min-w-[5rem] snap-center">
-                      <div className="w-14 h-14 rounded-full bg-cyan-500/20 border border-cyan-500 flex items-center justify-center shadow-[0_0_15px_rgba(6,182,212,0.3)] mb-2 relative">
-                         <Book size={24} className="text-cyan-400"/>
+                  {trophies.map(t => {
+                    const isUnlocked = memos.length >= t.req;
+                    const IconComp = t.icon;
+                    const tColor = ColorMap[t.color] || ColorMap.gray;
+                    
+                    return (
+                      <div key={t.id} className={`flex flex-col items-center min-w-[5rem] snap-center transition-all ${isUnlocked ? 'opacity-100' : 'opacity-40 grayscale'}`}>
+                        <div className={`w-14 h-14 rounded-full flex items-center justify-center mb-2 relative ${isUnlocked ? `${tColor.light} border ${tColor.border} shadow-[0_0_15px_currentColor] ${tColor.text}` : 'bg-slate-800 border border-slate-600 text-slate-500'}`}>
+                          {isUnlocked ? <IconComp size={24} /> : <Lock size={20} />}
+                        </div>
+                        <span className={`text-[9px] font-black whitespace-nowrap ${isUnlocked ? 'text-slate-200' : 'text-slate-500'}`}>
+                          {isUnlocked ? t.name : `あと ${t.req - memos.length}件で開放`}
+                        </span>
                       </div>
-                      <span className="text-[9px] font-black text-slate-200">記録の虫</span>
-                    </div>
-                  ) : (
-                    <div className="flex flex-col items-center min-w-[5rem] snap-center opacity-30">
-                      <div className="w-14 h-14 rounded-full bg-slate-800 border border-slate-600 flex items-center justify-center mb-2">
-                         <Lock size={20} className="text-slate-500"/>
-                      </div>
-                      <span className="text-[9px] font-black text-slate-500">??? (5件記録)</span>
-                    </div>
-                  )}
-                  {memos.length >= 20 ? (
-                    <div className="flex flex-col items-center min-w-[5rem] snap-center">
-                      <div className="w-14 h-14 rounded-full bg-orange-500/20 border border-orange-500 flex items-center justify-center shadow-[0_0_15px_rgba(249,115,22,0.3)] mb-2 relative">
-                         <Flame size={24} className="text-orange-400"/>
-                      </div>
-                      <span className="text-[9px] font-black text-slate-200">現場の鬼</span>
-                    </div>
-                  ) : (
-                    <div className="flex flex-col items-center min-w-[5rem] snap-center opacity-30">
-                      <div className="w-14 h-14 rounded-full bg-slate-800 border border-slate-600 flex items-center justify-center mb-2">
-                         <Lock size={20} className="text-slate-500"/>
-                      </div>
-                      <span className="text-[9px] font-black text-slate-500">??? (20件記録)</span>
-                    </div>
-                  )}
+                    );
+                  })}
                 </div>
               </div>
             </div>
@@ -1414,7 +1419,7 @@ const App = () => {
               
               <div className="text-center py-4 opacity-30">
                 <Gamepad2 size={32} className="mx-auto text-cyan-600 mb-2"/>
-                <p className="text-[10px] font-black text-cyan-600 uppercase tracking-widest">ELECTRIC CLIPPER MASTER v1.7</p>
+                <p className="text-[10px] font-black text-cyan-600 uppercase tracking-widest">ELECTRIC CLIPPER MASTER v1.8</p>
               </div>
             </div>
           )}
@@ -1743,7 +1748,6 @@ const App = () => {
       </div>
 
       {/* --- ボトムナビゲーション --- */}
-      {/* ★ 新規メモ・編集画面中は表示されないように隠します */}
       {!markupModal.isOpen && view !== 'add' && view !== 'edit' && (
         <nav className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-slate-900/90 backdrop-blur-xl border border-slate-700 rounded-full p-2 flex items-center shadow-[0_0_20px_rgba(0,0,0,0.8)] z-40 w-max gap-2">
           <button onClick={() => setView('list')} className={`flex items-center gap-2 px-6 py-3 rounded-full transition-all duration-300 ${view === 'list' ? 'bg-cyan-600 text-slate-900 shadow-[0_0_15px_rgba(6,182,212,0.5)]' : 'text-slate-400 hover:text-cyan-400'}`}>
