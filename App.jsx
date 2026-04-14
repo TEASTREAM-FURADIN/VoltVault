@@ -401,10 +401,9 @@ const App = () => {
     
     const [textInput, setTextInput] = useState(null);
     const [strokes, setStrokes] = useState([]);
-    const [redoStack, setRedoStack] = useState([]); // ★ 追加：進む用の履歴
+    const [redoStack, setRedoStack] = useState([]); 
     const currentStrokeRef = useRef(null);
     
-    // ★ 追加：ベース画像をキャッシュして再描画を高速化するためのRef
     const baseImageRef = useRef(null);
 
     const [penColor, setPenColor] = useState('#ef4444'); 
@@ -422,22 +421,19 @@ const App = () => {
         const screenW = Math.min(window.innerWidth - 48, 800); 
         const scale = screenW / img.width;
         setDimensions({ width: screenW, height: img.height * scale });
-        baseImageRef.current = img; // ★ ベース画像を保持
+        baseImageRef.current = img; 
       };
       img.src = markupModal.dataUrl;
     }, [markupModal.dataUrl]);
 
-    // ★ 変更：キャッシュしたベース画像を使って同期的に高速再描画
     const redrawAll = (strokesToDraw = strokes) => {
       if (!dimensions.width || !canvasRef.current || !baseImageRef.current) return;
       const canvas = canvasRef.current;
       const ctx = canvas.getContext('2d');
 
-      // ベース画像を瞬時に描画
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       ctx.drawImage(baseImageRef.current, 0, 0, canvas.width, canvas.height);
 
-      // オフスクリーンキャンバスでストロークと消しゴムを処理
       const offscreen = document.createElement('canvas');
       offscreen.width = canvas.width;
       offscreen.height = canvas.height;
@@ -449,7 +445,6 @@ const App = () => {
           offCtx.lineWidth = stroke.width;
           offCtx.lineJoin = 'round';
           offCtx.lineCap = 'round';
-          // 消しゴムの場合は線を見えなくする（ベース画像は別レイヤーなので消えない）
           offCtx.globalCompositeOperation = stroke.type === 'eraser' ? 'destination-out' : 'source-over';
           offCtx.beginPath();
           stroke.points.forEach((p, i) => {
@@ -469,7 +464,6 @@ const App = () => {
         }
       });
 
-      // 最後にメインキャンバスにストロークを重ねる
       ctx.globalCompositeOperation = 'source-over';
       ctx.drawImage(offscreen, 0, 0);
     };
@@ -500,7 +494,6 @@ const App = () => {
         points: [p] 
       };
 
-      // ★ 追加：タップしただけでも「点」が描画されるようにする
       if (mode === 'draw') {
         const ctx = canvasRef.current.getContext('2d'); 
         ctx.fillStyle = penColor;
@@ -522,10 +515,8 @@ const App = () => {
         currentStrokeRef.current.points.push(p);
         
         if (mode === 'eraser') {
-          // 消しゴムは高速な再描画で反映
           redrawAll([...strokes, currentStrokeRef.current]);
         } else {
-          // ペンは直接描画してパフォーマンスを最優先
           const ctx = canvasRef.current.getContext('2d'); 
           ctx.strokeStyle = penColor;
           ctx.lineWidth = 4 / zoom;
@@ -546,7 +537,7 @@ const App = () => {
     const stopDrawing = () => { 
       if (isDrawing && currentStrokeRef.current) {
         setStrokes(prev => [...prev, currentStrokeRef.current]);
-        setRedoStack([]); // ★ 追加：新しく書いたら「進む」の履歴はリセット
+        setRedoStack([]); 
         currentStrokeRef.current = null;
       }
       setIsDrawing(false); 
@@ -556,20 +547,20 @@ const App = () => {
       if (strokes.length === 0) return;
       const lastStroke = strokes[strokes.length - 1];
       setStrokes(prev => prev.slice(0, -1));
-      setRedoStack(prev => [...prev, lastStroke]); // ★ 変更：戻した線を「進む」用に保存
+      setRedoStack(prev => [...prev, lastStroke]); 
     };
 
     const handleRedo = () => {
       if (redoStack.length === 0) return;
       const nextStroke = redoStack[redoStack.length - 1];
       setRedoStack(prev => prev.slice(0, -1));
-      setStrokes(prev => [...prev, nextStroke]); // ★ 追加：一つ進む処理
+      setStrokes(prev => [...prev, nextStroke]); 
     };
 
     const handleClearAll = () => {
       if(window.confirm('書き込みをすべて消去しますか？')) {
         setStrokes([]);
-        setRedoStack([]); // ★ 追加：全消去時は進む履歴もリセット
+        setRedoStack([]); 
       }
     };
 
@@ -669,7 +660,7 @@ const App = () => {
                           y: textInput.y, 
                           fontSize: Math.max(16, 24 / zoom)
                         }]);
-                        setRedoStack([]); // ★ 追加：文字を入れたら進む履歴はリセット
+                        setRedoStack([]); 
                       }
                       setTextInput(null);
                     }}
@@ -1121,7 +1112,8 @@ const App = () => {
                 />
               </div>
               <div>
-                <h1 className="text-xl font-black italic tracking-tighter leading-none text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-blue-500 drop-shadow-[0_0_2px_rgba(34,211,238,0.8)]">苦菩茶の極意</h1>
+                {/* ★ 変更：文字が斜めにはみ出て見えなくなる現象を防ぐために右側の余白（pr-2）を追加 */}
+                <h1 className="text-xl font-black italic tracking-tighter leading-none text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-blue-500 drop-shadow-[0_0_2px_rgba(34,211,238,0.8)] pr-2">苦菩茶の極意</h1>
                 <div className="flex items-center gap-1 text-[8px] font-black text-cyan-600 mt-1 uppercase tracking-widest">
                   {isSyncing ? <Loader2 size={8} className="animate-spin" /> : <Cloud size={8} />}
                   {user ? `SYSTEM ONLINE` : "CONNECTING..."}
@@ -1330,6 +1322,49 @@ const App = () => {
                   </div>
                 </div>
               </div>
+
+              {/* ★ 追加アイデア実装：称号＆トロフィーコレクションのプロトタイプ */}
+              <div className="bg-slate-900/80 backdrop-blur-sm p-6 rounded-[2.5rem] border border-slate-700 shadow-lg">
+                <h3 className="text-center text-xs font-black text-slate-400 tracking-widest mb-4">LICENSES & TROPHIES</h3>
+                <div className="flex gap-4 overflow-x-auto pb-2 px-2 snap-x">
+                  <div className="flex flex-col items-center min-w-[5rem] snap-center">
+                    <div className="w-14 h-14 rounded-full bg-yellow-500/20 border border-yellow-500 flex items-center justify-center shadow-[0_0_15px_rgba(234,179,8,0.3)] mb-2 relative">
+                       <Zap size={24} className="text-yellow-400"/>
+                    </div>
+                    <span className="text-[9px] font-black text-slate-200">第一種接近</span>
+                  </div>
+                  {memos.length >= 5 ? (
+                    <div className="flex flex-col items-center min-w-[5rem] snap-center">
+                      <div className="w-14 h-14 rounded-full bg-cyan-500/20 border border-cyan-500 flex items-center justify-center shadow-[0_0_15px_rgba(6,182,212,0.3)] mb-2 relative">
+                         <Book size={24} className="text-cyan-400"/>
+                      </div>
+                      <span className="text-[9px] font-black text-slate-200">記録の虫</span>
+                    </div>
+                  ) : (
+                    <div className="flex flex-col items-center min-w-[5rem] snap-center opacity-30">
+                      <div className="w-14 h-14 rounded-full bg-slate-800 border border-slate-600 flex items-center justify-center mb-2">
+                         <Lock size={20} className="text-slate-500"/>
+                      </div>
+                      <span className="text-[9px] font-black text-slate-500">??? (5件記録)</span>
+                    </div>
+                  )}
+                  {memos.length >= 20 ? (
+                    <div className="flex flex-col items-center min-w-[5rem] snap-center">
+                      <div className="w-14 h-14 rounded-full bg-orange-500/20 border border-orange-500 flex items-center justify-center shadow-[0_0_15px_rgba(249,115,22,0.3)] mb-2 relative">
+                         <Flame size={24} className="text-orange-400"/>
+                      </div>
+                      <span className="text-[9px] font-black text-slate-200">現場の鬼</span>
+                    </div>
+                  ) : (
+                    <div className="flex flex-col items-center min-w-[5rem] snap-center opacity-30">
+                      <div className="w-14 h-14 rounded-full bg-slate-800 border border-slate-600 flex items-center justify-center mb-2">
+                         <Lock size={20} className="text-slate-500"/>
+                      </div>
+                      <span className="text-[9px] font-black text-slate-500">??? (20件記録)</span>
+                    </div>
+                  )}
+                </div>
+              </div>
             </div>
           )}
 
@@ -1379,7 +1414,7 @@ const App = () => {
               
               <div className="text-center py-4 opacity-30">
                 <Gamepad2 size={32} className="mx-auto text-cyan-600 mb-2"/>
-                <p className="text-[10px] font-black text-cyan-600 uppercase tracking-widest">ELECTRIC CLIPPER MASTER v1.6</p>
+                <p className="text-[10px] font-black text-cyan-600 uppercase tracking-widest">ELECTRIC CLIPPER MASTER v1.7</p>
               </div>
             </div>
           )}
