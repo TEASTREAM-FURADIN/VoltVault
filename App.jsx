@@ -162,7 +162,6 @@ const App = () => {
   const [bossExp, setBossExp] = useState(0);
   const [encounterMemo, setEncounterMemo] = useState(null);
 
-  // ★ 追加：称号一覧モーダルの表示状態
   const [showTrophiesModal, setShowTrophiesModal] = useState(false); 
 
   const uniqueSites = [...new Set(memos.map(m => String(m.site || "")).filter(Boolean))];
@@ -498,7 +497,6 @@ const App = () => {
     { id: 8, reqText: '現場討伐', name: 'ボスハンター', icon: Target, color: 'red', isUnlocked: () => (userSettings.stats?.completedSites?.length || 0) >= 1 }
   ];
 
-  // ★ 追加：称号一覧をいつでも確認できるモーダル
   const TrophiesModal = () => {
     if (!showTrophiesModal) return null;
     return (
@@ -609,6 +607,7 @@ const App = () => {
 
   const [markupModal, setMarkupModal] = useState({ isOpen: false, imgIndex: null, dataUrl: null });
   
+  // ★ 高解像度・フリーズ対策済みの最新画像エディター（レイヤー構造化）
   const MarkupModalCanvas = () => {
     const canvasRef = useRef(null);
     const containerRef = useRef(null);
@@ -642,52 +641,55 @@ const App = () => {
       img.src = markupModal.dataUrl;
     }, [markupModal.dataUrl]);
 
+    // ★ 変更：ベース画像は裏の<img>タグで表示するため、再描画するのは「透明な画用紙」に書かれた「線と文字」だけ！
     const redrawAll = (strokesToDraw = strokes) => {
-      if (!dimensions.width || !canvasRef.current || !baseImageRef.current) return;
+      if (!dimensions.width || !canvasRef.current) return;
       const canvas = canvasRef.current;
       const ctx = canvas.getContext('2d');
 
+      // 透明な画用紙を一旦きれいにする
       ctx.clearRect(0, 0, canvas.width, canvas.height);
-      ctx.drawImage(baseImageRef.current, 0, 0, canvas.width, canvas.height);
-
-      const offscreen = document.createElement('canvas');
-      offscreen.width = canvas.width;
-      offscreen.height = canvas.height;
-      const offCtx = offscreen.getContext('2d');
 
       strokesToDraw.forEach(stroke => {
         if (stroke.type === 'draw' || stroke.type === 'eraser') {
-          offCtx.strokeStyle = stroke.type === 'eraser' ? 'rgba(0,0,0,1)' : stroke.color;
-          offCtx.lineWidth = stroke.width;
-          offCtx.lineJoin = 'round';
-          offCtx.lineCap = 'round';
-          offCtx.globalCompositeOperation = stroke.type === 'eraser' ? 'destination-out' : 'source-over';
-          offCtx.beginPath();
+          ctx.globalCompositeOperation = stroke.type === 'eraser' ? 'destination-out' : 'source-over';
+          ctx.strokeStyle = stroke.type === 'eraser' ? 'rgba(0,0,0,1)' : stroke.color;
+          ctx.lineWidth = stroke.width;
+          ctx.lineJoin = 'round';
+          ctx.lineCap = 'round';
+          
+          ctx.beginPath();
           if (stroke.points && stroke.points.length > 0) {
-            stroke.points.forEach((p, i) => {
-              if (i === 0) offCtx.moveTo(p.x, p.y);
-              else offCtx.lineTo(p.x, p.y);
-            });
-            offCtx.stroke();
+            ctx.moveTo(stroke.points[0].x, stroke.points[0].y);
+            if (stroke.points.length === 1) {
+                // 点を打つ
+                ctx.fillStyle = stroke.type === 'eraser' ? 'rgba(0,0,0,1)' : stroke.color;
+                ctx.arc(stroke.points[0].x, stroke.points[0].y, stroke.width / 2, 0, Math.PI * 2);
+                ctx.fill();
+            } else {
+                // 線を引く
+                stroke.points.forEach((p, i) => {
+                  if (i > 0) ctx.lineTo(p.x, p.y);
+                });
+                ctx.stroke();
+            }
           }
         } else if (stroke.type === 'text') {
-          offCtx.globalCompositeOperation = 'source-over';
-          offCtx.fillStyle = stroke.color;
-          offCtx.font = `900 ${stroke.fontSize}px sans-serif`;
-          offCtx.textBaseline = 'top';
+          ctx.globalCompositeOperation = 'source-over';
+          ctx.fillStyle = stroke.color;
+          ctx.font = `900 ${stroke.fontSize}px sans-serif`;
+          ctx.textBaseline = 'top';
           if (stroke.text) {
             const lines = stroke.text.split('\n');
             lines.forEach((line, index) => {
-               offCtx.fillText(line, stroke.x, stroke.y + (index * stroke.fontSize * 1.2));
+               ctx.fillText(line, stroke.x, stroke.y + (index * stroke.fontSize * 1.2));
             });
           }
         }
       });
-
-      ctx.globalCompositeOperation = 'source-over';
-      ctx.drawImage(offscreen, 0, 0);
     };
 
+    // 履歴が変わった時だけ再描画する
     useEffect(() => { redrawAll(); }, [dimensions, strokes]);
 
     const getPos = (e) => {
@@ -727,15 +729,14 @@ const App = () => {
         points: [p] 
       };
 
-      if (mode === 'draw') {
-        const ctx = canvasRef.current.getContext('2d'); 
-        ctx.fillStyle = penColor;
-        ctx.globalCompositeOperation = 'source-over';
+      const ctx = canvasRef.current.getContext('2d'); 
+      ctx.globalCompositeOperation = mode === 'eraser' ? 'destination-out' : 'source-over';
+      ctx.fillStyle = mode === 'eraser' ? 'rgba(0,0,0,1)' : penColor;
+
+      if (mode === 'draw' || mode === 'eraser') {
         ctx.beginPath();
-        ctx.arc(p.x, p.y, (baseLineWidth / zoom) / 2, 0, Math.PI * 2);
+        ctx.arc(p.x, p.y, currentStrokeRef.current.width / 2, 0, Math.PI * 2);
         ctx.fill();
-      } else if (mode === 'eraser') {
-        redrawAll([...strokes, currentStrokeRef.current]);
       }
     };
     
@@ -747,22 +748,20 @@ const App = () => {
       if (currentStrokeRef.current) {
         currentStrokeRef.current.points.push(p);
         
-        if (mode === 'eraser') {
-          redrawAll([...strokes, currentStrokeRef.current]);
-        } else {
-          const ctx = canvasRef.current.getContext('2d'); 
-          ctx.strokeStyle = penColor;
-          ctx.lineWidth = currentStrokeRef.current.width;
-          ctx.lineJoin = 'round';
-          ctx.lineCap = 'round';
-          ctx.globalCompositeOperation = 'source-over';
-          ctx.beginPath();
-          const pts = currentStrokeRef.current.points;
-          if (pts.length >= 2) {
-             ctx.moveTo(pts[pts.length-2].x, pts[pts.length-2].y);
-             ctx.lineTo(pts[pts.length-1].x, pts[pts.length-1].y);
-             ctx.stroke();
-          }
+        // ★ ペンも消しゴムも、指を滑らせた「差分」だけを直接キャンバスに描画する（超高速！）
+        const ctx = canvasRef.current.getContext('2d'); 
+        ctx.globalCompositeOperation = mode === 'eraser' ? 'destination-out' : 'source-over';
+        ctx.strokeStyle = mode === 'eraser' ? 'rgba(0,0,0,1)' : penColor;
+        ctx.lineWidth = currentStrokeRef.current.width;
+        ctx.lineJoin = 'round';
+        ctx.lineCap = 'round';
+
+        ctx.beginPath();
+        const pts = currentStrokeRef.current.points;
+        if (pts.length >= 2) {
+           ctx.moveTo(pts[pts.length-2].x, pts[pts.length-2].y);
+           ctx.lineTo(pts[pts.length-1].x, pts[pts.length-1].y);
+           ctx.stroke();
         }
       }
     };
@@ -798,7 +797,18 @@ const App = () => {
     };
 
     const handleSaveImage = () => {
-      const newDataUrl = canvasRef.current.toDataURL('image/jpeg', 0.8);
+      // ★ 保存するときだけ、ベース画像の上に透明な画用紙を重ねて1枚の画像として書き出す
+      const saveCanvas = document.createElement('canvas');
+      saveCanvas.width = dimensions.width;
+      saveCanvas.height = dimensions.height;
+      const ctx = saveCanvas.getContext('2d');
+
+      if (baseImageRef.current) {
+        ctx.drawImage(baseImageRef.current, 0, 0, saveCanvas.width, saveCanvas.height);
+      }
+      ctx.drawImage(canvasRef.current, 0, 0);
+
+      const newDataUrl = saveCanvas.toDataURL('image/jpeg', 0.8);
       const newImages = [...formData.images];
       newImages[markupModal.imgIndex] = newDataUrl;
       setFormData({...formData, images: newImages});
@@ -858,14 +868,21 @@ const App = () => {
 
           <div ref={containerRef} className={`flex-1 overflow-auto rounded-xl border-2 border-slate-700 bg-slate-950 shadow-inner relative ${mode === 'draw' || mode === 'text' || mode === 'eraser' ? 'touch-none' : ''}`}>
             {dimensions.width > 0 && (
-              <div style={{ width: `${100 * zoom}%`, minHeight: '100%', position: 'relative' }}>
+              <div style={{ width: `${100 * zoom}%`, minWidth: '100%', position: 'relative' }}>
+                {/* ★ 変更：ベース写真は裏側に <img> として配置することで、画質を保持＆メモリを節約！ */}
+                <img src={markupModal.dataUrl} alt="base" style={{ width: '100%', height: 'auto', display: 'block', opacity: 0.8, pointerEvents: 'none' }} />
+                
+                {/* ★ 変更：キャンバスは透明な画用紙として一番上に被せるだけ！ */}
                 <canvas
                   ref={canvasRef}
                   width={dimensions.width}
                   height={dimensions.height}
                   style={{
+                    position: 'absolute',
+                    top: 0,
+                    left: 0,
                     width: '100%',
-                    height: 'auto',
+                    height: '100%',
                     display: 'block'
                   }}
                   className={`shadow-lg ${mode === 'draw' ? 'cursor-crosshair' : mode === 'text' ? 'cursor-text' : mode === 'eraser' ? 'cursor-cell' : 'cursor-grab'}`}
@@ -1248,10 +1265,9 @@ const App = () => {
 
       <div className="relative z-10">
         <LevelUpModal />
-        <TrophiesModal /> {/* ★ 追加：称号モーダル */}
+        <TrophiesModal /> 
         {markupModal.isOpen && <MarkupModalCanvas />}
 
-        {/* ★ ボス討伐演出 */}
         {showBossDefeat && (
           <div className="fixed inset-0 z-[200] flex items-center justify-center bg-red-950/90 overflow-hidden backdrop-blur-sm">
             <div className="absolute inset-0 bg-red-500 animate-ping mix-blend-overlay opacity-20"></div>
@@ -1263,7 +1279,6 @@ const App = () => {
           </div>
         )}
 
-        {/* ★ エンカウント演出 */}
         {encounterMemo && (
           <div className="fixed inset-0 z-[150] flex items-center justify-center bg-slate-950/80 p-4 backdrop-blur-sm animate-in fade-in">
             <div className="bg-slate-900 border-2 border-red-500 rounded-3xl p-6 w-full max-w-sm shadow-[0_0_30px_rgba(239,68,68,0.5)]">
@@ -1336,7 +1351,6 @@ const App = () => {
             </div>
           </div>
 
-          {/* ★ 変更：レベルバーをタップできるようにし、クリックで称号一覧を表示 */}
           <div 
             onClick={() => setShowTrophiesModal(true)}
             className="bg-slate-950/50 rounded-xl p-2 mb-3 backdrop-blur-md border border-cyan-900/50 shadow-inner relative z-10 cursor-pointer hover:bg-slate-900/80 active:scale-[0.98] transition-all"
