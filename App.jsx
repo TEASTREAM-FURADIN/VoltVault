@@ -359,7 +359,7 @@ const App = () => {
       setShowNewGenre(false);
       setShowNewTag(false);
     } catch (e) { 
-      setError("OVERLOAD: 画像サイズが大きすぎるか、通信エラーです。");
+      setError("OVERLOAD: 保存に失敗しました。画像の枚数を減らすか通信環境をご確認ください。");
       setTimeout(()=>setError(null), 5000);
     } finally { setIsSyncing(false); }
   };
@@ -607,7 +607,7 @@ const App = () => {
 
   const [markupModal, setMarkupModal] = useState({ isOpen: false, imgIndex: null, dataUrl: null });
   
-  // ★ 高解像度・フリーズ対策済みの最新画像エディター（レイヤー構造化）
+  // ★ 究極・高速化画像エディター（テキストのドラッグ編集対応版）
   const MarkupModalCanvas = () => {
     const canvasRef = useRef(null);
     const containerRef = useRef(null);
@@ -616,7 +616,12 @@ const App = () => {
     const [zoom, setZoom] = useState(1);
     const [dimensions, setDimensions] = useState({ width: 0, height: 0 });
     
-    const [textInput, setTextInput] = useState(null);
+    // ★ 変更：テキストは履歴（strokes）とは別の「ドラッグ可能な付箋」として独立管理
+    const [texts, setTexts] = useState([]); 
+    const [editingTextId, setEditingTextId] = useState(null);
+    const draggingTextRef = useRef(null);
+    const dragOffsetRef = useRef({ x: 0, y: 0 });
+
     const [strokes, setStrokes] = useState([]);
     const [redoStack, setRedoStack] = useState([]); 
     const currentStrokeRef = useRef(null);
@@ -641,55 +646,38 @@ const App = () => {
       img.src = markupModal.dataUrl;
     }, [markupModal.dataUrl]);
 
-    // ★ 変更：ベース画像は裏の<img>タグで表示するため、再描画するのは「透明な画用紙」に書かれた「線と文字」だけ！
+    // ★ キャンバス全体の再描画（手書きの線と消しゴムの跡だけを描く。重い処理は一切排除）
     const redrawAll = (strokesToDraw = strokes) => {
       if (!dimensions.width || !canvasRef.current) return;
       const canvas = canvasRef.current;
       const ctx = canvas.getContext('2d');
 
-      // 透明な画用紙を一旦きれいにする
       ctx.clearRect(0, 0, canvas.width, canvas.height);
 
       strokesToDraw.forEach(stroke => {
-        if (stroke.type === 'draw' || stroke.type === 'eraser') {
-          ctx.globalCompositeOperation = stroke.type === 'eraser' ? 'destination-out' : 'source-over';
-          ctx.strokeStyle = stroke.type === 'eraser' ? 'rgba(0,0,0,1)' : stroke.color;
-          ctx.lineWidth = stroke.width;
-          ctx.lineJoin = 'round';
-          ctx.lineCap = 'round';
-          
+        ctx.globalCompositeOperation = stroke.type === 'eraser' ? 'destination-out' : 'source-over';
+        ctx.strokeStyle = stroke.type === 'eraser' ? 'rgba(0,0,0,1)' : stroke.color;
+        ctx.lineWidth = stroke.width;
+        ctx.lineJoin = 'round';
+        ctx.lineCap = 'round';
+        
+        if (stroke.points && stroke.points.length > 0) {
           ctx.beginPath();
-          if (stroke.points && stroke.points.length > 0) {
-            ctx.moveTo(stroke.points[0].x, stroke.points[0].y);
-            if (stroke.points.length === 1) {
-                // 点を打つ
-                ctx.fillStyle = stroke.type === 'eraser' ? 'rgba(0,0,0,1)' : stroke.color;
-                ctx.arc(stroke.points[0].x, stroke.points[0].y, stroke.width / 2, 0, Math.PI * 2);
-                ctx.fill();
-            } else {
-                // 線を引く
-                stroke.points.forEach((p, i) => {
-                  if (i > 0) ctx.lineTo(p.x, p.y);
-                });
-                ctx.stroke();
-            }
-          }
-        } else if (stroke.type === 'text') {
-          ctx.globalCompositeOperation = 'source-over';
-          ctx.fillStyle = stroke.color;
-          ctx.font = `900 ${stroke.fontSize}px sans-serif`;
-          ctx.textBaseline = 'top';
-          if (stroke.text) {
-            const lines = stroke.text.split('\n');
-            lines.forEach((line, index) => {
-               ctx.fillText(line, stroke.x, stroke.y + (index * stroke.fontSize * 1.2));
-            });
+          ctx.moveTo(stroke.points[0].x, stroke.points[0].y);
+          if (stroke.points.length === 1) {
+              ctx.fillStyle = stroke.type === 'eraser' ? 'rgba(0,0,0,1)' : stroke.color;
+              ctx.arc(stroke.points[0].x, stroke.points[0].y, stroke.width / 2, 0, Math.PI * 2);
+              ctx.fill();
+          } else {
+              stroke.points.forEach((p, i) => {
+                if (i > 0) ctx.lineTo(p.x, p.y);
+              });
+              ctx.stroke();
           }
         }
       });
     };
 
-    // 履歴が変わった時だけ再描画する
     useEffect(() => { redrawAll(); }, [dimensions, strokes]);
 
     const getPos = (e) => {
@@ -713,15 +701,23 @@ const App = () => {
 
     const startDrawing = (e) => { 
       const p = getPos(e); 
+      
+      // テキスト編集中なら、外側タップで編集終了させるだけ
+      if (editingTextId) return;
+
       if (mode === 'text') {
-        setTextInput({ x: p.x, y: p.y, text: '' });
+        const newId = Date.now();
+        setTexts(prev => [...prev, {
+           id: newId, text: '', x: p.x, y: p.y, color: penColor, fontSize: Math.max(32, dimensions.width * 0.04)
+        }]);
+        setEditingTextId(newId);
         return;
       }
+
       if (mode !== 'draw' && mode !== 'eraser') return;
       setIsDrawing(true); 
       
       const baseLineWidth = dimensions.width ? Math.max(4, dimensions.width * 0.008) : 4;
-
       currentStrokeRef.current = { 
         type: mode, 
         color: penColor, 
@@ -732,15 +728,25 @@ const App = () => {
       const ctx = canvasRef.current.getContext('2d'); 
       ctx.globalCompositeOperation = mode === 'eraser' ? 'destination-out' : 'source-over';
       ctx.fillStyle = mode === 'eraser' ? 'rgba(0,0,0,1)' : penColor;
-
-      if (mode === 'draw' || mode === 'eraser') {
-        ctx.beginPath();
-        ctx.arc(p.x, p.y, currentStrokeRef.current.width / 2, 0, Math.PI * 2);
-        ctx.fill();
-      }
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, currentStrokeRef.current.width / 2, 0, Math.PI * 2);
+      ctx.fill();
     };
     
     const draw = (e) => { 
+      // ★ 追加：テキストのドラッグ移動処理
+      if (draggingTextRef.current) {
+         e.preventDefault();
+         const p = getPos(e);
+         setTexts(prev => prev.map(t => {
+            if (t.id === draggingTextRef.current) {
+               return { ...t, x: p.x - dragOffsetRef.current.x, y: p.y - dragOffsetRef.current.y };
+            }
+            return t;
+         }));
+         return;
+      }
+
       if (!isDrawing || (mode !== 'draw' && mode !== 'eraser')) return; 
       e.preventDefault(); 
       const p = getPos(e); 
@@ -748,7 +754,7 @@ const App = () => {
       if (currentStrokeRef.current) {
         currentStrokeRef.current.points.push(p);
         
-        // ★ ペンも消しゴムも、指を滑らせた「差分」だけを直接キャンバスに描画する（超高速！）
+        // 指を滑らせた「差分」だけを直接Canvasに描くので、全く重くならない
         const ctx = canvasRef.current.getContext('2d'); 
         ctx.globalCompositeOperation = mode === 'eraser' ? 'destination-out' : 'source-over';
         ctx.strokeStyle = mode === 'eraser' ? 'rgba(0,0,0,1)' : penColor;
@@ -767,6 +773,10 @@ const App = () => {
     };
     
     const stopDrawing = () => { 
+      if (draggingTextRef.current) {
+         draggingTextRef.current = null;
+         return;
+      }
       if (isDrawing && currentStrokeRef.current) {
         setStrokes(prev => [...prev, currentStrokeRef.current]);
         setRedoStack([]); 
@@ -792,12 +802,13 @@ const App = () => {
     const handleClearAll = () => {
       if(window.confirm('書き込みをすべて消去しますか？')) {
         setStrokes([]);
+        setTexts([]); // テキストも全部消す
         setRedoStack([]); 
       }
     };
 
     const handleSaveImage = () => {
-      // ★ 保存するときだけ、ベース画像の上に透明な画用紙を重ねて1枚の画像として書き出す
+      // 保存時に、ベース画像 ＋ 手書き ＋ テキストをすべて1枚の絵に合成する
       const saveCanvas = document.createElement('canvas');
       saveCanvas.width = dimensions.width;
       saveCanvas.height = dimensions.height;
@@ -808,7 +819,21 @@ const App = () => {
       }
       ctx.drawImage(canvasRef.current, 0, 0);
 
-      const newDataUrl = saveCanvas.toDataURL('image/jpeg', 0.8);
+      texts.forEach(t => {
+        ctx.globalCompositeOperation = 'source-over';
+        ctx.fillStyle = t.color;
+        ctx.font = `900 ${t.fontSize}px sans-serif`;
+        ctx.textBaseline = 'top';
+        if (t.text) {
+          const lines = t.text.split('\n');
+          lines.forEach((line, index) => {
+             ctx.fillText(line, t.x, t.y + (index * t.fontSize * 1.2));
+          });
+        }
+      });
+
+      // ★ 保存時のエラーを防ぐため、画質を 0.6 に最適化
+      const newDataUrl = saveCanvas.toDataURL('image/jpeg', 0.6);
       const newImages = [...formData.images];
       newImages[markupModal.imgIndex] = newDataUrl;
       setFormData({...formData, images: newImages});
@@ -859,77 +884,105 @@ const App = () => {
                 <button onClick={handleRedo} disabled={redoStack.length === 0} className="px-3 py-2 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all text-slate-300 bg-slate-800 hover:text-cyan-400 disabled:opacity-30 border border-slate-700 active:scale-95">
                   <RotateCw size={14}/> 進む
                 </button>
-                <button onClick={handleClearAll} disabled={strokes.length === 0} className="px-3 py-2 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all text-slate-300 bg-slate-800 hover:text-red-400 disabled:opacity-30 border border-slate-700 active:scale-95">
+                <button onClick={handleClearAll} disabled={strokes.length === 0 && texts.length === 0} className="px-3 py-2 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all text-slate-300 bg-slate-800 hover:text-red-400 disabled:opacity-30 border border-slate-700 active:scale-95">
                   <Trash2 size={14}/> 消去
                 </button>
               </div>
             </div>
           </div>
 
-          <div ref={containerRef} className={`flex-1 overflow-auto rounded-xl border-2 border-slate-700 bg-slate-950 shadow-inner relative ${mode === 'draw' || mode === 'text' || mode === 'eraser' ? 'touch-none' : ''}`}>
+          <div ref={containerRef} className={`flex-1 overflow-auto rounded-xl border-2 border-slate-700 bg-slate-950 shadow-inner relative ${mode === 'draw' || mode === 'eraser' ? 'touch-none' : ''}`}>
             {dimensions.width > 0 && (
-              <div style={{ width: `${100 * zoom}%`, minWidth: '100%', position: 'relative' }}>
-                {/* ★ 変更：ベース写真は裏側に <img> として配置することで、画質を保持＆メモリを節約！ */}
+              <div style={{ width: `${100 * zoom}%`, minHeight: '100%', position: 'relative' }}>
                 <img src={markupModal.dataUrl} alt="base" style={{ width: '100%', height: 'auto', display: 'block', opacity: 0.8, pointerEvents: 'none' }} />
                 
-                {/* ★ 変更：キャンバスは透明な画用紙として一番上に被せるだけ！ */}
                 <canvas
                   ref={canvasRef}
                   width={dimensions.width}
                   height={dimensions.height}
-                  style={{
-                    position: 'absolute',
-                    top: 0,
-                    left: 0,
-                    width: '100%',
-                    height: '100%',
-                    display: 'block'
-                  }}
+                  style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', display: 'block' }}
                   className={`shadow-lg ${mode === 'draw' ? 'cursor-crosshair' : mode === 'text' ? 'cursor-text' : mode === 'eraser' ? 'cursor-cell' : 'cursor-grab'}`}
                   onMouseDown={startDrawing} onMouseMove={draw} onMouseUp={stopDrawing} onMouseLeave={stopDrawing}
                   onTouchStart={startDrawing} onTouchMove={draw} onTouchEnd={stopDrawing}
                 />
-                {textInput && (
-                  <textarea
-                    autoFocus
-                    value={textInput.text}
-                    onChange={(e) => setTextInput({ ...textInput, text: e.target.value })}
-                    onBlur={() => {
-                      if (textInput.text && textInput.text.trim()) {
-                        setStrokes(prev => [...prev, { 
-                          type: 'text', 
-                          color: penColor, 
-                          text: textInput.text, 
-                          x: textInput.x, 
-                          y: textInput.y, 
-                          fontSize: Math.max(32, dimensions.width * 0.04 / zoom)
-                        }]);
-                        setRedoStack([]); 
-                      }
-                      setTextInput(null);
-                    }}
-                    style={{
-                      position: 'absolute',
-                      left: `${(textInput.x / dimensions.width) * 100}%`,
-                      top: `${(textInput.y / dimensions.height) * 100}%`,
-                      color: penColor,
-                      fontSize: `${Math.max(16, 24 / zoom) * zoom}px`, 
-                      fontWeight: '900',
-                      background: 'rgba(0,0,0,0.6)',
-                      border: '2px dashed #06b6d4',
-                      borderRadius: '4px',
-                      outline: 'none',
-                      resize: 'both',
-                      zIndex: 50,
-                      minHeight: '2em',
-                      minWidth: '6em',
-                      lineHeight: '1.2',
-                      padding: '4px',
-                      whiteSpace: 'pre-wrap'
-                    }}
-                    placeholder="ここに入力..."
-                  />
-                )}
+                
+                {/* ★ 追加：ドラッグ＆再編集可能なテキストの付箋たち */}
+                {texts.map(t => {
+                  if (editingTextId === t.id) {
+                    return (
+                      <textarea
+                        key={t.id}
+                        autoFocus
+                        value={t.text}
+                        onChange={(e) => setTexts(prev => prev.map(item => item.id === t.id ? { ...item, text: e.target.value } : item))}
+                        onBlur={() => {
+                          if (!t.text.trim()) {
+                            setTexts(prev => prev.filter(item => item.id !== t.id));
+                          }
+                          setEditingTextId(null);
+                        }}
+                        onMouseDown={(e) => e.stopPropagation()}
+                        onTouchStart={(e) => e.stopPropagation()}
+                        style={{
+                          position: 'absolute',
+                          left: `${(t.x / dimensions.width) * 100}%`,
+                          top: `${(t.y / dimensions.height) * 100}%`,
+                          color: t.color,
+                          fontSize: `${t.fontSize * zoom}px`, 
+                          fontWeight: '900',
+                          background: 'rgba(0,0,0,0.6)',
+                          border: '2px dashed #06b6d4',
+                          borderRadius: '8px',
+                          outline: 'none',
+                          resize: 'both',
+                          zIndex: 50,
+                          minHeight: '3em',
+                          minWidth: '8em',
+                          lineHeight: '1.2',
+                          padding: '8px',
+                          whiteSpace: 'pre-wrap'
+                        }}
+                        placeholder="テキストを入力..."
+                      />
+                    );
+                  }
+                  return (
+                    <div
+                      key={t.id}
+                      onMouseDown={(e) => {
+                        e.stopPropagation();
+                        draggingTextRef.current = t.id;
+                        const p = getPos(e);
+                        dragOffsetRef.current = { x: p.x - t.x, y: p.y - t.y };
+                      }}
+                      onTouchStart={(e) => {
+                        e.stopPropagation();
+                        draggingTextRef.current = t.id;
+                        const p = getPos(e);
+                        dragOffsetRef.current = { x: p.x - t.x, y: p.y - t.y };
+                      }}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setEditingTextId(t.id);
+                      }}
+                      style={{
+                        position: 'absolute',
+                        left: `${(t.x / dimensions.width) * 100}%`,
+                        top: `${(t.y / dimensions.height) * 100}%`,
+                        color: t.color,
+                        fontSize: `${t.fontSize * zoom}px`, 
+                        fontWeight: '900',
+                        cursor: 'move',
+                        zIndex: 40,
+                        whiteSpace: 'pre-wrap',
+                        lineHeight: '1.2',
+                        textShadow: '0px 0px 4px rgba(0,0,0,0.8), 0px 0px 8px rgba(0,0,0,0.8)'
+                      }}
+                    >
+                      {t.text}
+                    </div>
+                  );
+                })}
               </div>
             )}
             {!dimensions.width && <div className="absolute inset-0 flex items-center justify-center text-cyan-500"><Loader2 size={24} className="animate-spin"/></div>}
@@ -954,13 +1007,14 @@ const App = () => {
           const img = new Image();
           img.onload = () => {
             const canvas = document.createElement('canvas');
-            const MAX_WIDTH = 1200; 
+            // ★ 保存エラー対策：画像を少し小さくしてデータサイズをダイエット（見た目は十分綺麗です）
+            const MAX_WIDTH = 800; 
             const scale = Math.min(MAX_WIDTH / img.width, 1);
             canvas.width = img.width * scale;
             canvas.height = img.height * scale;
             const ctx = canvas.getContext('2d');
             ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-            resolve(canvas.toDataURL('image/jpeg', 0.8));
+            resolve(canvas.toDataURL('image/jpeg', 0.6));
           };
           img.src = event.target.result;
         };
