@@ -14,14 +14,13 @@ import {
   Gamepad2, Sword, Crown, Trophy, Target, Dumbbell, Book, Star, Sparkles, Medal, Award,
   Move, ZoomIn, ZoomOut, RotateCcw, RotateCw,
   User, Bell, ChevronUp, CheckSquare, ArrowUp, ArrowDown,
-  Coffee, Eraser, Skull
+  Coffee, Eraser, Skull, Lock as LockIcon
 } from 'lucide-react';
 
 import { initializeApp } from 'firebase/app';
 import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
 import { getFirestore, doc, setDoc, collection, onSnapshot, deleteDoc } from 'firebase/firestore';
 
-// ★ 社長のメイン装備「クリッパー（ツノダ CA-22 ワイヤーカッター）」の特製アイコン
 const ClipperIcon = ({ size = 24, className = "", strokeWidth = 2 }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round" className={className}>
     <path d="M14.5 9.5L21 18.5a2 2 0 0 1-2.8 2.8L9.5 14.5" />
@@ -33,7 +32,6 @@ const ClipperIcon = ({ size = 24, className = "", strokeWidth = 2 }) => (
   </svg>
 );
 
-// ★ 取っ手のないお茶（湯呑み）の特製アイコン
 const TeaCupIcon = ({ size = 24, className = "", strokeWidth = 2 }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round" className={className}>
     <path d="M6 8v5a6 6 0 0 0 12 0V8" />
@@ -78,13 +76,8 @@ const ColorMap = {
   gray: { bg: 'bg-slate-500', text: 'text-slate-300', light: 'bg-slate-800/50', border: 'border-slate-500/50' },
 };
 
-const ColorNames = {
-  red: 'レッド', blue: 'ブルー', green: 'グリーン', yellow: 'イエロー', orange: 'オレンジ', purple: 'パープル', pink: 'ピンク', teal: 'シアン', gray: 'スチール'
-};
-
-const MainCategories = [
-  '電気', '弱電', '設備', '内装', '建築', '事務', '工程', '知識技術', '趣味', 'その他'
-];
+const ColorNames = { red: 'レッド', blue: 'ブルー', green: 'グリーン', yellow: 'イエロー', orange: 'オレンジ', purple: 'パープル', pink: 'ピンク', teal: 'シアン', gray: 'スチール' };
+const MainCategories = ['電気', '弱電', '設備', '内装', '建築', '事務', '工程', '知識技術', '趣味', 'その他'];
 
 const firebaseConfig = {
   apiKey: "AIzaSyDMOwQv6Np1N38y8ecJSXCRDZ4G89wccnM",
@@ -101,9 +94,7 @@ const db = getFirestore(app);
 const currentAppId = typeof __app_id !== 'undefined' ? __app_id : firebaseConfig.projectId;
 
 const defaultSettings = {
-  quickPhrases: [
-    "通電確認OK", "絶縁抵抗計 測定済", "相色確認OK", "隠蔽部写真撮影済", "先行配管完了"
-  ],
+  quickPhrases: ["通電確認OK", "絶縁抵抗計 測定済", "相色確認OK", "隠蔽部写真撮影済", "先行配管完了"],
   genres: {
     '幹線工事': { colorId: 'red', icon: 'Zap', group: '電気', order: 0 },
     '盤結線': { colorId: 'blue', icon: 'Grid', group: '電気', order: 1 },
@@ -119,9 +110,7 @@ const defaultSettings = {
     '分電盤': { colorId: 'blue', icon: 'Grid', group: '電気', order: 2 },
     '重要目標': { colorId: 'red', icon: 'Target', group: 'その他', order: 3 }
   },
-  stats: {
-    exp: 0, level: 1, totalMemos: 0, clipperDurability: 100, lastMemoDate: '', streakDays: 0, completedSites: []
-  }
+  stats: { exp: 0, level: 1, totalMemos: 0, clipperDurability: 100, lastMemoDate: '', streakDays: 0, completedSites: [] }
 };
 
 const getTitle = (level) => {
@@ -158,87 +147,53 @@ const App = () => {
   const [userSettings, setUserSettings] = useState(defaultSettings);
   const [levelUpData, setLevelUpData] = useState(null);
 
-  // ★ ゲーム要素
   const [showBossDefeat, setShowBossDefeat] = useState(false);
   const [bossExp, setBossExp] = useState(0);
   const [encounterMemo, setEncounterMemo] = useState(null);
   const [showTrophiesModal, setShowTrophiesModal] = useState(false); 
 
   const uniqueSites = [...new Set(memos.map(m => String(m.site || "")).filter(Boolean))];
-  const uniqueTitles = [...new Set(memos.map(m => {
-    const title = String(m.title || "");
-    return title.replace(/\s+\d+$/, ""); 
-  }).filter(Boolean))];
+  const uniqueTitles = [...new Set(memos.map(m => String(m.title || "").replace(/\s+\d+$/, "")).filter(Boolean))];
 
   useEffect(() => {
-    const initAuth = async () => {
-      try { await signInAnonymously(auth); } catch (e) { setError("SYSTEM ERROR."); }
-    };
+    const initAuth = async () => { try { await signInAnonymously(auth); } catch (e) { setError("SYSTEM ERROR."); } };
     initAuth();
     return onAuthStateChanged(auth, setUser);
   }, []);
 
   useEffect(() => {
     if (!user) return;
-    setIsSyncing(true);
-    setError(null); 
-    
-    const memosCol = collection(db, 'artifacts', currentAppId, 'public', 'data', 'memos');
-    const unsubscribeMemos = onSnapshot(memosCol, 
+    setIsSyncing(true); setError(null); 
+    const unsubscribeMemos = onSnapshot(collection(db, 'artifacts', currentAppId, 'public', 'data', 'memos'), 
       (snap) => {
-        const data = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-        const sortedData = data.sort((a, b) => (b.date || "").localeCompare(a.date || ""));
+        const sortedData = snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => (b.date || "").localeCompare(a.date || ""));
         setMemos(sortedData);
         setIsSyncing(false);
-
-        // ★ 起動時エンカウント処理（1日1回確率で発動）
         if (sortedData.length > 0 && !sessionStorage.getItem('encounteredToday')) {
           const pending = sortedData.filter(m => m.needsReview && !m.isReviewed);
-          if (pending.length > 0) {
-            if (Math.random() < 0.4) {
-              const target = pending[Math.floor(Math.random() * pending.length)];
-              setEncounterMemo(target);
-            }
-          }
+          if (pending.length > 0 && Math.random() < 0.4) setEncounterMemo(pending[Math.floor(Math.random() * pending.length)]);
           sessionStorage.setItem('encounteredToday', 'true');
         }
       },
-      (err) => { setError("SYNC FAILED. 通信環境を確認してください。"); setIsSyncing(false); }
+      () => { setError("SYNC FAILED."); setIsSyncing(false); }
     );
-    
-    const settingsDoc = doc(db, 'artifacts', currentAppId, 'public', 'data', 'settings', 'user');
-    const unsubscribeSettings = onSnapshot(settingsDoc, (d) => {
+    const unsubscribeSettings = onSnapshot(doc(db, 'artifacts', currentAppId, 'public', 'data', 'settings', 'user'), (d) => {
       if (d.exists()) {
         const data = d.data();
         let genresData = data.genres || defaultSettings.genres;
         let tagsData = data.tags || defaultSettings.tags;
-        
-        Object.keys(genresData).forEach((k, i) => {
-          if (!genresData[k].group || !MainCategories.includes(genresData[k].group)) genresData[k].group = 'その他';
-          if (typeof genresData[k].order !== 'number') genresData[k].order = i;
-        });
-        Object.keys(tagsData).forEach((k, i) => {
-          if (!tagsData[k].group || !MainCategories.includes(tagsData[k].group)) tagsData[k].group = 'その他';
-          if (typeof tagsData[k].order !== 'number') tagsData[k].order = i;
-        });
-
-        setUserSettings({
-          quickPhrases: data.quickPhrases || defaultSettings.quickPhrases,
-          genres: genresData,
-          tags: tagsData,
-          stats: { ...defaultSettings.stats, ...(data.stats || {}) }
-        });
+        [genresData, tagsData].forEach(obj => Object.keys(obj).forEach((k, i) => {
+          if (!obj[k].group || !MainCategories.includes(obj[k].group)) obj[k].group = 'その他';
+          if (typeof obj[k].order !== 'number') obj[k].order = i;
+        }));
+        setUserSettings({ quickPhrases: data.quickPhrases || defaultSettings.quickPhrases, genres: genresData, tags: tagsData, stats: { ...defaultSettings.stats, ...(data.stats || {}) } });
       }
     });
-
     return () => { unsubscribeMemos(); unsubscribeSettings(); };
   }, [user]);
 
   const [showAdvanced, setShowAdvanced] = useState(false);
-  const initialForm = { 
-    title: '', site: '', genre: '', materials: [], content: '', date: new Date().toISOString().split('T')[0], images: [],
-    teacher: '', needsReview: false, reviewDate: '', isReviewed: false
-  };
+  const initialForm = { title: '', site: '', genre: '', materials: [], content: '', date: new Date().toISOString().split('T')[0], images: [], teacher: '', needsReview: false, reviewDate: '', isReviewed: false };
   const [formData, setFormData] = useState(initialForm);
 
   const [showNewGenre, setShowNewGenre] = useState(false);
@@ -255,17 +210,13 @@ const App = () => {
 
   useEffect(() => {
     if (view === 'add') {
-      const timeoutId = setTimeout(() => {
-        localStorage.setItem('voltVaultDraft', JSON.stringify(formData));
-      }, 500);
+      const timeoutId = setTimeout(() => localStorage.setItem('voltVaultDraft', JSON.stringify(formData)), 500);
       return () => clearTimeout(timeoutId);
     }
   }, [formData, view]);
 
   useEffect(() => {
-    if (view === 'add' && !formData.genre && Object.keys(userSettings.genres).length > 0) {
-      setFormData(prev => ({ ...prev, genre: Object.keys(userSettings.genres)[0] }));
-    }
+    if (view === 'add' && !formData.genre && Object.keys(userSettings.genres).length > 0) setFormData(prev => ({ ...prev, genre: Object.keys(userSettings.genres)[0] }));
   }, [view, userSettings]);
 
   const escapeRegExp = (string) => String(string).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -276,94 +227,40 @@ const App = () => {
     try {
       const isNew = view !== 'edit';
       const id = isNew ? `memo_${Date.now()}` : editingMemo.id;
-      
       let finalTitle = String(formData.title).trim();
       if (isNew) {
-        const siteMemos = memos.filter(m => String(m.site || "") === String(formData.site || ""));
-        const baseTitle = finalTitle;
-        const regex = new RegExp(`^${escapeRegExp(baseTitle)}(?:\\s+(\\d+))?$`);
-        let maxNum = 0;
-        let hasBase = false;
-
-        siteMemos.forEach(m => {
+        const regex = new RegExp(`^${String(finalTitle).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?:\\s+(\\d+))?$`);
+        let maxNum = 0, hasBase = false;
+        memos.filter(m => String(m.site || "") === String(formData.site || "")).forEach(m => {
           const match = String(m.title || "").match(regex);
-          if (match) {
-            hasBase = true;
-            if (match[1]) {
-              const num = parseInt(match[1], 10);
-              if (num > maxNum) maxNum = num;
-            } else {
-              if (maxNum < 1) maxNum = 1;
-            }
-          }
+          if (match) { hasBase = true; if (match[1]) { maxNum = Math.max(maxNum, parseInt(match[1], 10)); } else { maxNum = Math.max(maxNum, 1); } }
         });
-
-        if (hasBase) {
-          finalTitle = `${baseTitle} ${maxNum + 1}`;
-        }
+        if (hasBase) finalTitle = `${finalTitle} ${maxNum + 1}`;
       }
 
-      const dataToSave = { ...formData, title: finalTitle, id };
-      await setDoc(doc(db, 'artifacts', currentAppId, 'public', 'data', 'memos', id), dataToSave, { merge: true });
+      await setDoc(doc(db, 'artifacts', currentAppId, 'public', 'data', 'memos', id), { ...formData, title: finalTitle, id }, { merge: true });
       
       if (isNew) {
-        const currentStats = userSettings.stats || defaultSettings.stats;
-        
-        // ★ ストリーク計算
+        const stats = userSettings.stats || defaultSettings.stats;
         const todayStr = new Date().toISOString().split('T')[0];
-        let newStreak = currentStats.streakDays || 0;
-        const lastDate = currentStats.lastMemoDate || '';
-        
-        if (lastDate !== todayStr) {
-          const yesterdayStr = new Date(Date.now() - 86400000).toISOString().split('T')[0];
-          if (lastDate === yesterdayStr) {
-            newStreak += 1;
-          } else {
-            newStreak = 1;
-          }
+        let newStreak = stats.streakDays || 0;
+        if (stats.lastMemoDate !== todayStr) {
+          newStreak = stats.lastMemoDate === new Date(Date.now() - 86400000).toISOString().split('T')[0] ? newStreak + 1 : 1;
         }
 
-        let earnedExp = 25;
-        if (newStreak >= 3) earnedExp += 10; 
-        if (newStreak >= 7) earnedExp += 15;
+        let earnedExp = 25 + (newStreak >= 7 ? 15 : newStreak >= 3 ? 10 : 0);
+        if ((stats.clipperDurability ?? 100) <= 20) earnedExp = Math.floor(earnedExp * 0.5); 
 
-        const currentDurability = currentStats.clipperDurability ?? 100;
-        if (currentDurability <= 20) earnedExp = Math.floor(earnedExp * 0.5); 
-
-        const newExp = (currentStats.exp || 0) + earnedExp;
+        const newExp = (stats.exp || 0) + earnedExp;
         const newLevel = Math.floor(newExp / 100) + 1;
-        const newDurability = Math.max(0, currentDurability - 5);
+        if (newLevel > (stats.level || 1)) { setLevelUpData({ level: newLevel, title: getTitle(newLevel) }); setTimeout(() => setLevelUpData(null), 4000); }
 
-        if (newLevel > (currentStats.level || 1)) {
-          setLevelUpData({ level: newLevel, title: getTitle(newLevel) });
-          setTimeout(() => setLevelUpData(null), 4000); 
-        }
-
-        const newSettings = {
-          ...userSettings,
-          stats: { 
-            ...currentStats, 
-            exp: newExp, 
-            level: newLevel, 
-            totalMemos: (currentStats.totalMemos || 0) + 1, 
-            clipperDurability: newDurability,
-            lastMemoDate: todayStr,
-            streakDays: newStreak
-          }
-        };
-        await saveSettings(newSettings);
+        await saveSettings({ ...userSettings, stats: { ...stats, exp: newExp, level: newLevel, totalMemos: (stats.totalMemos || 0) + 1, clipperDurability: Math.max(0, (stats.clipperDurability ?? 100) - 5), lastMemoDate: todayStr, streakDays: newStreak } });
         localStorage.removeItem('voltVaultDraft');
       }
 
-      setView('list');
-      setFormData(initialForm);
-      setShowAdvanced(false); 
-      setShowNewGenre(false);
-      setShowNewTag(false);
-    } catch (e) { 
-      setError("OVERLOAD: 保存に失敗しました。通信環境や画像サイズをご確認ください。");
-      setTimeout(()=>setError(null), 5000);
-    } finally { setIsSyncing(false); }
+      setView('list'); setFormData(initialForm); setShowAdvanced(false); setShowNewGenre(false); setShowNewTag(false);
+    } catch (e) { setError("保存に失敗しました。通信環境や画像サイズをご確認ください。"); setTimeout(()=>setError(null), 5000); } finally { setIsSyncing(false); }
   };
 
   const handleDelete = async (id) => {
@@ -373,87 +270,36 @@ const App = () => {
     catch (e) { setError("DELETE FAILED."); setTimeout(()=>setError(null), 5000); } finally { setIsSyncing(false); }
   };
 
-  const saveSettings = async (newSettings) => {
-    setUserSettings(newSettings);
-    await setDoc(doc(db, 'artifacts', currentAppId, 'public', 'data', 'settings', 'user'), newSettings);
-  };
+  const saveSettings = async (newSettings) => { setUserSettings(newSettings); await setDoc(doc(db, 'artifacts', currentAppId, 'public', 'data', 'settings', 'user'), newSettings); };
 
   const handleBossDefeat = async (siteName, memoCount) => {
     if (!window.confirm(`「${siteName}」の討伐（現場完了）を報告しますか？`)) return;
-
     const currentStats = userSettings.stats || defaultSettings.stats;
     const currentCompleted = currentStats.completedSites || [];
-    
     if (currentCompleted.includes(siteName)) return;
 
     const bonusExp = memoCount * 50; 
-    setBossExp(bonusExp);
-    setShowBossDefeat(true);
-
+    setBossExp(bonusExp); setShowBossDefeat(true);
     const newExp = (currentStats.exp || 0) + bonusExp;
     const newLevel = Math.floor(newExp / 100) + 1;
 
-    const newSettings = {
-      ...userSettings,
-      stats: {
-        ...currentStats,
-        exp: newExp,
-        level: newLevel,
-        completedSites: [...currentCompleted, siteName]
-      }
-    };
-
-    await saveSettings(newSettings);
-
+    await saveSettings({ ...userSettings, stats: { ...currentStats, exp: newExp, level: newLevel, completedSites: [...currentCompleted, siteName] } });
     setTimeout(() => {
       setShowBossDefeat(false);
-      if (newLevel > (currentStats.level || 1)) {
-        setLevelUpData({ level: newLevel, title: getTitle(newLevel) });
-        setTimeout(() => setLevelUpData(null), 4000); 
-      }
+      if (newLevel > (currentStats.level || 1)) { setLevelUpData({ level: newLevel, title: getTitle(newLevel) }); setTimeout(() => setLevelUpData(null), 4000); }
     }, 3000);
   };
 
   const filteredMemos = memos.filter(m => {
     const matchSearch = String(m.title || "").includes(searchTerm) || String(m.site || "").includes(searchTerm) || (m.materials || []).some(mat => String(mat).includes(searchTerm)) || String(m.teacher || "").includes(searchTerm);
-    const matchStart = dateRange.start ? (m.date || "") >= dateRange.start : true;
-    const matchEnd = dateRange.end ? (m.date || "") <= dateRange.end : true;
-    const matchPending = filterPending ? (m.needsReview && !m.isReviewed) : true;
-    return matchSearch && matchStart && matchEnd && matchPending;
-  }).sort((a, b) => {
-    const aTime = parseInt(String(a.id).split('_')[1]) || 0;
-    const bTime = parseInt(String(b.id).split('_')[1]) || 0;
-    
-    if (sortOrder === 'newest') {
-      return b.date !== a.date ? String(b.date || "").localeCompare(String(a.date || "")) : bTime - aTime;
-    } else {
-      return a.date !== b.date ? String(a.date || "").localeCompare(String(b.date || "")) : aTime - bTime;
-    }
-  });
+    return matchSearch && (dateRange.start ? (m.date || "") >= dateRange.start : true) && (dateRange.end ? (m.date || "") <= dateRange.end : true) && (filterPending ? (m.needsReview && !m.isReviewed) : true);
+  }).sort((a, b) => sortOrder === 'newest' ? ((b.date || "").localeCompare(a.date || "") || (parseInt(String(b.id).split('_')[1]) || 0) - (parseInt(String(a.id).split('_')[1]) || 0)) : ((a.date || "").localeCompare(b.date || "") || (parseInt(String(a.id).split('_')[1]) || 0) - (parseInt(String(b.id).split('_')[1]) || 0)));
 
   const groupedMemos = filteredMemos.reduce((acc, memo) => {
     if (listMode === 'all') return acc;
-    if (listMode === 'site') {
-      const key = String(memo.site || 'NO SITE DATA');
-      if (!acc[key]) acc[key] = [];
-      acc[key].push(memo);
-    } else if (listMode === 'genre') {
-      const key = String(memo.genre || 'UNCLASSIFIED');
-      if (!acc[key]) acc[key] = [];
-      acc[key].push(memo);
-    } else if (listMode === 'material') {
-      if (!memo.materials || memo.materials.length === 0) {
-        const key = 'NO TAGS';
-        if (!acc[key]) acc[key] = [];
-        acc[key].push(memo);
-      } else {
-        memo.materials.forEach(mat => {
-          const key = String(mat);
-          if (!acc[key]) acc[key] = [];
-          acc[key].push(memo);
-        });
-      }
-    }
+    if (listMode === 'site') { const k = String(memo.site || 'NO SITE DATA'); acc[k] = acc[k] || []; acc[k].push(memo); }
+    else if (listMode === 'genre') { const k = String(memo.genre || 'UNCLASSIFIED'); acc[k] = acc[k] || []; acc[k].push(memo); }
+    else if (listMode === 'material') { (memo.materials?.length ? memo.materials : ['NO TAGS']).forEach(mat => { const k = String(mat); acc[k] = acc[k] || []; acc[k].push(memo); }); }
     return acc;
   }, {});
 
@@ -461,24 +307,6 @@ const App = () => {
   const currentLevel = userSettings.stats?.level || 1;
   const expPercentage = currentExp % 100;
   const pendingReviews = memos.filter(m => m.needsReview && !m.isReviewed);
-
-  const sortedGenres = Object.entries(userSettings.genres)
-    .map(([k, v]) => ({ key: k, ...v }))
-    .sort((a, b) => a.order - b.order);
-
-  const groupedGenresForm = MainCategories.map(cat => ({
-    category: cat,
-    genres: sortedGenres.filter(g => g.group === cat)
-  })).filter(g => g.genres.length > 0);
-
-  const sortedTags = Object.entries(userSettings.tags)
-    .map(([k, v]) => ({ key: k, ...v }))
-    .sort((a, b) => a.order - b.order);
-
-  const groupedTagsForm = MainCategories.map(cat => ({
-    category: cat,
-    tags: sortedTags.filter(t => t.group === cat)
-  })).filter(t => t.tags.length > 0);
 
   const getWeaponStyle = (level) => {
     if (level >= 50) return { bg: 'bg-cyan-900', text: 'text-cyan-300', border: 'border-cyan-400', shadow: 'shadow-[0_0_20px_rgba(34,211,238,0.8)]' };
@@ -499,45 +327,6 @@ const App = () => {
     { id: 8, reqText: '現場討伐', name: 'ボスハンター', icon: Target, color: 'red', isUnlocked: () => (userSettings.stats?.completedSites?.length || 0) >= 1 }
   ];
 
-  const TrophiesModal = () => {
-    if (!showTrophiesModal) return null;
-    return (
-      <div className="fixed inset-0 z-[150] flex flex-col items-center justify-center bg-slate-950/90 p-4 backdrop-blur-md animate-in fade-in duration-300">
-        <div className="w-full max-w-sm bg-slate-900 border border-slate-700 rounded-3xl p-5 shadow-[0_0_30px_rgba(6,182,212,0.2)] flex flex-col max-h-[80vh]">
-          <div className="flex justify-between items-center mb-4 shrink-0">
-            <h2 className="text-lg font-black text-cyan-400 tracking-widest flex items-center gap-2"><Trophy size={20}/> LICENSES & TROPHIES</h2>
-            <button onClick={() => setShowTrophiesModal(false)} className="text-slate-500 hover:text-cyan-400 active:scale-90 transition-transform"><X size={24}/></button>
-          </div>
-          
-          <div className="overflow-y-auto pr-2 space-y-3 flex-1" style={{ scrollbarWidth: 'none' }}>
-            {trophies.map(t => {
-              const isUnlocked = t.isUnlocked();
-              const IconComp = t.icon;
-              const tColor = ColorMap[t.color] || ColorMap.gray;
-              
-              return (
-                <div key={t.id} className={`flex items-center gap-4 p-3 rounded-2xl border transition-all ${isUnlocked ? 'bg-slate-800 border-slate-600 shadow-inner' : 'bg-slate-900 border-slate-800 opacity-60 grayscale'}`}>
-                  <div className={`w-12 h-12 shrink-0 rounded-full flex items-center justify-center relative ${isUnlocked ? `${tColor.light} border ${tColor.border} shadow-[0_0_10px_currentColor] ${tColor.text}` : 'bg-slate-800 border border-slate-600 text-slate-500'}`}>
-                    {isUnlocked ? <IconComp size={20} /> : <Lock size={16} />}
-                  </div>
-                  <div className="flex flex-col min-w-0">
-                    <span className={`text-sm font-black truncate ${isUnlocked ? 'text-slate-100' : 'text-slate-500'}`}>
-                      {isUnlocked ? t.name : '??? (未開放)'}
-                    </span>
-                    <span className={`text-[10px] font-bold ${isUnlocked ? 'text-cyan-600' : 'text-slate-600'}`}>
-                      条件: {t.reqText}
-                    </span>
-                  </div>
-                  {isUnlocked && <CheckCircle size={16} className="ml-auto text-green-500 shrink-0 drop-shadow-[0_0_5px_rgba(34,197,94,0.5)]"/>}
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      </div>
-    );
-  };
-
   const LevelUpModal = () => {
     if (!levelUpData) return null;
     return (
@@ -551,6 +340,37 @@ const App = () => {
           <p className="text-xl font-black text-slate-900 mt-3 bg-yellow-400 px-5 py-2.5 rounded-xl border border-yellow-300 shadow-[0_0_15px_rgba(234,179,8,0.6)] relative z-10">
             {levelUpData.title}
           </p>
+        </div>
+      </div>
+    );
+  };
+
+  const TrophiesModal = () => {
+    if (!showTrophiesModal) return null;
+    return (
+      <div className="fixed inset-0 z-[150] flex flex-col items-center justify-center bg-slate-950/90 p-4 backdrop-blur-md animate-in fade-in duration-300">
+        <div className="w-full max-w-sm bg-slate-900 border border-slate-700 rounded-3xl p-5 shadow-[0_0_30px_rgba(6,182,212,0.2)] flex flex-col max-h-[80vh]">
+          <div className="flex justify-between items-center mb-4 shrink-0">
+            <h2 className="text-lg font-black text-cyan-400 tracking-widest flex items-center gap-2"><Trophy size={20}/> LICENSES & TROPHIES</h2>
+            <button onClick={() => setShowTrophiesModal(false)} className="text-slate-500 hover:text-cyan-400 active:scale-90 transition-transform"><X size={24}/></button>
+          </div>
+          <div className="overflow-y-auto pr-2 space-y-3 flex-1" style={{ scrollbarWidth: 'none' }}>
+            {trophies.map(t => {
+              const isUnlocked = t.isUnlocked(); const IconComp = t.icon; const tColor = ColorMap[t.color] || ColorMap.gray;
+              return (
+                <div key={t.id} className={`flex items-center gap-4 p-3 rounded-2xl border transition-all ${isUnlocked ? 'bg-slate-800 border-slate-600 shadow-inner' : 'bg-slate-900 border-slate-800 opacity-60 grayscale'}`}>
+                  <div className={`w-12 h-12 shrink-0 rounded-full flex items-center justify-center relative ${isUnlocked ? `${tColor.light} border ${tColor.border} shadow-[0_0_10px_currentColor] ${tColor.text}` : 'bg-slate-800 border border-slate-600 text-slate-500'}`}>
+                    {isUnlocked ? <IconComp size={20} /> : <LockIcon size={16} />}
+                  </div>
+                  <div className="flex flex-col min-w-0">
+                    <span className={`text-sm font-black truncate ${isUnlocked ? 'text-slate-100' : 'text-slate-500'}`}>{isUnlocked ? t.name : '??? (未開放)'}</span>
+                    <span className={`text-[10px] font-bold ${isUnlocked ? 'text-cyan-600' : 'text-slate-600'}`}>条件: {t.reqText}</span>
+                  </div>
+                  {isUnlocked && <CheckCircle size={16} className="ml-auto text-green-500 shrink-0 drop-shadow-[0_0_5px_rgba(34,197,94,0.5)]"/>}
+                </div>
+              );
+            })}
+          </div>
         </div>
       </div>
     );
@@ -609,187 +429,139 @@ const App = () => {
 
   const [markupModal, setMarkupModal] = useState({ isOpen: false, imgIndex: null, dataUrl: null });
   
-  // ★ 究極・高速化画像エディター（テキストドラッグ・再編集対応 ＋ 真っ白フリーズ完全防止）
   const MarkupModalCanvas = () => {
     const canvasRef = useRef(null);
-    const containerRef = useRef(null);
-    const [isDrawing, setIsDrawing] = useState(false);
     const [mode, setMode] = useState('draw'); 
     const [zoom, setZoom] = useState(1);
-    const [dimensions, setDimensions] = useState({ width: 0, height: 0 });
+    const [dimensions, setDimensions] = useState(null);
     
-    // ★ 追加：動かせるテキスト付箋の配列
     const [texts, setTexts] = useState([]); 
     const [editingTextId, setEditingTextId] = useState(null);
-    const draggingTextRef = useRef(null);
-    const dragOffsetRef = useRef({ x: 0, y: 0 });
+    const dragRef = useRef(null);
 
     const [strokes, setStrokes] = useState([]);
     const [redoStack, setRedoStack] = useState([]); 
-    const currentStrokeRef = useRef(null);
-    const baseImageRef = useRef(null);
-
+    
+    const currentStroke = useRef(null);
     const [penColor, setPenColor] = useState('#ef4444'); 
+
     const PEN_COLORS = [
-      { id: 'red', value: '#ef4444', tw: 'bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.8)]' },
-      { id: 'cyan', value: '#22d3ee', tw: 'bg-cyan-400 shadow-[0_0_8px_rgba(34,211,238,0.8)]' },
-      { id: 'yellow', value: '#facc15', tw: 'bg-yellow-400 shadow-[0_0_8px_rgba(250,204,21,0.8)]' },
-      { id: 'green', value: '#4ade80', tw: 'bg-green-400 shadow-[0_0_8px_rgba(74,222,128,0.8)]' }
+      { id: 'red', value: '#ef4444', tw: 'bg-red-500' },
+      { id: 'cyan', value: '#22d3ee', tw: 'bg-cyan-400' },
+      { id: 'yellow', value: '#facc15', tw: 'bg-yellow-400' },
+      { id: 'green', value: '#4ade80', tw: 'bg-green-400' }
     ];
 
     useEffect(() => {
       if (!markupModal.dataUrl) return;
       const img = new Image();
       img.onload = () => {
-        setDimensions({ width: img.width, height: img.height });
-        baseImageRef.current = img; 
+        const maxWidth = window.innerWidth - 32;
+        const maxHeight = window.innerHeight * 0.55;
+        const scale = Math.min(maxWidth / img.width, maxHeight / img.height, 1);
+        setDimensions({ dispW: img.width * scale, dispH: img.height * scale, origW: img.width, origH: img.height, img: img });
       };
       img.src = markupModal.dataUrl;
     }, [markupModal.dataUrl]);
 
-    // ★ 変更：キャンバスを透明な画用紙として使い、描画履歴（手書き・消しゴム）だけを軽量に再描画する
-    const redrawAll = (strokesToDraw = strokes) => {
-      if (!dimensions.width || !canvasRef.current) return;
-      const canvas = canvasRef.current;
-      const ctx = canvas.getContext('2d');
-
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-      strokesToDraw.forEach(stroke => {
-        ctx.globalCompositeOperation = stroke.type === 'eraser' ? 'destination-out' : 'source-over';
-        ctx.strokeStyle = stroke.type === 'eraser' ? 'rgba(0,0,0,1)' : stroke.color;
-        ctx.lineWidth = stroke.width;
-        ctx.lineJoin = 'round';
+    const redraw = () => {
+      if (!dimensions || !canvasRef.current) return;
+      const cvs = canvasRef.current;
+      const ctx = cvs.getContext('2d');
+      ctx.clearRect(0, 0, cvs.width, cvs.height);
+      
+      strokes.forEach(s => {
+        ctx.globalCompositeOperation = s.type === 'eraser' ? 'destination-out' : 'source-over';
+        ctx.strokeStyle = s.type === 'eraser' ? 'rgba(0,0,0,1)' : s.color;
+        ctx.lineWidth = s.width;
         ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
         
-        if (stroke.points && stroke.points.length > 0) {
+        if (s.points.length > 0) {
           ctx.beginPath();
-          ctx.moveTo(stroke.points[0].x, stroke.points[0].y);
-          if (stroke.points.length === 1) {
-              ctx.fillStyle = stroke.type === 'eraser' ? 'rgba(0,0,0,1)' : stroke.color;
-              ctx.arc(stroke.points[0].x, stroke.points[0].y, stroke.width / 2, 0, Math.PI * 2);
-              ctx.fill();
+          const p0x = s.points[0].x * cvs.width;
+          const p0y = s.points[0].y * cvs.height;
+          if (s.points.length === 1) {
+            ctx.fillStyle = s.type === 'eraser' ? 'rgba(0,0,0,1)' : s.color;
+            ctx.arc(p0x, p0y, s.width / 2, 0, Math.PI * 2);
+            ctx.fill();
           } else {
-              stroke.points.forEach((p, i) => {
-                if (i > 0) ctx.lineTo(p.x, p.y);
-              });
-              ctx.stroke();
+            ctx.moveTo(p0x, p0y);
+            s.points.forEach((p, i) => { if (i > 0) ctx.lineTo(p.x * cvs.width, p.y * cvs.height); });
+            ctx.stroke();
           }
         }
       });
       ctx.globalCompositeOperation = 'source-over';
     };
 
-    useEffect(() => { redrawAll(); }, [dimensions, strokes]);
+    useEffect(() => { redraw(); }, [dimensions, strokes]);
 
     const getPos = (e) => {
       if (!canvasRef.current) return { x: 0, y: 0 };
       const r = canvasRef.current.getBoundingClientRect();
-      let clientX, clientY;
-      if (e.touches && e.touches.length > 0) {
-        clientX = e.touches[0].clientX;
-        clientY = e.touches[0].clientY;
-      } else if (e.changedTouches && e.changedTouches.length > 0) {
-        clientX = e.changedTouches[0].clientX;
-        clientY = e.changedTouches[0].clientY;
-      } else {
-        clientX = e.clientX || 0;
-        clientY = e.clientY || 0;
-      }
-      const scaleX = canvasRef.current.width / r.width;
-      const scaleY = canvasRef.current.height / r.height;
-      return { x: (clientX - r.left) * scaleX, y: (clientY - r.top) * scaleY };
+      const cx = e.touches && e.touches.length > 0 ? e.touches[0].clientX : (e.changedTouches && e.changedTouches.length > 0 ? e.changedTouches[0].clientX : e.clientX);
+      const cy = e.touches && e.touches.length > 0 ? e.touches[0].clientY : (e.changedTouches && e.changedTouches.length > 0 ? e.changedTouches[0].clientY : e.clientY);
+      return { x: (cx - r.left) / r.width, y: (cy - r.top) / r.height };
     };
 
-    const startDrawing = (e) => { 
-      const p = getPos(e); 
-      
-      // テキスト編集中なら外側タップで決定させる
-      if (editingTextId) {
-         setEditingTextId(null);
-         return;
-      }
-
-      // テキストモードなら、タップした場所に新しい文字付箋を作る
+    const handleStart = (e) => {
+      const p = getPos(e);
+      if (editingTextId) { setEditingTextId(null); return; }
       if (mode === 'text') {
-        const newId = Date.now();
-        const baseFontSize = dimensions.width ? Math.max(32, dimensions.width * 0.04) : 32;
-        setTexts(prev => [...prev, {
-           id: newId, text: '', x: p.x, y: p.y, color: penColor, fontSize: baseFontSize
-        }]);
-        setEditingTextId(newId);
+        const id = Date.now();
+        setTexts([...texts, { id, text: '', x: p.x, y: p.y, color: penColor }]);
+        setEditingTextId(id);
         return;
       }
-
       if (mode !== 'draw' && mode !== 'eraser') return;
-      setIsDrawing(true); 
       
-      const baseLineWidth = dimensions.width ? Math.max(4, dimensions.width * 0.008) : 4;
-      currentStrokeRef.current = { 
-        type: mode, 
-        color: penColor, 
-        width: mode === 'eraser' ? baseLineWidth * 5 : baseLineWidth, // 消しゴムは太めに
-        points: [p] 
-      };
-
-      const ctx = canvasRef.current.getContext('2d'); 
+      const cvs = canvasRef.current;
+      const baseW = dimensions.dispW ? Math.max(4, dimensions.dispW * 0.01) : 4;
+      currentStroke.current = { type: mode, color: penColor, width: mode === 'eraser' ? baseW * 5 / zoom : baseW / zoom, points: [p] };
+      
+      const ctx = cvs.getContext('2d');
       ctx.globalCompositeOperation = mode === 'eraser' ? 'destination-out' : 'source-over';
       ctx.fillStyle = mode === 'eraser' ? 'rgba(0,0,0,1)' : penColor;
       ctx.beginPath();
-      ctx.arc(p.x, p.y, currentStrokeRef.current.width / 2, 0, Math.PI * 2);
+      ctx.arc(p.x * cvs.width, p.y * cvs.height, currentStroke.current.width / 2, 0, Math.PI * 2);
       ctx.fill();
     };
-    
-    const draw = (e) => { 
-      // ★ 追加：テキストのドラッグ移動
-      if (draggingTextRef.current) {
-         e.preventDefault();
-         const p = getPos(e);
-         setTexts(prev => prev.map(t => {
-            if (t.id === draggingTextRef.current) {
-               return { ...t, x: p.x - dragOffsetRef.current.x, y: p.y - dragOffsetRef.current.y };
-            }
-            return t;
-         }));
-         return;
-      }
 
-      if (!isDrawing || (mode !== 'draw' && mode !== 'eraser')) return; 
-      e.preventDefault(); 
-      const p = getPos(e); 
-      
-      if (currentStrokeRef.current) {
-        currentStrokeRef.current.points.push(p);
-        
-        // ★ 変更：指を滑らせた「差分」だけを透明キャンバスに直接描く（これが高速化の秘訣）
-        const ctx = canvasRef.current.getContext('2d'); 
-        ctx.globalCompositeOperation = mode === 'eraser' ? 'destination-out' : 'source-over';
-        ctx.strokeStyle = mode === 'eraser' ? 'rgba(0,0,0,1)' : penColor;
-        ctx.lineWidth = currentStrokeRef.current.width;
-        ctx.lineJoin = 'round';
-        ctx.lineCap = 'round';
-
-        ctx.beginPath();
-        const pts = currentStrokeRef.current.points;
-        if (pts.length >= 2) {
-           ctx.moveTo(pts[pts.length-2].x, pts[pts.length-2].y);
-           ctx.lineTo(pts[pts.length-1].x, pts[pts.length-1].y);
-           ctx.stroke();
-        }
+    const handleMove = (e) => {
+      if (dragRef.current) {
+        e.preventDefault();
+        const p = getPos(e);
+        setTexts(texts.map(t => t.id === dragRef.current.id ? { ...t, x: p.x - dragRef.current.ox, y: p.y - dragRef.current.oy } : t));
+        return;
       }
+      if (!currentStroke.current) return;
+      e.preventDefault();
+      const p = getPos(e);
+      const pts = currentStroke.current.points;
+      const prev = pts[pts.length - 1];
+      pts.push(p);
+
+      const cvs = canvasRef.current;
+      const ctx = cvs.getContext('2d');
+      ctx.globalCompositeOperation = mode === 'eraser' ? 'destination-out' : 'source-over';
+      ctx.strokeStyle = mode === 'eraser' ? 'rgba(0,0,0,1)' : penColor;
+      ctx.lineWidth = currentStroke.current.width;
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      ctx.beginPath();
+      ctx.moveTo(prev.x * cvs.width, prev.y * cvs.height);
+      ctx.lineTo(p.x * cvs.width, p.y * cvs.height);
+      ctx.stroke();
     };
-    
-    const stopDrawing = () => { 
-      if (draggingTextRef.current) {
-         draggingTextRef.current = null;
-         return;
+
+    const handleEnd = () => {
+      if (dragRef.current) dragRef.current = null;
+      if (currentStroke.current) {
+        setStrokes(prev => [...prev, currentStroke.current]);
+        setRedoStack([]);
+        currentStroke.current = null;
       }
-      if (isDrawing && currentStrokeRef.current) {
-        setStrokes(prev => [...prev, currentStrokeRef.current]);
-        setRedoStack([]); 
-        currentStrokeRef.current = null;
-      }
-      setIsDrawing(false); 
     };
 
     const handleUndo = () => {
@@ -808,39 +580,63 @@ const App = () => {
 
     const handleClearAll = () => {
       if(window.confirm('書き込みをすべて消去しますか？')) {
-        setStrokes([]);
-        setTexts([]); 
-        setRedoStack([]); 
+        setStrokes([]); setTexts([]); setRedoStack([]); 
       }
     };
 
     const handleSaveImage = () => {
-      // 保存時に「ベース写真」＋「手書き線」＋「テキスト付箋」を1枚に合成する
-      const saveCanvas = document.createElement('canvas');
-      saveCanvas.width = dimensions.width;
-      saveCanvas.height = dimensions.height;
-      const ctx = saveCanvas.getContext('2d');
-
-      if (baseImageRef.current) {
-        ctx.drawImage(baseImageRef.current, 0, 0, saveCanvas.width, saveCanvas.height);
-      }
-      ctx.drawImage(canvasRef.current, 0, 0);
-
-      texts.forEach(t => {
-        ctx.globalCompositeOperation = 'source-over';
-        ctx.fillStyle = t.color;
-        ctx.font = `900 ${t.fontSize}px sans-serif`;
-        ctx.textBaseline = 'top';
-        if (t.text) {
-          const lines = t.text.split('\n');
-          lines.forEach((line, index) => {
-             ctx.fillText(line, t.x, t.y + (index * t.fontSize * 1.2));
-          });
+      const cvs = document.createElement('canvas');
+      cvs.width = dimensions.origW; cvs.height = dimensions.origH;
+      const ctx = cvs.getContext('2d');
+      ctx.drawImage(dimensions.img, 0, 0, cvs.width, cvs.height);
+      
+      strokes.forEach(s => {
+        ctx.globalCompositeOperation = s.type === 'eraser' ? 'destination-out' : 'source-over';
+        ctx.strokeStyle = s.type === 'eraser' ? 'rgba(0,0,0,1)' : s.color;
+        const w = s.type === 'eraser' ? cvs.width * 0.05 : cvs.width * 0.01;
+        ctx.lineWidth = w; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+        if(s.points.length > 0){
+          ctx.beginPath();
+          if (s.points.length === 1) {
+            ctx.fillStyle = s.type === 'eraser' ? 'rgba(0,0,0,1)' : s.color;
+            ctx.arc(s.points[0].x * cvs.width, s.points[0].y * cvs.height, w / 2, 0, Math.PI * 2);
+            ctx.fill();
+          } else {
+            ctx.moveTo(s.points[0].x * cvs.width, s.points[0].y * cvs.height);
+            s.points.forEach((p, i) => { if(i>0) ctx.lineTo(p.x * cvs.width, p.y * cvs.height); });
+            ctx.stroke();
+          }
         }
       });
 
-      // 保存エラーを防ぐために画質を0.6に最適化
-      const newDataUrl = saveCanvas.toDataURL('image/jpeg', 0.6);
+      ctx.globalCompositeOperation = 'source-over';
+      ctx.textBaseline = 'top';
+      texts.forEach(t => {
+        if (!t.text) return;
+        const fSize = cvs.width * 0.04; 
+        ctx.font = `900 ${fSize}px sans-serif`;
+        const lines = t.text.split('\n');
+        
+        let maxW = 0;
+        lines.forEach(l => { const w = ctx.measureText(l).width; if(w > maxW) maxW = w; });
+        
+        const pad = fSize * 0.4;
+        const rectW = maxW + pad * 2;
+        const rectH = lines.length * fSize * 1.2 + pad * 2;
+        const tx = t.x * cvs.width;
+        const ty = t.y * cvs.height;
+
+        ctx.fillStyle = 'rgba(0,0,0,0.6)';
+        ctx.fillRect(tx, ty, rectW, rectH);
+        ctx.strokeStyle = t.color;
+        ctx.lineWidth = Math.max(2, cvs.width * 0.002);
+        ctx.strokeRect(tx, ty, rectW, rectH);
+
+        ctx.fillStyle = t.color;
+        lines.forEach((l, i) => ctx.fillText(l, tx + pad, ty + pad + (i * fSize * 1.2)));
+      });
+
+      const newDataUrl = cvs.toDataURL('image/jpeg', 0.6); 
       const newImages = [...formData.images];
       newImages[markupModal.imgIndex] = newDataUrl;
       setFormData({...formData, images: newImages});
@@ -857,148 +653,70 @@ const App = () => {
 
           <div className="flex flex-col gap-2 bg-slate-800 p-2 rounded-xl border border-slate-700 shrink-0">
             <div className="flex justify-between items-center bg-slate-900 p-1.5 rounded-lg border border-slate-700 shadow-inner">
-              <div className="flex items-center gap-1">
-                <button onClick={() => setMode('draw')} className={`p-2 rounded-md transition-colors flex items-center gap-1 ${mode === 'draw' ? 'bg-cyan-900/50 text-cyan-400 shadow-inner' : 'text-slate-500 hover:text-cyan-400'}`}>
-                  <PenTool size={16}/>
-                </button>
-                <button onClick={() => setMode('eraser')} className={`p-2 rounded-md transition-colors flex items-center gap-1 ${mode === 'eraser' ? 'bg-cyan-900/50 text-cyan-400 shadow-inner' : 'text-slate-500 hover:text-cyan-400'}`}>
-                  <Eraser size={16}/>
-                </button>
-                <button onClick={() => setMode('text')} className={`p-2 rounded-md transition-colors flex items-center gap-1 ${mode === 'text' ? 'bg-cyan-900/50 text-cyan-400 shadow-inner' : 'text-slate-500 hover:text-cyan-400'}`}>
-                  <Type size={16}/>
-                </button>
-                <div className="w-px h-6 bg-slate-700 mx-1"></div>
+              <div className="flex gap-1">
+                <button onClick={() => setMode('draw')} className={`p-2 rounded-md ${mode === 'draw' ? 'bg-cyan-900/50 text-cyan-400 shadow-inner' : 'text-slate-500'}`}><PenTool size={16}/></button>
+                <button onClick={() => setMode('eraser')} className={`p-2 rounded-md ${mode === 'eraser' ? 'bg-cyan-900/50 text-cyan-400 shadow-inner' : 'text-slate-500'}`}><Eraser size={16}/></button>
+                <button onClick={() => setMode('text')} className={`p-2 rounded-md ${mode === 'text' ? 'bg-cyan-900/50 text-cyan-400 shadow-inner' : 'text-slate-500'}`}><Type size={16}/></button>
+              </div>
+              <div className="flex gap-2">
                 {PEN_COLORS.map(c => (
-                  <button 
-                    key={c.id} 
-                    onClick={() => { setPenColor(c.value); setMode(mode === 'move' ? 'draw' : mode); }} 
-                    className={`w-6 h-6 rounded-full ${c.tw} transition-all border-2 ${penColor === c.value ? 'border-white scale-110' : 'border-transparent scale-90 opacity-50 hover:opacity-100'}`}
-                  />
+                  <button key={c.id} onClick={() => { setPenColor(c.value); if(mode==='eraser' || mode==='move') setMode('draw'); }} 
+                    className={`w-6 h-6 rounded-full ${c.tw} border-2 ${penColor === c.value ? 'border-white scale-110' : 'border-transparent opacity-50 scale-90'} transition-all`} />
                 ))}
               </div>
             </div>
-            
             <div className="flex justify-between items-center bg-slate-900 p-1.5 rounded-lg border border-slate-700 shadow-inner">
-              <div className="flex gap-1 items-center">
-                <button onClick={() => setMode('move')} className={`px-3 py-2 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all ${mode === 'move' ? 'bg-slate-800 shadow-inner text-cyan-400 border border-cyan-900' : 'text-slate-400 hover:bg-slate-700'}`}>
+              <div className="flex gap-2">
+                <button onClick={() => setMode('move')} className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1 transition-all ${mode === 'move' ? 'bg-slate-800 shadow-inner text-cyan-400 border border-cyan-900' : 'text-slate-400 hover:bg-slate-700'}`}>
                   <Move size={14}/> 移動
                 </button>
               </div>
-              <div className="flex gap-2 items-center">
-                <button onClick={handleUndo} disabled={strokes.length === 0} className="px-3 py-2 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all text-slate-300 bg-slate-800 hover:text-yellow-400 disabled:opacity-30 border border-slate-700 active:scale-95">
-                  <RotateCcw size={14}/> 戻る
-                </button>
-                <button onClick={handleRedo} disabled={redoStack.length === 0} className="px-3 py-2 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all text-slate-300 bg-slate-800 hover:text-cyan-400 disabled:opacity-30 border border-slate-700 active:scale-95">
-                  <RotateCw size={14}/> 進む
-                </button>
-                <button onClick={handleClearAll} disabled={strokes.length === 0 && texts.length === 0} className="px-3 py-2 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all text-slate-300 bg-slate-800 hover:text-red-400 disabled:opacity-30 border border-slate-700 active:scale-95">
-                  <Trash2 size={14}/> 消去
-                </button>
+              <div className="flex gap-2">
+                <button onClick={handleUndo} disabled={strokes.length === 0} className="px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1 text-slate-300 bg-slate-800 disabled:opacity-30 hover:text-yellow-400 border border-slate-700"><RotateCcw size={14}/>戻る</button>
+                <button onClick={handleRedo} disabled={redoStack.length === 0} className="px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1 text-slate-300 bg-slate-800 disabled:opacity-30 hover:text-cyan-400 border border-slate-700"><RotateCw size={14}/>進む</button>
+                <button onClick={handleClearAll} disabled={strokes.length === 0 && texts.length === 0} className="px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1 text-slate-300 bg-slate-800 disabled:opacity-30 hover:text-red-400 border border-slate-700"><Trash2 size={14}/>消去</button>
               </div>
             </div>
           </div>
 
-          <div ref={containerRef} className={`flex-1 overflow-auto rounded-xl border-2 border-slate-700 bg-slate-950 shadow-inner relative ${mode === 'draw' || mode === 'text' || mode === 'eraser' ? 'touch-none' : ''}`}>
-            {dimensions.width > 0 && (
-              <div style={{ width: `${100 * zoom}%`, minHeight: '100%', position: 'relative' }}>
-                {/* ベース画像を裏側に配置してメモリ負荷をゼロに */}
-                <img src={markupModal.dataUrl} alt="base" style={{ width: '100%', height: 'auto', display: 'block', opacity: 0.8, pointerEvents: 'none' }} />
-                
-                {/* 透明なキャンバスを被せて線だけを描画 */}
-                <canvas
-                  ref={canvasRef}
-                  width={dimensions.width}
-                  height={dimensions.height}
-                  style={{
-                    position: 'absolute',
-                    top: 0, left: 0, width: '100%', height: '100%', display: 'block'
-                  }}
+          <div className="flex-1 relative flex justify-center items-center bg-slate-950 rounded-xl overflow-hidden shadow-inner border border-slate-700" style={{ touchAction: 'none' }}>
+            {dimensions ? (
+              <div style={{ width: dimensions.dispW, height: dimensions.dispH, position: 'relative', transform: `scale(${zoom})`, transformOrigin: 'top left' }}>
+                <img src={markupModal.dataUrl} alt="base" style={{ width: '100%', height: '100%', display: 'block', opacity: 0.8, pointerEvents: 'none' }} />
+                <canvas ref={canvasRef} width={dimensions.dispW} height={dimensions.dispH} style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', zIndex: 10 }}
                   className={`shadow-lg ${mode === 'draw' ? 'cursor-crosshair' : mode === 'text' ? 'cursor-text' : mode === 'eraser' ? 'cursor-cell' : 'cursor-grab'}`}
-                  onMouseDown={startDrawing} onMouseMove={draw} onMouseUp={stopDrawing} onMouseLeave={stopDrawing}
-                  onTouchStart={startDrawing} onTouchMove={draw} onTouchEnd={stopDrawing}
+                  onMouseDown={handleStart} onMouseMove={handleMove} onMouseUp={handleEnd} onMouseLeave={handleEnd} onTouchStart={handleStart} onTouchMove={handleMove} onTouchEnd={handleEnd}
                 />
                 
-                {/* ★ 変更：ドラッグ移動＆再編集できるテキスト付箋 */}
-                {texts.map(t => {
-                  if (editingTextId === t.id) {
-                    return (
-                      <textarea
-                        key={t.id}
-                        autoFocus
-                        value={t.text}
-                        onChange={(e) => setTexts(prev => prev.map(item => item.id === t.id ? { ...item, text: e.target.value } : item))}
-                        onBlur={() => {
-                          if (!t.text.trim()) {
-                            // 空っぽなら消去する
-                            setTexts(prev => prev.filter(item => item.id !== t.id));
-                          }
-                          setEditingTextId(null);
-                        }}
-                        onMouseDown={(e) => e.stopPropagation()}
-                        onTouchStart={(e) => e.stopPropagation()}
-                        style={{
-                          position: 'absolute',
-                          left: `${(t.x / dimensions.width) * 100}%`,
-                          top: `${(t.y / dimensions.height) * 100}%`,
-                          color: t.color,
-                          fontSize: `${Math.max(16, 24 / zoom) * zoom}px`, 
-                          fontWeight: '900',
-                          background: 'rgba(0,0,0,0.6)',
-                          border: '2px dashed #06b6d4',
-                          borderRadius: '8px',
-                          outline: 'none',
-                          resize: 'both',
-                          zIndex: 50,
-                          minHeight: '3em',
-                          minWidth: '8em',
-                          lineHeight: '1.2',
-                          padding: '8px',
-                          whiteSpace: 'pre-wrap'
-                        }}
-                        placeholder="テキストを入力..."
-                      />
-                    );
-                  }
-                  return (
-                    <div
-                      key={t.id}
-                      onMouseDown={(e) => {
-                        e.stopPropagation();
-                        draggingTextRef.current = t.id;
-                        const p = getPos(e);
-                        dragOffsetRef.current = { x: p.x - t.x, y: p.y - t.y };
-                      }}
-                      onTouchStart={(e) => {
-                        e.stopPropagation();
-                        draggingTextRef.current = t.id;
-                        const p = getPos(e);
-                        dragOffsetRef.current = { x: p.x - t.x, y: p.y - t.y };
-                      }}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setEditingTextId(t.id);
-                      }}
+                {texts.map(t => editingTextId === t.id ? (
+                    <textarea key={t.id} autoFocus value={t.text} onChange={(e) => setTexts(texts.map(x => x.id === t.id ? {...x, text: e.target.value} : x))}
+                      onBlur={() => { if (!t.text.trim()) setTexts(texts.filter(x => x.id !== t.id)); setEditingTextId(null); }}
+                      onMouseDown={e => e.stopPropagation()} onTouchStart={e => e.stopPropagation()}
                       style={{
-                        position: 'absolute',
-                        left: `${(t.x / dimensions.width) * 100}%`,
-                        top: `${(t.y / dimensions.height) * 100}%`,
-                        color: t.color,
-                        fontSize: `${Math.max(16, 24 / zoom) * zoom}px`, 
-                        fontWeight: '900',
-                        cursor: 'move',
-                        zIndex: 40,
-                        whiteSpace: 'pre-wrap',
-                        lineHeight: '1.2',
-                        textShadow: '0px 0px 4px rgba(0,0,0,0.8), 0px 0px 8px rgba(0,0,0,0.8)'
+                        position: 'absolute', left: `${t.x * 100}%`, top: `${t.y * 100}%`, color: t.color, fontSize: `${Math.max(16, dimensions.dispW * 0.04 / zoom)}px`, fontWeight: '900',
+                        background: 'rgba(0,0,0,0.6)', border: `2px solid ${t.color}`, borderRadius: '8px', outline: 'none', resize: 'both', zIndex: 50, padding: '8px', whiteSpace: 'pre-wrap', lineHeight: '1.2', minWidth: '6em', minHeight: '2em'
+                      }} placeholder="文字を入力..."
+                    />
+                  ) : (
+                    <div key={t.id}
+                      onMouseDown={(e) => { e.stopPropagation(); dragRef.current = { id: t.id, ox: getPos(e).x - t.x, oy: getPos(e).y - t.y }; }}
+                      onTouchStart={(e) => { e.stopPropagation(); dragRef.current = { id: t.id, ox: getPos(e).x - t.x, oy: getPos(e).y - t.y }; }}
+                      onClick={(e) => { e.stopPropagation(); setEditingTextId(t.id); }}
+                      style={{
+                        position: 'absolute', left: `${t.x * 100}%`, top: `${t.y * 100}%`, color: t.color, fontSize: `${Math.max(16, dimensions.dispW * 0.04 / zoom)}px`, fontWeight: '900',
+                        cursor: 'move', zIndex: 40, whiteSpace: 'pre-wrap', lineHeight: '1.2', background: 'rgba(0,0,0,0.6)', border: `2px solid ${t.color}`, borderRadius: '8px', padding: '8px'
                       }}
-                    >
-                      {t.text}
-                    </div>
-                  );
-                })}
+                    >{t.text}</div>
+                  )
+                )}
               </div>
-            )}
-            {!dimensions.width && <div className="absolute inset-0 flex items-center justify-center text-cyan-500"><Loader2 size={24} className="animate-spin"/></div>}
+            ) : <Loader2 size={24} className="animate-spin text-cyan-500"/>}
+          </div>
+
+          <div className="flex gap-2 items-center justify-center bg-slate-900 py-1.5 rounded-lg border border-slate-700 shadow-inner shrink-0">
+            <button onClick={() => setZoom(z => Math.max(1, z - 0.5))} className="p-1 text-slate-400 active:scale-95 hover:text-cyan-400"><ZoomOut size={16}/></button>
+            <span className="text-[10px] font-black w-12 text-center text-cyan-400 drop-shadow-[0_0_5px_rgba(34,211,238,0.5)]">{Math.round(zoom * 100)}%</span>
+            <button onClick={() => setZoom(z => Math.min(4, z + 0.5))} className="p-1 text-slate-400 active:scale-95 hover:text-cyan-400"><ZoomIn size={16}/></button>
           </div>
 
           <button onClick={handleSaveImage} className="w-full shrink-0 bg-cyan-600 hover:bg-cyan-500 text-slate-900 py-4 rounded-2xl font-black uppercase tracking-widest shadow-[0_0_15px_rgba(6,182,212,0.4)] active:scale-[0.98] transition-all">
@@ -1012,7 +730,6 @@ const App = () => {
   const handleFileUpload = async (e) => {
     const files = Array.from(e.target.files);
     if (files.length === 0) return;
-
     const processFile = (file) => {
       return new Promise((resolve) => {
         const reader = new FileReader();
@@ -1020,21 +737,18 @@ const App = () => {
           const img = new Image();
           img.onload = () => {
             const canvas = document.createElement('canvas');
-            // ★ 保存エラー対策：画像を少し小さくしてデータサイズをダイエット（見た目は十分綺麗です）
             const MAX_WIDTH = 800; 
             const scale = Math.min(MAX_WIDTH / img.width, 1);
-            canvas.width = img.width * scale;
-            canvas.height = img.height * scale;
+            canvas.width = img.width * scale; canvas.height = img.height * scale;
             const ctx = canvas.getContext('2d');
             ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-            resolve(canvas.toDataURL('image/jpeg', 0.6));
+            resolve(canvas.toDataURL('image/jpeg', 0.6)); 
           };
           img.src = event.target.result;
         };
         reader.readAsDataURL(file);
       });
     };
-
     const newImageUrls = await Promise.all(files.map(processFile));
     setFormData(prev => ({...prev, images: [...prev.images, ...newImageUrls]}));
     e.target.value = null; 
@@ -1092,20 +806,15 @@ const App = () => {
               <style>{`.overflow-x-auto::-webkit-scrollbar { display: none; }`}</style>
               {IconCategories.map(cat => (
                 <button 
-                  key={cat.name} 
-                  type="button" 
-                  onClick={() => setActiveCategory(cat.name)}
+                  key={cat.name} type="button" onClick={() => setActiveCategory(cat.name)}
                   className={`whitespace-nowrap px-3 py-1.5 rounded-lg text-[10px] font-bold transition-colors snap-start ${activeCategory === cat.name ? 'bg-cyan-600 text-white shadow-[0_0_10px_rgba(6,182,212,0.5)]' : 'bg-slate-900 text-slate-400 hover:bg-slate-700 border border-slate-700'}`}
-                >
-                  {cat.name}
-                </button>
+                >{cat.name}</button>
               ))}
             </div>
             <div className="max-h-48 overflow-y-auto grid grid-cols-2 gap-1 pr-1">
               {activeIcons.map(iconName => (
                 <button key={iconName} type="button" onClick={() => { onChange(iconName); setIsOpen(false); }} className={`flex items-center gap-2 p-2 rounded-lg text-[10px] font-bold text-left transition-colors ${value === iconName ? 'bg-cyan-900/50 text-cyan-300 border border-cyan-500/50' : 'hover:bg-slate-700 text-slate-300 border border-transparent'}`}>
-                  <DynamicIcon name={iconName} size={14} className={value === iconName ? 'text-cyan-400' : 'text-slate-500'} /> 
-                  <span className="truncate">{IconNames[iconName]}</span>
+                  <DynamicIcon name={iconName} size={14} className={value === iconName ? 'text-cyan-400' : 'text-slate-500'} /> <span className="truncate">{IconNames[iconName]}</span>
                 </button>
               ))}
             </div>
@@ -1122,25 +831,7 @@ const App = () => {
     const [group, setGroup] = useState(MainCategories[0]); 
     const [editingKey, setEditingKey] = useState(null); 
 
-    const sortedItems = Object.entries(items)
-      .map(([k, v]) => ({ key: k, ...v }))
-      .sort((a, b) => a.order - b.order);
-
-    const handleEdit = (item) => {
-      setEditingKey(item.key);
-      setName(item.key);
-      setColor(item.colorId);
-      setIconName(item.icon);
-      setGroup(item.group);
-    };
-
-    const handleCancel = () => {
-      setEditingKey(null);
-      setName('');
-      setColor('blue');
-      setIconName('Info');
-      setGroup(MainCategories[0]);
-    };
+    const sortedItems = Object.entries(items).map(([k, v]) => ({ key: k, ...v })).sort((a, b) => a.order - b.order);
 
     return (
       <div className="bg-slate-800/80 backdrop-blur-sm p-5 rounded-[2rem] border border-slate-700 shadow-[0_0_15px_rgba(0,0,0,0.5)] space-y-4">
@@ -1153,12 +844,10 @@ const App = () => {
               <div key={item.key} className={`flex justify-between items-center p-2.5 rounded-2xl border shadow-inner transition-colors ${editingKey === item.key ? 'bg-slate-800 border-yellow-500/50 shadow-[0_0_10px_rgba(234,179,8,0.2)]' : 'bg-slate-900 border-slate-700'}`}>
                 <div className="flex flex-col gap-1 items-start">
                   <span className="text-[8px] font-black text-cyan-600 uppercase tracking-wider bg-cyan-950/50 px-1.5 py-0.5 rounded border border-cyan-900">{item.group}</span>
-                  <span className={`${colors.light} ${colors.text} ${colors.border} border text-xs font-bold px-2.5 py-1 rounded-lg flex items-center gap-1.5 w-max shadow-[0_0_8px_rgba(0,0,0,0.5)]`}>
-                    <DynamicIcon name={item.icon} size={14} /> {item.key}
-                  </span>
+                  <span className={`${colors.light} ${colors.text} ${colors.border} border text-xs font-bold px-2.5 py-1 rounded-lg flex items-center gap-1.5 w-max shadow-[0_0_8px_rgba(0,0,0,0.5)]`}><DynamicIcon name={item.icon} size={14} /> {item.key}</span>
                 </div>
                 <div className="flex gap-1 items-center">
-                  <button onClick={() => handleEdit(item)} className={`p-2 transition-colors active:scale-90 ${editingKey === item.key ? 'text-yellow-400' : 'text-slate-500 hover:text-yellow-400'}`}><Edit3 size={16}/></button>
+                  <button onClick={() => { setEditingKey(item.key); setName(item.key); setColor(item.colorId); setIconName(item.icon); setGroup(item.group); }} className={`p-2 transition-colors active:scale-90 ${editingKey === item.key ? 'text-yellow-400' : 'text-slate-500 hover:text-yellow-400'}`}><Edit3 size={16}/></button>
                   <div className="w-px h-6 bg-slate-700 mx-0.5"></div>
                   <button onClick={() => onMoveUp(item.key)} disabled={idx === 0 || editingKey} className="p-2 text-slate-500 hover:text-cyan-400 disabled:opacity-30 active:scale-90"><ArrowUp size={16}/></button>
                   <button onClick={() => onMoveDown(item.key)} disabled={idx === sortedItems.length - 1 || editingKey} className="p-2 text-slate-500 hover:text-cyan-400 disabled:opacity-30 active:scale-90"><ArrowDown size={16}/></button>
@@ -1187,103 +876,16 @@ const App = () => {
           <div className="flex gap-2 mt-2">
             {editingKey ? (
               <>
-                <button onClick={() => { if(name.trim()){ onUpdate(editingKey, name.trim(), color, iconName, group); setEditingKey(null); setName(''); } }} className="flex-[3] bg-yellow-500/20 border border-yellow-500 text-yellow-400 px-4 py-3.5 rounded-xl font-black text-xs uppercase tracking-widest shadow-[0_0_10px_rgba(234,179,8,0.2)] active:scale-[0.98] hover:bg-yellow-500/30 transition-all flex justify-center items-center gap-2">
-                  <Save size={14}/> 設定を更新
-                </button>
-                <button onClick={handleCancel} className="flex-1 bg-slate-800 border border-slate-700 text-slate-400 px-4 py-3.5 rounded-xl font-black text-xs uppercase tracking-widest active:scale-[0.98] hover:bg-slate-700 transition-all flex justify-center items-center">
-                  <X size={14}/>
-                </button>
+                <button onClick={() => { if(name.trim()){ onUpdate(editingKey, name.trim(), color, iconName, group); setEditingKey(null); setName(''); } }} className="flex-[3] bg-yellow-500/20 border border-yellow-500 text-yellow-400 px-4 py-3.5 rounded-xl font-black text-xs uppercase tracking-widest shadow-[0_0_10px_rgba(234,179,8,0.2)] active:scale-[0.98] hover:bg-yellow-500/30 transition-all flex justify-center items-center gap-2"><Save size={14}/> 設定を更新</button>
+                <button onClick={() => { setEditingKey(null); setName(''); setColor('blue'); setIconName('Info'); setGroup(MainCategories[0]); }} className="flex-1 bg-slate-800 border border-slate-700 text-slate-400 px-4 py-3.5 rounded-xl font-black text-xs uppercase tracking-widest active:scale-[0.98] hover:bg-slate-700 transition-all flex justify-center items-center"><X size={14}/></button>
               </>
             ) : (
-              <button onClick={() => { if(name.trim()){ onAdd(name.trim(), color, iconName, group); setName(''); } }} className="w-full bg-slate-800 border border-cyan-500/50 text-cyan-400 px-4 py-3.5 rounded-xl font-black text-xs uppercase tracking-widest shadow-[0_0_10px_rgba(34,211,238,0.2)] active:scale-[0.98] hover:bg-slate-700 transition-all flex justify-center items-center gap-2">
-                <ClipperIcon size={14}/> 装備に追加
-              </button>
+              <button onClick={() => { if(name.trim()){ onAdd(name.trim(), color, iconName, group); setName(''); } }} className="w-full bg-slate-800 border border-cyan-500/50 text-cyan-400 px-4 py-3.5 rounded-xl font-black text-xs uppercase tracking-widest shadow-[0_0_10px_rgba(34,211,238,0.2)] active:scale-[0.98] hover:bg-slate-700 transition-all flex justify-center items-center gap-2"><ClipperIcon size={14}/> 装備に追加</button>
             )}
           </div>
         </div>
       </div>
     );
-  };
-
-  const handleMoveItem = (type, key, direction) => {
-    const items = userSettings[type]; 
-    const arr = Object.entries(items)
-      .map(([k, v]) => ({ key: k, ...v }))
-      .sort((a, b) => a.order - b.order);
-      
-    const index = arr.findIndex(item => item.key === key);
-    if (index === -1) return;
-    
-    if (direction === 'up' && index > 0) {
-      const temp = arr[index].order;
-      arr[index].order = arr[index - 1].order;
-      arr[index - 1].order = temp;
-    } else if (direction === 'down' && index < arr.length - 1) {
-      const temp = arr[index].order;
-      arr[index].order = arr[index + 1].order;
-      arr[index + 1].order = temp;
-    } else {
-      return; 
-    }
-    
-    const newItems = {};
-    arr.forEach(item => {
-      const { key, ...rest } = item;
-      newItems[key] = rest;
-    });
-    
-    saveSettings({ ...userSettings, [type]: newItems });
-  };
-
-  const handleAddItem = (type, name, colorId, icon, group) => {
-    const items = userSettings[type] || {};
-    const maxOrder = Math.max(...Object.values(items).map(i => i.order || 0), -1);
-    const newItem = { colorId, icon, group, order: maxOrder + 1 };
-    saveSettings({ ...userSettings, [type]: { ...items, [name]: newItem } });
-  };
-
-  const handleUpdateItem = async (type, oldKey, newKey, colorId, icon, group) => {
-    const items = userSettings[type];
-    const oldOrder = items[oldKey].order;
-
-    if (oldKey !== newKey && items[newKey]) {
-      alert("WARNING: その名前はすでに登録されています！");
-      return;
-    }
-
-    const newItems = { ...items };
-    delete newItems[oldKey];
-    newItems[newKey] = { colorId, icon, group, order: oldOrder };
-
-    const newSettings = { ...userSettings, [type]: newItems };
-    await saveSettings(newSettings);
-
-    if (oldKey !== newKey) {
-      setIsSyncing(true);
-      try {
-        const promises = memos.map(async (memo) => {
-          let needsUpdate = false;
-          let updatedData = {};
-
-          if (type === 'genres' && memo.genre === oldKey) {
-            needsUpdate = true;
-            updatedData.genre = newKey;
-          } else if (type === 'tags' && memo.materials && memo.materials.includes(oldKey)) {
-            needsUpdate = true;
-            updatedData.materials = memo.materials.map(m => m === oldKey ? newKey : m);
-          }
-
-          if (needsUpdate) {
-            await setDoc(doc(db, 'artifacts', currentAppId, 'public', 'data', 'memos', memo.id), updatedData, { merge: true });
-          }
-        });
-        await Promise.all(promises);
-      } catch (e) {
-        console.error("Failed to bulk update memos:", e);
-      } finally {
-        setIsSyncing(false);
-      }
-    }
   };
 
   const TagAccordion = ({ groupName, tags, formData, setFormData }) => {
@@ -1323,11 +925,7 @@ const App = () => {
 
   return (
     <div className="min-h-screen bg-slate-950 pb-28 text-slate-200 font-sans antialiased selection:bg-cyan-500/30 relative">
-      
-      <div className="fixed inset-0 pointer-events-none z-0 opacity-20" style={{
-        backgroundImage: `linear-gradient(to right, #06b6d4 1px, transparent 1px), linear-gradient(to bottom, #06b6d4 1px, transparent 1px)`,
-        backgroundSize: '30px 30px'
-      }}></div>
+      <div className="fixed inset-0 pointer-events-none z-0 opacity-20" style={{ backgroundImage: `linear-gradient(to right, #06b6d4 1px, transparent 1px), linear-gradient(to bottom, #06b6d4 1px, transparent 1px)`, backgroundSize: '30px 30px' }}></div>
       <div className="fixed inset-0 pointer-events-none z-0 bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-transparent via-slate-950/80 to-slate-950"></div>
 
       <div className="relative z-10">
@@ -1357,11 +955,7 @@ const App = () => {
               </div>
               <div className="flex gap-2">
                 <button onClick={() => setEncounterMemo(null)} className="flex-1 bg-slate-800 text-slate-400 py-3 rounded-xl font-bold active:scale-95 transition-transform">逃げる</button>
-                <button onClick={() => {
-                  setSelectedMemo(encounterMemo);
-                  setView('detail');
-                  setEncounterMemo(null);
-                }} className="flex-1 bg-red-600 text-white py-3 rounded-xl font-black shadow-[0_0_15px_rgba(239,68,68,0.5)] active:scale-95 transition-transform">立ち向かう</button>
+                <button onClick={() => { setSelectedMemo(encounterMemo); setView('detail'); setEncounterMemo(null); }} className="flex-1 bg-red-600 text-white py-3 rounded-xl font-black shadow-[0_0_15px_rgba(239,68,68,0.5)] active:scale-95 transition-transform">立ち向かう</button>
               </div>
             </div>
           </div>
@@ -1369,122 +963,80 @@ const App = () => {
         
         <header className="bg-slate-900 border-b border-cyan-500/30 text-white px-5 py-4 rounded-b-3xl shadow-[0_0_20px_rgba(6,182,212,0.15)] sticky top-0 z-20 overflow-hidden relative">
           <div className="absolute top-0 right-0 opacity-5 pointer-events-none"><Zap size={150} className="-mt-10 -mr-10 rotate-12 text-cyan-400" /></div>
-
           <div className="flex justify-between items-center mb-3 relative z-10">
             <div className="flex items-center gap-3">
               <div className="shrink-0 relative">
                 <div className="absolute inset-0 bg-cyan-400 blur-md opacity-40 rounded-xl"></div>
-                <img 
-                  src="https://raw.githubusercontent.com/TEASTREAM-FURADIN/VoltVault/main/apple-touch-icon.png.png" 
-                  alt="苦菩茶の極意" 
-                  className="w-10 h-10 rounded-xl border border-cyan-400/60 object-cover relative z-10 shadow-[0_0_10px_rgba(0,0,0,0.8)]"
-                  onError={(e) => { e.target.src = '/apple-touch-icon.png'; }}
-                />
+                <img src="https://raw.githubusercontent.com/TEASTREAM-FURADIN/VoltVault/main/apple-touch-icon.png.png" alt="苦菩茶の極意" className="w-10 h-10 rounded-xl border border-cyan-400/60 object-cover relative z-10 shadow-[0_0_10px_rgba(0,0,0,0.8)]" onError={(e) => { e.target.src = '/apple-touch-icon.png'; }} />
               </div>
               <div>
                 <h1 className="text-xl font-black italic tracking-tighter leading-none text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-blue-500 drop-shadow-[0_0_2px_rgba(34,211,238,0.8)] pr-2">苦菩茶の極意</h1>
                 <div className="flex items-center gap-1 text-[8px] font-black text-cyan-600 mt-1 uppercase tracking-widest">
-                  {isSyncing ? <Loader2 size={8} className="animate-spin" /> : <Cloud size={8} />}
-                  {user ? `SYSTEM ONLINE` : "CONNECTING..."}
+                  {isSyncing ? <Loader2 size={8} className="animate-spin" /> : <Cloud size={8} />} {user ? `SYSTEM ONLINE` : "CONNECTING..."}
                 </div>
               </div>
             </div>
             <div className="flex gap-2">
               <button onClick={() => { setView('list'); setFilterPending(!filterPending); }} className={`p-2.5 rounded-xl shadow-lg transition-all relative ${filterPending ? 'bg-red-500 text-slate-900 shadow-[0_0_15px_rgba(239,68,68,0.5)]' : 'bg-slate-800 text-cyan-400 hover:text-white border border-cyan-900'}`}>
                 <Bell size={22} />
-                {pendingReviews.length > 0 && !filterPending && (
-                  <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[9px] font-black w-4 h-4 rounded-full flex items-center justify-center animate-pulse shadow-[0_0_8px_rgba(239,68,68,0.8)] border border-slate-900">
-                    {pendingReviews.length}
-                  </span>
-                )}
+                {pendingReviews.length > 0 && !filterPending && <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[9px] font-black w-4 h-4 rounded-full flex items-center justify-center animate-pulse shadow-[0_0_8px_rgba(239,68,68,0.8)] border border-slate-900">{pendingReviews.length}</span>}
               </button>
               <button onClick={() => { 
                 const draft = localStorage.getItem('voltVaultDraft');
-                if (draft) {
-                  try {
-                    const parsed = JSON.parse(draft);
-                    if (parsed.title || parsed.content || parsed.images?.length > 0) {
-                      setFormData(parsed);
-                    } else { setFormData(initialForm); }
-                  } catch(e) { setFormData(initialForm); }
-                } else { setFormData(initialForm); }
-                setShowAdvanced(false); 
-                setShowNewGenre(false); 
-                setShowNewTag(false); 
-                setView('add'); 
-              }} className={`${weaponStyle.bg} ${weaponStyle.text} p-2.5 rounded-xl ${weaponStyle.shadow} border ${weaponStyle.border} active:scale-90 hover:scale-105 transition-all`}>
-                <ClipperIcon size={22} />
-              </button>
+                if (draft) { try { const p = JSON.parse(draft); if (p.title || p.content || p.images?.length > 0) setFormData(p); else setFormData(initialForm); } catch(e) { setFormData(initialForm); } } else { setFormData(initialForm); }
+                setShowAdvanced(false); setShowNewGenre(false); setShowNewTag(false); setView('add'); 
+              }} className={`${weaponStyle.bg} ${weaponStyle.text} p-2.5 rounded-xl ${weaponStyle.shadow} border ${weaponStyle.border} active:scale-90 hover:scale-105 transition-all`}><ClipperIcon size={22} /></button>
             </div>
           </div>
 
-          <div 
-            onClick={() => setShowTrophiesModal(true)}
-            className="bg-slate-950/50 rounded-xl p-2 mb-3 backdrop-blur-md border border-cyan-900/50 shadow-inner relative z-10 cursor-pointer hover:bg-slate-900/80 active:scale-[0.98] transition-all"
-          >
+          <div onClick={() => setShowTrophiesModal(true)} className="bg-slate-950/50 rounded-xl p-2 mb-3 backdrop-blur-md border border-cyan-900/50 shadow-inner relative z-10 cursor-pointer hover:bg-slate-900/80 active:scale-[0.98] transition-all">
             <div className="flex justify-between items-center mb-1.5">
               <div className="flex items-center gap-2">
                 <span className="bg-yellow-500/20 border border-yellow-500 text-yellow-400 text-[9px] font-black px-1.5 py-0.5 rounded flex items-center gap-0.5 shadow-[0_0_5px_rgba(234,179,8,0.3)]"><Trophy size={10}/> Lv.{currentLevel}</span>
                 <span className="text-[10px] font-bold text-cyan-50 tracking-wide truncate max-w-[120px]">{getTitle(currentLevel)}</span>
-                {(userSettings.stats?.streakDays || 0) > 0 && (
-                  <span className="bg-orange-500/20 border border-orange-500 text-orange-400 text-[9px] font-black px-1.5 py-0.5 rounded flex items-center gap-0.5 shadow-[0_0_5px_rgba(249,115,22,0.3)]"><Flame size={10}/> {userSettings.stats.streakDays}連コンボ</span>
-                )}
+                {(userSettings.stats?.streakDays || 0) > 0 && <span className="bg-orange-500/20 border border-orange-500 text-orange-400 text-[9px] font-black px-1.5 py-0.5 rounded flex items-center gap-0.5 shadow-[0_0_5px_rgba(249,115,22,0.3)]"><Flame size={10}/> {userSettings.stats.streakDays}連コンボ</span>}
               </div>
               <span className="text-[8px] font-bold text-cyan-600 uppercase tracking-widest">DATA: {userSettings.stats?.totalMemos || 0}</span>
             </div>
             <div className="w-full bg-slate-900 rounded-full h-1.5 overflow-hidden border border-slate-800">
-              <div className="bg-gradient-to-r from-cyan-400 to-blue-500 h-1.5 rounded-full transition-all duration-1000 ease-out relative shadow-[0_0_10px_rgba(34,211,238,0.8)]" style={{ width: `${expPercentage}%` }}>
-                <div className="absolute inset-0 bg-white/30 w-full h-full animate-pulse"></div>
-              </div>
+              <div className="bg-gradient-to-r from-cyan-400 to-blue-500 h-1.5 rounded-full transition-all duration-1000 ease-out relative shadow-[0_0_10px_rgba(34,211,238,0.8)]" style={{ width: `${expPercentage}%` }}><div className="absolute inset-0 bg-white/30 w-full h-full animate-pulse"></div></div>
             </div>
           </div>
 
           {view === 'list' && (
             <div className="space-y-2 animate-in slide-in-from-top-2 relative z-10">
               <div className="flex bg-slate-950/50 p-1 rounded-xl backdrop-blur-sm border border-slate-800">
-                <button onClick={() => setListMode('all')} className={`flex-1 py-1 rounded-lg text-[10px] font-black transition-all ${listMode === 'all' ? 'bg-cyan-600 text-slate-900 shadow-[0_0_10px_rgba(6,182,212,0.5)]' : 'text-slate-400 hover:text-cyan-400'}`}>全て</button>
-                <button onClick={() => setListMode('site')} className={`flex-1 py-1 rounded-lg text-[10px] font-black transition-all ${listMode === 'site' ? 'bg-cyan-600 text-slate-900 shadow-[0_0_10px_rgba(6,182,212,0.5)]' : 'text-slate-400 hover:text-cyan-400'}`}>現場別</button>
-                <button onClick={() => setListMode('genre')} className={`flex-1 py-1 rounded-lg text-[10px] font-black transition-all ${listMode === 'genre' ? 'bg-cyan-600 text-slate-900 shadow-[0_0_10px_rgba(6,182,212,0.5)]' : 'text-slate-400 hover:text-cyan-400'}`}>ジャンル</button>
-                <button onClick={() => setListMode('material')} className={`flex-1 py-1 rounded-lg text-[10px] font-black transition-all ${listMode === 'material' ? 'bg-cyan-600 text-slate-900 shadow-[0_0_10px_rgba(6,182,212,0.5)]' : 'text-slate-400 hover:text-cyan-400'}`}>材料別</button>
+                {['all', 'site', 'genre', 'material'].map(mode => (
+                  <button key={mode} onClick={() => setListMode(mode)} className={`flex-1 py-1 rounded-lg text-[10px] font-black transition-all ${listMode === mode ? 'bg-cyan-600 text-slate-900 shadow-[0_0_10px_rgba(6,182,212,0.5)]' : 'text-slate-400 hover:text-cyan-400'}`}>
+                    {mode === 'all' ? '全て' : mode === 'site' ? '現場別' : mode === 'genre' ? 'ジャンル' : '材料別'}
+                  </button>
+                ))}
               </div>
-              
               <div className="flex gap-2">
                 <div className="relative flex-1">
                   <Search className="absolute left-3 top-2 text-cyan-600" size={16} />
                   <input type="text" placeholder="SEARCH DATABANKS..." className="w-full bg-slate-900 rounded-xl py-2 pl-9 text-cyan-50 placeholder-slate-600 outline-none text-xs font-bold focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 border border-slate-700 transition-all shadow-inner uppercase tracking-wider" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
                 </div>
-                <button onClick={() => setSortOrder(sortOrder === 'newest' ? 'oldest' : 'newest')} className="bg-slate-800 border border-slate-700 px-3 rounded-xl text-[10px] font-black text-cyan-400 hover:bg-slate-700 whitespace-nowrap flex items-center gap-1">
-                  {sortOrder === 'newest' ? '▼ 新しい順' : '▲ 古い順'}
-                </button>
+                <button onClick={() => setSortOrder(sortOrder === 'newest' ? 'oldest' : 'newest')} className="bg-slate-800 border border-slate-700 px-3 rounded-xl text-[10px] font-black text-cyan-400 hover:bg-slate-700 whitespace-nowrap flex items-center gap-1">{sortOrder === 'newest' ? '▼ 新しい順' : '▲ 古い順'}</button>
               </div>
-
               <div className="flex gap-2 items-center bg-slate-950/50 p-1.5 rounded-xl backdrop-blur-sm border border-slate-800">
                 <Calendar size={14} className="text-cyan-600 ml-1 shrink-0" />
                 <input type="date" className="bg-transparent text-cyan-100 text-[10px] outline-none font-bold flex-1 w-full" value={dateRange.start} onChange={e => setDateRange({...dateRange, start: e.target.value})} />
                 <span className="text-cyan-600 text-[10px] font-black shrink-0">〜</span>
                 <input type="date" className="bg-transparent text-cyan-100 text-[10px] outline-none font-bold flex-1 w-full" value={dateRange.end} onChange={e => setDateRange({...dateRange, end: e.target.value})} />
               </div>
-
-              {error && (
-                <div className="bg-red-950/50 border border-red-500/50 text-red-400 p-1.5 rounded-lg text-[10px] font-bold flex items-center justify-center gap-1 mt-1 shadow-[0_0_10px_rgba(239,68,68,0.2)]">
-                  <AlertCircle size={12}/> {error}
-                </div>
-              )}
+              {error && <div className="bg-red-950/50 border border-red-500/50 text-red-400 p-1.5 rounded-lg text-[10px] font-bold flex items-center justify-center gap-1 mt-1 shadow-[0_0_10px_rgba(239,68,68,0.2)]"><AlertCircle size={12}/> {error}</div>}
             </div>
           )}
         </header>
 
         <main className="p-4 max-w-xl mx-auto">
-          
           {view === 'list' && (
             <div className="space-y-4">
               {listMode === 'all' ? (
                 <div className="space-y-3">
                   {filteredMemos.length === 0 && !isSyncing && !error && (
-                    <div className="text-center py-24 opacity-30">
-                      <ClipperIcon size={64} className="mx-auto mb-3 text-cyan-500"/>
-                      <p className="text-sm font-black uppercase italic tracking-widest text-cyan-600">NO DATA LOGGED</p>
-                    </div>
+                    <div className="text-center py-24 opacity-30"><ClipperIcon size={64} className="mx-auto mb-3 text-cyan-500"/><p className="text-sm font-black uppercase italic tracking-widest text-cyan-600">NO DATA LOGGED</p></div>
                   )}
                   {filteredMemos.map(memo => {
                     const genreConfig = userSettings.genres[memo.genre] || { colorId: 'gray', icon: 'Info' };
@@ -1492,7 +1044,6 @@ const App = () => {
                     return (
                       <div key={memo.id} onClick={() => { setSelectedMemo(memo); setView('detail'); }} className="bg-slate-900/80 backdrop-blur-sm p-4 rounded-3xl border border-slate-700 relative overflow-hidden cursor-pointer active:scale-[0.98] hover:border-cyan-500/50 transition-all shadow-lg">
                         <div className={`absolute top-0 left-0 w-1.5 h-full ${colors.bg} shadow-[0_0_10px_currentColor]`}></div>
-                        
                         <div className="flex gap-4">
                           <div className="flex-1 min-w-0">
                             <div className="flex justify-between items-start mb-1.5 font-black italic text-slate-500 text-[9px] uppercase pl-1 tracking-widest">
@@ -1503,26 +1054,19 @@ const App = () => {
                               </div>
                             </div>
                             <h3 className="font-black text-slate-100 text-base leading-tight mb-2 tracking-tight pl-2 drop-shadow-sm truncate">{memo.title}</h3>
-                            
                             <div className="flex gap-2 text-cyan-600 pl-2 mb-2">
                               {memo.teacher && <span className="flex items-center gap-0.5 not-italic text-[9px] font-bold"><User size={10}/>{memo.teacher}</span>}
                               {memo.materials && memo.materials.length > 0 && <span className="flex items-center gap-0.5 not-italic text-[9px] font-bold"><Tags size={10} className="text-orange-400" />{memo.materials.length}</span>}
                             </div>
-
                             <div className="flex items-center justify-between text-[9px] font-black pt-2 border-t border-slate-800 pl-1">
                               <span className="flex items-center gap-1 bg-slate-950 px-2.5 py-1 rounded-md text-slate-400 border border-slate-800 truncate max-w-[120px]"><MapPin size={10} className="text-cyan-500 shrink-0"/> <span className="truncate">{memo.site}</span></span>
                               <span className={`px-2.5 py-1 rounded-md flex items-center gap-1 ${colors.light} ${colors.text} border ${colors.border} uppercase shadow-inner shrink-0`}><DynamicIcon name={genreConfig.icon} size={10}/> {memo.genre}</span>
                             </div>
                           </div>
-
                           {((memo.images && memo.images.length > 0) || memo.markupImage) && (
                             <div className="w-20 h-20 shrink-0 rounded-2xl overflow-hidden border-2 border-slate-700 shadow-md relative">
                               <img src={memo.markupImage || memo.images[0]} alt="thumbnail" className="w-full h-full object-cover opacity-80" />
-                              {(memo.images?.length > 1) && (
-                                <div className="absolute bottom-1 right-1 bg-slate-900/80 text-cyan-400 text-[8px] font-black px-1.5 py-0.5 rounded-md border border-slate-700 backdrop-blur-sm">
-                                  +{memo.images.length - (memo.markupImage ? 0 : 1)}
-                                </div>
-                              )}
+                              {(memo.images?.length > 1) && <div className="absolute bottom-1 right-1 bg-slate-900/80 text-cyan-400 text-[8px] font-black px-1.5 py-0.5 rounded-md border border-slate-700 backdrop-blur-sm">+{memo.images.length - (memo.markupImage ? 0 : 1)}</div>}
                             </div>
                           )}
                         </div>
@@ -1545,16 +1089,11 @@ const App = () => {
                         </h3>
                         <div className="flex items-center gap-2">
                           <span className="text-[9px] font-bold bg-slate-800 border border-slate-600 text-cyan-400 px-2 py-1 rounded-full shadow-inner">{groupMemos.length} FILES</span>
-                          {/* ★ 現場討伐ボタン */}
                           {listMode === 'site' && groupKey !== 'NO SITE DATA' && !(userSettings.stats?.completedSites || []).includes(groupKey) && (
-                            <button onClick={(e) => { e.stopPropagation(); handleBossDefeat(groupKey, groupMemos.length); }} className="bg-red-900/50 text-red-400 border border-red-500 text-[9px] font-black px-2 py-1 rounded-md shadow-[0_0_10px_rgba(239,68,68,0.3)] active:scale-95 flex items-center gap-1">
-                              <Skull size={10}/>討伐(完了)
-                            </button>
+                            <button onClick={(e) => { e.stopPropagation(); handleBossDefeat(groupKey, groupMemos.length); }} className="bg-red-900/50 text-red-400 border border-red-500 text-[9px] font-black px-2 py-1 rounded-md shadow-[0_0_10px_rgba(239,68,68,0.3)] active:scale-95 flex items-center gap-1"><Skull size={10}/>討伐</button>
                           )}
                           {listMode === 'site' && (userSettings.stats?.completedSites || []).includes(groupKey) && (
-                            <span className="bg-green-900/30 text-green-500 border border-green-500/50 text-[9px] font-black px-2 py-1 rounded-md shadow-inner flex items-center gap-1">
-                              <Check size={10}/>討伐済
-                            </span>
+                            <span className="bg-green-900/30 text-green-500 border border-green-500/50 text-[9px] font-black px-2 py-1 rounded-md shadow-inner flex items-center gap-1"><Check size={10}/>討伐済</span>
                           )}
                         </div>
                       </div>
@@ -1572,7 +1111,6 @@ const App = () => {
                                 <span className="text-cyan-800 shrink-0">{memo.date}</span>
                               </p>
                             </div>
-                            
                             {((memo.images && memo.images.length > 0) || memo.markupImage) && (
                               <div className="w-10 h-10 shrink-0 rounded-lg overflow-hidden border border-slate-600 shadow-sm">
                                 <img src={memo.markupImage || memo.images[0]} alt="thumbnail" className="w-full h-full object-cover opacity-80" />
@@ -1591,79 +1129,24 @@ const App = () => {
 
           {view === 'stats' && (
             <div className="space-y-6 pb-10 animate-in slide-in-from-bottom-4">
-              <h2 className="text-xl font-black text-cyan-400 flex items-center gap-2 mb-4 tracking-widest drop-shadow-[0_0_8px_rgba(34,211,238,0.5)]">
-                <Activity className="text-cyan-500"/> MASTER STATUS
-              </h2>
-
+              <h2 className="text-xl font-black text-cyan-400 flex items-center gap-2 mb-4 tracking-widest drop-shadow-[0_0_8px_rgba(34,211,238,0.5)]"><Activity className="text-cyan-500"/> MASTER STATUS</h2>
               <div className="bg-slate-900/80 backdrop-blur-sm p-6 rounded-[2.5rem] border border-slate-700 shadow-lg">
                 <h3 className="text-center text-xs font-black text-slate-400 tracking-widest mb-6">SKILL ANALYSIS</h3>
                 <RadarChart />
-                
                 <div className="grid grid-cols-2 gap-4 mt-6">
-                  <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800 shadow-inner flex flex-col items-center">
-                    <p className="text-[10px] font-black text-cyan-700 mb-1">TOTAL LOGS</p>
-                    <p className="text-3xl font-black text-cyan-400 drop-shadow-[0_0_5px_rgba(34,211,238,0.5)]">{memos.length}</p>
-                  </div>
-                  <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800 shadow-inner flex flex-col items-center">
-                    <p className="text-[10px] font-black text-yellow-600 mb-1">CURRENT LEVEL</p>
-                    <p className="text-3xl font-black text-yellow-400 drop-shadow-[0_0_5px_rgba(250,204,21,0.5)]">{currentLevel}</p>
-                  </div>
+                  <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800 shadow-inner flex flex-col items-center"><p className="text-[10px] font-black text-cyan-700 mb-1">TOTAL LOGS</p><p className="text-3xl font-black text-cyan-400 drop-shadow-[0_0_5px_rgba(34,211,238,0.5)]">{memos.length}</p></div>
+                  <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800 shadow-inner flex flex-col items-center"><p className="text-[10px] font-black text-yellow-600 mb-1">CURRENT LEVEL</p><p className="text-3xl font-black text-yellow-400 drop-shadow-[0_0_5px_rgba(250,204,21,0.5)]">{currentLevel}</p></div>
                 </div>
               </div>
-
-              {/* ★ 称号リストの稼働 */}
-              <div className="bg-slate-900/80 backdrop-blur-sm p-6 rounded-[2.5rem] border border-slate-700 shadow-lg">
-                <h3 className="text-center text-xs font-black text-slate-400 tracking-widest mb-4">LICENSES & TROPHIES</h3>
-                <div className="flex gap-4 overflow-x-auto pb-2 px-2 snap-x">
-                  {trophies.map(t => {
-                    const isUnlocked = t.isUnlocked();
-                    const IconComp = t.icon;
-                    const tColor = ColorMap[t.color] || ColorMap.gray;
-                    
-                    return (
-                      <div key={t.id} className={`flex flex-col items-center min-w-[5rem] snap-center transition-all ${isUnlocked ? 'opacity-100' : 'opacity-40 grayscale'}`}>
-                        <div className={`w-14 h-14 rounded-full flex items-center justify-center mb-2 relative ${isUnlocked ? `${tColor.light} border ${tColor.border} shadow-[0_0_15px_currentColor] ${tColor.text}` : 'bg-slate-800 border border-slate-600 text-slate-500'}`}>
-                          {isUnlocked ? <IconComp size={24} /> : <Lock size={20} />}
-                        </div>
-                        <span className={`text-[9px] font-black whitespace-nowrap ${isUnlocked ? 'text-slate-200' : 'text-slate-500'}`}>
-                          {isUnlocked ? t.name : `条件: ${t.reqText}`}
-                        </span>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* ★ 武器のメンテナンスコーナー */}
               <div className="bg-slate-900/80 backdrop-blur-sm p-6 rounded-[2.5rem] border border-slate-700 shadow-lg">
                 <h3 className="text-center text-xs font-black text-slate-400 tracking-widest mb-4">WEAPON MAINTENANCE</h3>
                 <div className="bg-slate-950 p-5 rounded-2xl border border-slate-800 shadow-inner flex flex-col items-center relative overflow-hidden">
                   <ClipperIcon size={48} className={`mb-4 ${weaponStyle.text} ${weaponStyle.shadow} transition-all duration-1000`} />
                   <p className="text-xs font-black text-slate-300 mb-2 tracking-widest">耐久度 / 切れ味</p>
-                  
                   <div className="w-full bg-slate-800 rounded-full h-2 mb-4 overflow-hidden shadow-inner">
-                    <div 
-                      className={`h-2 rounded-full transition-all duration-500 ${
-                        (userSettings.stats?.clipperDurability ?? 100) > 50 ? 'bg-cyan-400 shadow-[0_0_10px_rgba(34,211,238,0.8)]' : 
-                        (userSettings.stats?.clipperDurability ?? 100) > 20 ? 'bg-yellow-400 shadow-[0_0_10px_rgba(250,204,21,0.8)]' : 
-                        'bg-red-500 shadow-[0_0_10px_rgba(239,68,68,0.8)] animate-pulse'
-                      }`} 
-                      style={{ width: `${userSettings.stats?.clipperDurability ?? 100}%` }}
-                    ></div>
+                    <div className={`h-2 rounded-full transition-all duration-500 ${(userSettings.stats?.clipperDurability ?? 100) > 50 ? 'bg-cyan-400 shadow-[0_0_10px_rgba(34,211,238,0.8)]' : (userSettings.stats?.clipperDurability ?? 100) > 20 ? 'bg-yellow-400 shadow-[0_0_10px_rgba(250,204,21,0.8)]' : 'bg-red-500 shadow-[0_0_10px_rgba(239,68,68,0.8)] animate-pulse'}`} style={{ width: `${userSettings.stats?.clipperDurability ?? 100}%` }}></div>
                   </div>
-
-                  <button 
-                    onClick={() => {
-                      if ((userSettings.stats?.clipperDurability ?? 100) >= 100) {
-                         alert('今のところ完璧な切れ味です！'); return;
-                      }
-                      saveSettings({ ...userSettings, stats: { ...userSettings.stats, clipperDurability: 100 } });
-                      alert('クリッパーのメンテナンスを完了しました！切れ味が全回復！');
-                    }} 
-                    className="w-full bg-slate-800 border border-slate-600 text-cyan-400 px-4 py-3 rounded-xl font-black text-xs uppercase tracking-widest active:scale-[0.98] hover:bg-slate-700 transition-all flex justify-center items-center gap-2 shadow-md"
-                  >
-                    <Wrench size={16}/> 研磨・注油する
-                  </button>
+                  <button onClick={() => { if ((userSettings.stats?.clipperDurability ?? 100) >= 100) return alert('今のところ完璧な切れ味です！'); saveSettings({ ...userSettings, stats: { ...userSettings.stats, clipperDurability: 100 } }); alert('メンテナンス完了！'); }} className="w-full bg-slate-800 border border-slate-600 text-cyan-400 px-4 py-3 rounded-xl font-black text-xs uppercase tracking-widest active:scale-[0.98] hover:bg-slate-700 transition-all flex justify-center items-center gap-2 shadow-md"><Wrench size={16}/> 研磨・注油する</button>
                 </div>
               </div>
             </div>
@@ -1672,51 +1155,23 @@ const App = () => {
           {view === 'settings' && (
             <div className="space-y-6 pb-10 animate-in slide-in-from-right">
               <h2 className="text-xl font-black text-cyan-400 flex items-center gap-2 mb-4 tracking-widest drop-shadow-[0_0_8px_rgba(34,211,238,0.5)]"><Settings className="text-cyan-500"/> MASTER SETTINGS</h2>
-              
-              <EditorSection 
-                title="ジャンル編集" icon={ListFilter} items={userSettings.genres} placeholder="新ジャンル名..."
-                onAdd={(name, colorId, icon, group) => handleAddItem('genres', name, colorId, icon, group)}
-                onUpdate={(oldKey, newKey, colorId, icon, group) => handleUpdateItem('genres', oldKey, newKey, colorId, icon, group)}
-                onDelete={(name) => { const obj = {...userSettings.genres}; delete obj[name]; saveSettings({...userSettings, genres: obj}); }}
-                onMoveUp={(name) => handleMoveItem('genres', name, 'up')}
-                onMoveDown={(name) => handleMoveItem('genres', name, 'down')}
-              />
-
-              <EditorSection 
-                title="材料・タグ編集" icon={Tags} items={userSettings.tags} placeholder="新しい材料・タグ..."
-                onAdd={(name, colorId, icon, group) => handleAddItem('tags', name, colorId, icon, group)}
-                onUpdate={(oldKey, newKey, colorId, icon, group) => handleUpdateItem('tags', oldKey, newKey, colorId, icon, group)}
-                onDelete={(name) => { const obj = {...userSettings.tags}; delete obj[name]; saveSettings({...userSettings, tags: obj}); }}
-                onMoveUp={(name) => handleMoveItem('tags', name, 'up')}
-                onMoveDown={(name) => handleMoveItem('tags', name, 'down')}
-              />
-
+              <EditorSection title="ジャンル編集" icon={ListFilter} items={userSettings.genres} placeholder="新ジャンル名..." onAdd={(name, colorId, icon, group) => handleAddItem('genres', name, colorId, icon, group)} onUpdate={(oldKey, newKey, colorId, icon, group) => handleUpdateItem('genres', oldKey, newKey, colorId, icon, group)} onDelete={(name) => { const obj = {...userSettings.genres}; delete obj[name]; saveSettings({...userSettings, genres: obj}); }} onMoveUp={(name) => handleMoveItem('genres', name, 'up')} onMoveDown={(name) => handleMoveItem('genres', name, 'down')} />
+              <EditorSection title="材料・タグ編集" icon={Tags} items={userSettings.tags} placeholder="新しい材料・タグ..." onAdd={(name, colorId, icon, group) => handleAddItem('tags', name, colorId, icon, group)} onUpdate={(oldKey, newKey, colorId, icon, group) => handleUpdateItem('tags', oldKey, newKey, colorId, icon, group)} onDelete={(name) => { const obj = {...userSettings.tags}; delete obj[name]; saveSettings({...userSettings, tags: obj}); }} onMoveUp={(name) => handleMoveItem('tags', name, 'up')} onMoveDown={(name) => handleMoveItem('tags', name, 'down')} />
               <div className="bg-slate-800/80 backdrop-blur-sm p-6 rounded-[2rem] border border-slate-700 shadow-[0_0_15px_rgba(0,0,0,0.5)] space-y-4">
                 <h3 className="text-sm font-black text-cyan-400 border-b border-slate-700 pb-2 flex items-center gap-2 tracking-widest"><Type size={16}/> クイックフレーズ編集</h3>
                 <div className="flex flex-wrap gap-2 mb-4">
                   {userSettings.quickPhrases.map((phrase, idx) => (
                     <span key={idx} className="bg-slate-900 text-cyan-100 text-xs font-bold px-3 py-1.5 rounded-lg flex items-center gap-2 border border-slate-600 shadow-inner">
-                      {phrase}
-                      <button onClick={() => saveSettings({...userSettings, quickPhrases: userSettings.quickPhrases.filter((_, i) => i !== idx)})} className="text-slate-500 hover:text-red-500 transition-colors"><X size={12}/></button>
+                      {phrase} <button onClick={() => saveSettings({...userSettings, quickPhrases: userSettings.quickPhrases.filter((_, i) => i !== idx)})} className="text-slate-500 hover:text-red-500 transition-colors"><X size={12}/></button>
                     </span>
                   ))}
                 </div>
                 <div className="bg-slate-900 p-4 rounded-2xl border border-slate-700 flex flex-col gap-2 shadow-inner">
                   <input id="newPhraseInput" type="text" placeholder="新しいフレーズ..." className="w-full bg-slate-800 border border-slate-700 p-3 rounded-xl text-sm font-bold text-cyan-50 outline-none placeholder-slate-500 focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 transition-all" />
-                  <button onClick={() => {
-                    const input = document.getElementById('newPhraseInput');
-                    if (input.value.trim()) {
-                      saveSettings({ ...userSettings, quickPhrases: [...userSettings.quickPhrases, input.value.trim()] });
-                      input.value = '';
-                    }
-                  }} className="w-full bg-slate-800 border border-cyan-500/50 text-cyan-400 px-4 py-3 rounded-xl font-black text-xs uppercase tracking-widest shadow-[0_0_10px_rgba(34,211,238,0.2)] active:scale-[0.98] hover:bg-slate-700 transition-all flex justify-center items-center gap-2"><Sword size={14}/>装備に追加</button>
+                  <button onClick={() => { const input = document.getElementById('newPhraseInput'); if (input.value.trim()) { saveSettings({ ...userSettings, quickPhrases: [...userSettings.quickPhrases, input.value.trim()] }); input.value = ''; } }} className="w-full bg-slate-800 border border-cyan-500/50 text-cyan-400 px-4 py-3 rounded-xl font-black text-xs uppercase tracking-widest shadow-[0_0_10px_rgba(34,211,238,0.2)] active:scale-[0.98] hover:bg-slate-700 transition-all flex justify-center items-center gap-2"><Sword size={14}/>装備に追加</button>
                 </div>
               </div>
-              
-              <div className="text-center py-4 opacity-30">
-                <Gamepad2 size={32} className="mx-auto text-cyan-600 mb-2"/>
-                <p className="text-[10px] font-black text-cyan-600 uppercase tracking-widest">ELECTRIC CLIPPER MASTER v2.1</p>
-              </div>
+              <div className="text-center py-4 opacity-30"><Gamepad2 size={32} className="mx-auto text-cyan-600 mb-2"/><p className="text-[10px] font-black text-cyan-600 uppercase tracking-widest">ELECTRIC CLIPPER MASTER v2.3</p></div>
             </div>
           )}
 
@@ -1735,72 +1190,41 @@ const App = () => {
                   setView('edit'); 
                 }} className="relative z-10"><Edit3 size={24}/></button>
               </header>
-              
               <div className="p-8 space-y-8 max-w-xl mx-auto">
                 <div className="space-y-4 relative">
                   <div className="absolute -left-4 top-0 w-1 h-full bg-cyan-900/30 rounded-full"></div>
                   <div className="flex gap-2 items-center mb-2">
-                    <span className={`px-3 py-1.5 rounded-lg text-[9px] font-black uppercase flex items-center gap-1.5 ${ColorMap[userSettings.genres[selectedMemo.genre]?.colorId || 'gray']?.light} ${ColorMap[userSettings.genres[selectedMemo.genre]?.colorId || 'gray']?.text} border shadow-inner`}>
-                      <DynamicIcon name={userSettings.genres[selectedMemo.genre]?.icon} size={14}/> {selectedMemo.genre}
-                    </span>
+                    <span className={`px-3 py-1.5 rounded-lg text-[9px] font-black uppercase flex items-center gap-1.5 ${ColorMap[userSettings.genres[selectedMemo.genre]?.colorId || 'gray']?.light} ${ColorMap[userSettings.genres[selectedMemo.genre]?.colorId || 'gray']?.text} border shadow-inner`}><DynamicIcon name={userSettings.genres[selectedMemo.genre]?.icon} size={14}/> {selectedMemo.genre}</span>
                   </div>
                   <h2 className="text-3xl font-black text-slate-100 leading-tight tracking-tighter drop-shadow-md">{selectedMemo.title}</h2>
                   <div className="flex gap-4 text-[10px] font-black text-slate-400 uppercase bg-slate-900 p-3 rounded-xl border border-slate-700 shadow-inner">
-                    <span className="flex items-center gap-1.5"><MapPin size={12} className="text-cyan-500"/> {selectedMemo.site}</span>
-                    <span className="flex items-center gap-1.5"><Calendar size={12} className="text-cyan-500"/> {selectedMemo.date}</span>
+                    <span className="flex items-center gap-1.5"><MapPin size={12} className="text-cyan-500"/> {selectedMemo.site}</span><span className="flex items-center gap-1.5"><Calendar size={12} className="text-cyan-500"/> {selectedMemo.date}</span>
                   </div>
-
                   {(selectedMemo.teacher || selectedMemo.needsReview) && (
                     <div className="flex flex-wrap gap-2 text-[10px] font-bold mt-2">
-                      {selectedMemo.teacher && (
-                        <span className="bg-slate-800 text-cyan-200 px-2.5 py-1.5 rounded-lg flex items-center gap-1.5 border border-slate-600 shadow-sm">
-                          <User size={12} className="text-cyan-500"/> 伝授: {selectedMemo.teacher}
-                        </span>
-                      )}
-                      {selectedMemo.needsReview && !selectedMemo.isReviewed && (
-                        <span className="bg-red-950 text-red-400 px-2.5 py-1.5 rounded-lg flex items-center gap-1.5 border border-red-500/50 shadow-[0_0_8px_rgba(239,68,68,0.3)]">
-                          <Bell size={12}/> 要確認 ({selectedMemo.reviewDate || '期限なし'})
-                        </span>
-                      )}
-                      {selectedMemo.needsReview && selectedMemo.isReviewed && (
-                        <span className="bg-green-950 text-green-400 px-2.5 py-1.5 rounded-lg flex items-center gap-1.5 border border-green-500/50 shadow-sm">
-                          <CheckSquare size={12}/> 確認完了
-                        </span>
-                      )}
+                      {selectedMemo.teacher && <span className="bg-slate-800 text-cyan-200 px-2.5 py-1.5 rounded-lg flex items-center gap-1.5 border border-slate-600 shadow-sm"><User size={12} className="text-cyan-500"/> 伝授: {selectedMemo.teacher}</span>}
+                      {selectedMemo.needsReview && !selectedMemo.isReviewed && <span className="bg-red-950 text-red-400 px-2.5 py-1.5 rounded-lg flex items-center gap-1.5 border border-red-500/50 shadow-[0_0_8px_rgba(239,68,68,0.3)]"><Bell size={12}/> 要確認 ({selectedMemo.reviewDate || '期限なし'})</span>}
+                      {selectedMemo.needsReview && selectedMemo.isReviewed && <span className="bg-green-950 text-green-400 px-2.5 py-1.5 rounded-lg flex items-center gap-1.5 border border-green-500/50 shadow-sm"><CheckSquare size={12}/> 確認完了</span>}
                     </div>
                   )}
-                  
                   {selectedMemo.materials && selectedMemo.materials.length > 0 && (
                     <div className="flex flex-wrap gap-2 pt-2">
                       {selectedMemo.materials.map((mat, i) => {
-                        const tagConf = userSettings.tags[mat] || { colorId: 'gray', icon: 'Tag' };
-                        const tColor = ColorMap[tagConf.colorId];
-                        return (
-                          <span key={i} className={`${tColor.light} ${tColor.text} ${tColor.border} border px-2.5 py-1.5 rounded-lg text-[10px] font-bold flex items-center gap-1.5 shadow-sm`}>
-                            <DynamicIcon name={tagConf.icon} size={12}/> {mat}
-                          </span>
-                        )
+                        const tagConf = userSettings.tags[mat] || { colorId: 'gray', icon: 'Tag' }; const tColor = ColorMap[tagConf.colorId];
+                        return <span key={i} className={`${tColor.light} ${tColor.text} ${tColor.border} border px-2.5 py-1.5 rounded-lg text-[10px] font-bold flex items-center gap-1.5 shadow-sm`}><DynamicIcon name={tagConf.icon} size={12}/> {mat}</span>
                       })}
                     </div>
                   )}
                 </div>
-                
-                {(selectedMemo.images && selectedMemo.images.length > 0) || selectedMemo.markupImage ? (
+                {((selectedMemo.images && selectedMemo.images.length > 0) || selectedMemo.markupImage) && (
                   <div className="space-y-3">
                     <h3 className="text-xs font-black text-cyan-600 flex items-center gap-1 tracking-widest"><Camera size={14}/> VISUAL DATA</h3>
                     <div className="flex flex-col gap-4">
-                      {selectedMemo.markupImage && (!selectedMemo.images || selectedMemo.images.length===0) && (
-                        <div className="bg-slate-900 rounded-[2.5rem] overflow-hidden border-2 border-slate-700 shadow-[0_0_15px_rgba(0,0,0,0.8)]"><img src={selectedMemo.markupImage} className="w-full opacity-90" /></div>
-                      )}
-                      {selectedMemo.images && selectedMemo.images.map((img, i) => (
-                        <div key={i} className="bg-slate-900 rounded-[2.5rem] overflow-hidden border-2 border-slate-700 shadow-[0_0_15px_rgba(0,0,0,0.8)] relative">
-                          <img src={img} className="w-full h-auto object-cover opacity-90" />
-                        </div>
-                      ))}
+                      {selectedMemo.markupImage && (!selectedMemo.images || selectedMemo.images.length===0) && <div className="bg-slate-900 rounded-[2.5rem] overflow-hidden border-2 border-slate-700 shadow-[0_0_15px_rgba(0,0,0,0.8)]"><img src={selectedMemo.markupImage} className="w-full opacity-90" /></div>}
+                      {selectedMemo.images && selectedMemo.images.map((img, i) => <div key={i} className="bg-slate-900 rounded-[2.5rem] overflow-hidden border-2 border-slate-700 shadow-[0_0_15px_rgba(0,0,0,0.8)] relative"><img src={img} className="w-full h-auto object-cover opacity-90" /></div>)}
                     </div>
                   </div>
-                ) : null}
-
+                )}
                 <div className="bg-slate-900 p-8 rounded-[3rem] text-cyan-50 font-medium border border-cyan-900/50 leading-relaxed relative shadow-[0_0_20px_rgba(6,182,212,0.1)] whitespace-pre-wrap">
                   <span className="absolute -top-3 left-10 bg-cyan-600 text-slate-900 px-4 py-1 rounded-full text-[10px] not-italic shadow-[0_0_8px_rgba(6,182,212,0.8)] tracking-widest font-black uppercase">Quest Log</span>
                   {selectedMemo.content}
@@ -1808,22 +1232,15 @@ const App = () => {
               </div>
             </div>
           )}
-
         </main>
 
         {/* --- ビュー: フォーム (追加/編集) --- */}
         {(view === 'add' || view === 'edit') && (
           <div className="fixed inset-0 bg-slate-950 z-50 overflow-y-auto pb-32 animate-in slide-in-from-bottom-10 relative">
-            <div className="fixed inset-0 pointer-events-none z-0 opacity-10" style={{
-              backgroundImage: `linear-gradient(to right, #facc15 1px, transparent 1px), linear-gradient(to bottom, #facc15 1px, transparent 1px)`,
-              backgroundSize: '40px 40px'
-            }}></div>
-
+            <div className="fixed inset-0 pointer-events-none z-0 opacity-10" style={{ backgroundImage: `linear-gradient(to right, #facc15 1px, transparent 1px), linear-gradient(to bottom, #facc15 1px, transparent 1px)`, backgroundSize: '40px 40px' }}></div>
             <header className="bg-slate-900/90 backdrop-blur-md border-b border-yellow-500/30 p-5 flex justify-between items-center sticky top-0 shadow-[0_0_20px_rgba(234,179,8,0.15)] z-20">
               <button onClick={() => setView('list')} className="text-slate-400 hover:text-yellow-400"><X size={24}/></button>
-              <h2 className="font-black text-yellow-400 tracking-tighter italic flex items-center gap-2 drop-shadow-[0_0_5px_rgba(234,179,8,0.8)]">
-                <ClipperIcon size={18} strokeWidth={2.5}/> RECORD NEW DATA...
-              </h2>
+              <h2 className="font-black text-yellow-400 tracking-tighter italic flex items-center gap-2 drop-shadow-[0_0_5px_rgba(234,179,8,0.8)]"><ClipperIcon size={18} strokeWidth={2.5}/> RECORD NEW DATA...</h2>
               <button onClick={handleSave} className="relative group overflow-hidden bg-slate-800 text-cyan-400 px-5 py-2.5 rounded-full font-black text-[10px] uppercase shadow-[0_0_15px_rgba(34,211,238,0.3)] border border-cyan-500/50 disabled:opacity-50 active:scale-95 transition-all">
                 <span className="relative z-10 flex items-center gap-1.5"><ClipperIcon size={14}/> ログを刻印</span>
                 <div className="absolute inset-0 bg-gradient-to-r from-cyan-600 to-blue-600 opacity-0 group-hover:opacity-20 transition-opacity"></div>
@@ -1833,39 +1250,19 @@ const App = () => {
             <div className="p-6 space-y-7 max-w-xl mx-auto relative z-10">
               {view === 'add' && (formData.title || formData.content || formData.images.length > 0) && (
                 <div className="flex justify-end mb-[-1rem]">
-                  <button onClick={() => {
-                    if (window.confirm('入力内容をすべてリセットしますか？')) {
-                      setFormData(initialForm);
-                      localStorage.removeItem('voltVaultDraft');
-                    }
-                  }} className="text-[10px] text-red-400 font-bold border border-red-500/50 px-2.5 py-1.5 rounded-md bg-red-950/50 shadow-sm active:scale-95">
-                    <Trash2 size={12} className="inline mr-1"/>一時保存をクリア
-                  </button>
+                  <button onClick={() => { if (window.confirm('入力内容をすべてリセットしますか？')) { setFormData(initialForm); localStorage.removeItem('voltVaultDraft'); } }} className="text-[10px] text-red-400 font-bold border border-red-500/50 px-2.5 py-1.5 rounded-md bg-red-950/50 shadow-sm active:scale-95"><Trash2 size={12} className="inline mr-1"/>一時保存をクリア</button>
                 </div>
               )}
 
               <div className="space-y-4">
-                <input 
-                  list="title-history"
-                  className="w-full text-2xl font-black bg-transparent border-b-2 border-slate-700 py-2 text-slate-100 focus:border-cyan-400 outline-none transition-colors placeholder:text-slate-600" 
-                  placeholder="クエスト名（作業・タイトル）" 
-                  value={formData.title} 
-                  onChange={e => setFormData({...formData, title: e.target.value})} 
-                />
-                <datalist id="title-history">
-                  {uniqueTitles.map(t => <option key={t} value={t} />)}
-                </datalist>
+                <input list="title-history" className="w-full text-2xl font-black bg-transparent border-b-2 border-slate-700 py-2 text-slate-100 focus:border-cyan-400 outline-none transition-colors placeholder:text-slate-600" placeholder="クエスト名（作業・タイトル）" value={formData.title} onChange={e => setFormData({...formData, title: e.target.value})} />
+                <datalist id="title-history">{uniqueTitles.map(t => <option key={t} value={t} />)}</datalist>
 
                 <div className="grid grid-cols-2 gap-4">
                   <input type="date" className="p-3 bg-slate-900 border border-slate-700 rounded-2xl font-bold outline-none text-sm text-cyan-50 shadow-inner focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500" value={formData.date} onChange={e => setFormData({...formData, date: e.target.value})} />
-                  
                   <div className="relative flex items-center">
                     <select className="p-3 bg-slate-900 border border-slate-700 rounded-2xl font-bold outline-none text-sm text-cyan-50 shadow-inner w-full focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 appearance-none" value={formData.genre} onChange={e => setFormData({...formData, genre: e.target.value})}>
-                      {groupedGenresForm.map(({ category, genres }) => (
-                        <optgroup key={category} label={`【${category}】`}>
-                          {genres.map(g => <option key={g.key} value={g.key}>{g.key}</option>)}
-                        </optgroup>
-                      ))}
+                      {groupedGenresForm.map(({ category, genres }) => (<optgroup key={category} label={`【${category}】`}>{genres.map(g => <option key={g.key} value={g.key}>{g.key}</option>)}</optgroup>))}
                     </select>
                     <ChevronDown size={14} className="absolute right-3 text-slate-500 pointer-events-none"/>
                     <button type="button" onClick={() => setShowNewGenre(!showNewGenre)} className="absolute -top-2 -right-2 bg-slate-800 text-cyan-400 rounded-full p-1.5 shadow-[0_0_8px_rgba(34,211,238,0.5)] border border-cyan-500/50 hover:bg-slate-700 active:scale-95 transition-all"><Plus size={14}/></button>
@@ -1883,76 +1280,29 @@ const App = () => {
                     <div className="flex gap-2 items-center">
                       <ColorSelector value={newGenreColor} onChange={setNewGenreColor} />
                       <IconSelector value={newGenreIcon} onChange={setNewGenreIcon} />
-                      <button type="button" onClick={() => {
-                        if(newGenreName.trim()) {
-                          handleAddItem('genres', newGenreName.trim(), newGenreColor, newGenreIcon, newGenreGroup);
-                          setFormData({...formData, genre: newGenreName.trim()});
-                          setNewGenreName('');
-                          setNewGenreColor('blue');
-                          setNewGenreIcon('Info');
-                          setShowNewGenre(false);
-                        }
-                      }} className="bg-cyan-600 text-slate-900 px-4 py-2.5 rounded-xl text-xs font-black shadow-[0_0_10px_rgba(6,182,212,0.5)] active:scale-95 shrink-0">追加</button>
+                      <button type="button" onClick={() => { if(newGenreName.trim()) { handleAddItem('genres', newGenreName.trim(), newGenreColor, newGenreIcon, newGenreGroup); setFormData({...formData, genre: newGenreName.trim()}); setNewGenreName(''); setNewGenreColor('blue'); setNewGenreIcon('Info'); setShowNewGenre(false); } }} className="bg-cyan-600 text-slate-900 px-4 py-2.5 rounded-xl text-xs font-black shadow-[0_0_10px_rgba(6,182,212,0.5)] active:scale-95 shrink-0">追加</button>
                     </div>
                   </div>
                 )}
 
                 <div className="relative shadow-inner rounded-2xl">
                   <Building className="absolute left-3 top-3.5 text-cyan-700" size={16}/>
-                  <input 
-                    list="site-history"
-                    className="w-full p-3 pl-10 bg-slate-900 border border-slate-700 rounded-2xl font-bold outline-none text-sm text-cyan-50 focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500" 
-                    placeholder="ダンジョン名（現場・案件）" 
-                    value={formData.site} 
-                    onChange={e => setFormData({...formData, site: e.target.value})} 
-                  />
-                  <datalist id="site-history">
-                    {uniqueSites.map(s => <option key={s} value={s} />)}
-                  </datalist>
+                  <input list="site-history" className="w-full p-3 pl-10 bg-slate-900 border border-slate-700 rounded-2xl font-bold outline-none text-sm text-cyan-50 focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500" placeholder="ダンジョン名（現場・案件）" value={formData.site} onChange={e => setFormData({...formData, site: e.target.value})} />
+                  <datalist id="site-history">{uniqueSites.map(s => <option key={s} value={s} />)}</datalist>
                 </div>
               </div>
 
               <div className="space-y-3 bg-slate-900/80 backdrop-blur-sm p-4 rounded-[2rem] border border-slate-700 shadow-lg">
-                <button type="button" onClick={() => setShowAdvanced(!showAdvanced)} className="w-full flex justify-between items-center text-xs font-black text-cyan-600 py-1">
-                  <span className="flex items-center gap-1.5 tracking-widest"><Info size={14}/> ADVANCED SETTINGS</span>
-                  {showAdvanced ? <ChevronUp size={16}/> : <ChevronDown size={16}/>}
-                </button>
-                
+                <button type="button" onClick={() => setShowAdvanced(!showAdvanced)} className="w-full flex justify-between items-center text-xs font-black text-cyan-600 py-1"><span className="flex items-center gap-1.5 tracking-widest"><Info size={14}/> ADVANCED SETTINGS</span>{showAdvanced ? <ChevronUp size={16}/> : <ChevronDown size={16}/>}</button>
                 {showAdvanced && (
                   <div className="space-y-4 pt-3 border-t border-slate-800 animate-in fade-in slide-in-from-top-2">
-                    <div className="relative shadow-inner rounded-2xl">
-                      <User className="absolute left-3 top-3.5 text-cyan-700" size={16}/>
-                      <input 
-                        className="w-full p-3 pl-10 bg-slate-950 border border-slate-800 rounded-2xl font-bold outline-none text-sm text-cyan-50 focus:border-cyan-500 transition-colors" 
-                        placeholder="教えてくれた人（師匠・先輩など）" 
-                        value={formData.teacher || ''} 
-                        onChange={e => setFormData({...formData, teacher: e.target.value})} 
-                      />
-                    </div>
-
+                    <div className="relative shadow-inner rounded-2xl"><User className="absolute left-3 top-3.5 text-cyan-700" size={16}/><input className="w-full p-3 pl-10 bg-slate-950 border border-slate-800 rounded-2xl font-bold outline-none text-sm text-cyan-50 focus:border-cyan-500 transition-colors" placeholder="教えてくれた人（師匠・先輩など）" value={formData.teacher || ''} onChange={e => setFormData({...formData, teacher: e.target.value})} /></div>
                     <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800 space-y-4 shadow-inner">
-                      <label className="flex items-center gap-3 cursor-pointer group">
-                        <div className={`w-5 h-5 rounded-md flex items-center justify-center border transition-all ${formData.needsReview ? 'bg-cyan-600 border-cyan-500 shadow-[0_0_10px_rgba(6,182,212,0.5)]' : 'bg-slate-800 border-slate-600 group-hover:border-cyan-500'}`}>
-                           {formData.needsReview && <Check size={14} className="text-slate-900" strokeWidth={4}/>}
-                        </div>
-                        <input type="checkbox" checked={formData.needsReview || false} onChange={e => setFormData({...formData, needsReview: e.target.checked})} className="hidden" />
-                        <span className="text-xs font-black text-slate-300 group-hover:text-cyan-100 transition-colors">後で確認・復習が必要</span>
-                      </label>
-                      
+                      <label className="flex items-center gap-3 cursor-pointer group"><div className={`w-5 h-5 rounded-md flex items-center justify-center border transition-all ${formData.needsReview ? 'bg-cyan-600 border-cyan-500 shadow-[0_0_10px_rgba(6,182,212,0.5)]' : 'bg-slate-800 border-slate-600 group-hover:border-cyan-500'}`}>{formData.needsReview && <Check size={14} className="text-slate-900" strokeWidth={4}/>}</div><input type="checkbox" checked={formData.needsReview || false} onChange={e => setFormData({...formData, needsReview: e.target.checked})} className="hidden" /><span className="text-xs font-black text-slate-300 group-hover:text-cyan-100 transition-colors">後で確認・復習が必要</span></label>
                       {formData.needsReview && (
                         <div className="pl-8 space-y-4 animate-in fade-in">
-                          <div className="flex items-center gap-2">
-                            <Bell size={14} className="text-orange-500 shrink-0 drop-shadow-[0_0_5px_rgba(249,115,22,0.8)]"/>
-                            <input type="date" className="p-2 bg-slate-900 border border-slate-700 rounded-xl font-bold outline-none text-xs text-cyan-50 shadow-inner w-full focus:border-orange-500 focus:ring-1 focus:ring-orange-500" value={formData.reviewDate || ''} onChange={e => setFormData({...formData, reviewDate: e.target.value})} />
-                            <span className="text-[10px] text-slate-500 font-bold shrink-0">にお知らせ</span>
-                          </div>
-                          <label className="flex items-center gap-3 cursor-pointer group">
-                            <div className={`w-5 h-5 rounded-md flex items-center justify-center border transition-all ${formData.isReviewed ? 'bg-green-500 border-green-400 shadow-[0_0_10px_rgba(34,197,94,0.5)]' : 'bg-slate-800 border-slate-600 group-hover:border-green-500'}`}>
-                               {formData.isReviewed && <Check size={14} className="text-slate-900" strokeWidth={4}/>}
-                            </div>
-                            <input type="checkbox" checked={formData.isReviewed || false} onChange={e => setFormData({...formData, isReviewed: e.target.checked})} className="hidden" />
-                            <span className="text-xs font-black text-slate-300 group-hover:text-green-100 transition-colors">確認完了（クリア！）</span>
-                          </label>
+                          <div className="flex items-center gap-2"><Bell size={14} className="text-orange-500 shrink-0 drop-shadow-[0_0_5px_rgba(249,115,22,0.8)]"/><input type="date" className="p-2 bg-slate-900 border border-slate-700 rounded-xl font-bold outline-none text-xs text-cyan-50 shadow-inner w-full focus:border-orange-500 focus:ring-1 focus:ring-orange-500" value={formData.reviewDate || ''} onChange={e => setFormData({...formData, reviewDate: e.target.value})} /><span className="text-[10px] text-slate-500 font-bold shrink-0">にお知らせ</span></div>
+                          <label className="flex items-center gap-3 cursor-pointer group"><div className={`w-5 h-5 rounded-md flex items-center justify-center border transition-all ${formData.isReviewed ? 'bg-green-500 border-green-400 shadow-[0_0_10px_rgba(34,197,94,0.5)]' : 'bg-slate-800 border-slate-600 group-hover:border-green-500'}`}>{formData.isReviewed && <Check size={14} className="text-slate-900" strokeWidth={4}/>}</div><input type="checkbox" checked={formData.isReviewed || false} onChange={e => setFormData({...formData, isReviewed: e.target.checked})} className="hidden" /><span className="text-xs font-black text-slate-300 group-hover:text-green-100 transition-colors">確認完了（クリア！）</span></label>
                         </div>
                       )}
                     </div>
@@ -1965,64 +1315,32 @@ const App = () => {
                   <p className="text-[10px] font-black text-cyan-600 flex items-center gap-1 tracking-widest"><Tags size={12}/> COMPONENTS & TAGS</p>
                   <button type="button" onClick={() => setShowNewTag(!showNewTag)} className="text-[10px] font-bold text-cyan-400 bg-slate-800 px-2.5 py-1.5 rounded-lg flex items-center gap-1 border border-cyan-900 shadow-[0_0_8px_rgba(6,182,212,0.2)] active:scale-95 transition-all"><Plus size={12}/>新規タグ作成</button>
                 </div>
-
                 {showNewTag && (
                   <div className="bg-cyan-950/30 p-3 rounded-2xl border border-cyan-900 flex flex-col gap-2 animate-in fade-in slide-in-from-top-2 shadow-inner">
                     <div className="flex gap-2">
-                      <select value={newTagGroup} onChange={e=>setNewTagGroup(e.target.value)} className="bg-slate-900 border border-slate-700 p-2 rounded-xl text-[10px] sm:text-xs font-bold text-slate-200 outline-none focus:border-cyan-500 shrink-0 w-24">
-                        {MainCategories.map(c => <option key={c} value={c}>{c}</option>)}
-                      </select>
+                      <select value={newTagGroup} onChange={e=>setNewTagGroup(e.target.value)} className="bg-slate-900 border border-slate-700 p-2 rounded-xl text-[10px] sm:text-xs font-bold text-slate-200 outline-none focus:border-cyan-500 shrink-0 w-24">{MainCategories.map(c => <option key={c} value={c}>{c}</option>)}</select>
                       <input type="text" placeholder="新タグ名" value={newTagName} onChange={e=>setNewTagName(e.target.value)} className="w-full bg-slate-900 border border-slate-700 p-2 rounded-xl text-xs font-bold text-cyan-50 outline-none focus:border-cyan-500 min-w-0" />
                     </div>
                     <div className="flex gap-2 items-center">
                       <ColorSelector value={newTagColor} onChange={setNewTagColor} />
                       <IconSelector value={newTagIcon} onChange={setNewTagIcon} />
-                      <button type="button" onClick={() => {
-                        if(newTagName.trim()) {
-                          handleAddItem('tags', newTagName.trim(), newTagColor, newTagIcon, newTagGroup);
-                          const mats = formData.materials || [];
-                          if (!mats.includes(newTagName.trim())) {
-                            setFormData({...formData, materials: [...mats, newTagName.trim()]});
-                          }
-                          setNewTagName('');
-                          setNewTagColor('gray');
-                          setNewTagIcon('Tags');
-                          setShowNewTag(false);
-                        }
-                      }} className="bg-cyan-600 text-slate-900 px-4 py-2.5 rounded-xl text-xs font-black shadow-[0_0_10px_rgba(6,182,212,0.5)] active:scale-95 shrink-0">追加</button>
+                      <button type="button" onClick={() => { if(newTagName.trim()) { handleAddItem('tags', newTagName.trim(), newTagColor, newTagIcon, newTagGroup); const mats = formData.materials || []; if (!mats.includes(newTagName.trim())) { setFormData({...formData, materials: [...mats, newTagName.trim()]}); } setNewTagName(''); setNewTagColor('gray'); setNewTagIcon('Tags'); setShowNewTag(false); } }} className="bg-cyan-600 text-slate-900 px-4 py-2.5 rounded-xl text-xs font-black shadow-[0_0_10px_rgba(6,182,212,0.5)] active:scale-95 shrink-0">追加</button>
                     </div>
                   </div>
                 )}
-                
-                <div className="flex flex-col gap-2">
-                  {groupedTagsForm.map(({ category, tags }) => (
-                    <TagAccordion key={category} groupName={`【${category}】`} tags={tags} formData={formData} setFormData={setFormData} />
-                  ))}
-                </div>
+                <div className="flex flex-col gap-2">{groupedTagsForm.map(({ category, tags }) => <TagAccordion key={category} groupName={`【${category}】`} tags={tags} formData={formData} setFormData={setFormData} />)}</div>
               </div>
               
               <div className="space-y-3 bg-slate-900/80 backdrop-blur-sm p-5 rounded-[2.5rem] border border-slate-700 shadow-lg">
-                <div className="flex justify-between items-center text-[10px] font-black text-cyan-600 mb-2 tracking-widest">
-                  <span className="flex items-center gap-1"><Camera size={14}/> VISUAL EVIDENCE</span>
-                  <label className="text-slate-900 bg-cyan-600 px-3 py-1.5 rounded-xl flex items-center gap-1 cursor-pointer active:scale-95 transition-all shadow-[0_0_10px_rgba(6,182,212,0.4)] hover:bg-cyan-500">
-                    <Upload size={14}/> 撮影 / 一括追加
-                    <input type="file" accept="image/*" multiple onChange={handleFileUpload} className="hidden" />
-                  </label>
-                </div>
-                
+                <div className="flex justify-between items-center text-[10px] font-black text-cyan-600 mb-2 tracking-widest"><span className="flex items-center gap-1"><Camera size={14}/> VISUAL EVIDENCE</span><label className="text-slate-900 bg-cyan-600 px-3 py-1.5 rounded-xl flex items-center gap-1 cursor-pointer active:scale-95 transition-all shadow-[0_0_10px_rgba(6,182,212,0.4)] hover:bg-cyan-500"><Upload size={14}/> 撮影 / 一括追加<input type="file" accept="image/*" multiple onChange={handleFileUpload} className="hidden" /></label></div>
                 <div className="flex gap-4 overflow-x-auto pb-4 snap-x">
                   {!formData.images || formData.images.length === 0 ? (
-                    <div className="w-full flex-shrink-0 h-32 border-2 border-dashed border-slate-700 rounded-[2rem] flex flex-col items-center justify-center text-slate-500 font-bold text-xs bg-slate-950/50 shadow-inner">
-                      <ImageIcon size={24} className="mb-2 opacity-50"/> 現場の様子を記録しましょう
-                    </div>
+                    <div className="w-full flex-shrink-0 h-32 border-2 border-dashed border-slate-700 rounded-[2rem] flex flex-col items-center justify-center text-slate-500 font-bold text-xs bg-slate-950/50 shadow-inner"><ImageIcon size={24} className="mb-2 opacity-50"/> 現場の様子を記録しましょう</div>
                   ) : (
                     formData.images.map((img, i) => (
                       <div key={i} className="relative w-48 flex-shrink-0 snap-center group">
                         <img src={img} className="w-full h-32 object-cover rounded-[1.5rem] border border-slate-700 shadow-lg cursor-pointer opacity-90 hover:opacity-100 transition-opacity" onClick={() => setMarkupModal({ isOpen: true, imgIndex: i, dataUrl: img })} />
-                        <button type="button" onClick={() => {
-                          const newImgs = [...formData.images]; newImgs.splice(i, 1);
-                          setFormData({...formData, images: newImgs});
-                        }} className="absolute -top-2 -right-2 bg-red-500 text-slate-900 p-1.5 rounded-full shadow-[0_0_10px_rgba(239,68,68,0.8)]"><X size={14}/></button>
+                        <button type="button" onClick={() => { const newImgs = [...formData.images]; newImgs.splice(i, 1); setFormData({...formData, images: newImgs}); }} className="absolute -top-2 -right-2 bg-red-500 text-slate-900 p-1.5 rounded-full shadow-[0_0_10px_rgba(239,68,68,0.8)]"><X size={14}/></button>
                         <div className="absolute bottom-2 right-2 bg-cyan-900/80 text-cyan-100 p-1.5 rounded-full pointer-events-none border border-cyan-500"><Edit3 size={12}/></div>
                       </div>
                     ))
@@ -2043,20 +1361,16 @@ const App = () => {
         )}
       </div>
 
-      {/* --- ボトムナビゲーション --- */}
       {!markupModal.isOpen && view !== 'add' && view !== 'edit' && (
         <nav className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-slate-900/90 backdrop-blur-xl border border-slate-700 rounded-full p-2 flex items-center shadow-[0_0_20px_rgba(0,0,0,0.8)] z-40 w-max gap-2">
           <button onClick={() => setView('list')} className={`flex items-center gap-2 px-6 py-3 rounded-full transition-all duration-300 ${view === 'list' ? 'bg-cyan-600 text-slate-900 shadow-[0_0_15px_rgba(6,182,212,0.5)]' : 'text-slate-400 hover:text-cyan-400'}`}>
-            <ClipboardList size={20} strokeWidth={view === 'list' ? 2.5 : 2} />
-            <span className={`text-[10px] font-black uppercase tracking-widest ${view === 'list' ? 'block' : 'hidden'}`}>Quest Log</span>
+            <ClipboardList size={20} strokeWidth={view === 'list' ? 2.5 : 2} /><span className={`text-[10px] font-black uppercase tracking-widest ${view === 'list' ? 'block' : 'hidden'}`}>Quest Log</span>
           </button>
           <button onClick={() => setView('stats')} className={`flex items-center gap-2 px-6 py-3 rounded-full transition-all duration-300 ${view === 'stats' ? 'bg-cyan-600 text-slate-900 shadow-[0_0_15px_rgba(6,182,212,0.5)]' : 'text-slate-400 hover:text-cyan-400'}`}>
-            <Activity size={20} strokeWidth={view === 'stats' ? 2.5 : 2} />
-            <span className={`text-[10px] font-black uppercase tracking-widest ${view === 'stats' ? 'block' : 'hidden'}`}>Status</span>
+            <Activity size={20} strokeWidth={view === 'stats' ? 2.5 : 2} /><span className={`text-[10px] font-black uppercase tracking-widest ${view === 'stats' ? 'block' : 'hidden'}`}>Status</span>
           </button>
           <button onClick={() => setView('settings')} className={`flex items-center gap-2 px-6 py-3 rounded-full transition-all duration-300 ${view === 'settings' ? 'bg-cyan-600 text-slate-900 shadow-[0_0_15px_rgba(6,182,212,0.5)]' : 'text-slate-400 hover:text-cyan-400'}`}>
-            <Settings size={20} strokeWidth={view === 'settings' ? 2.5 : 2} />
-            <span className={`text-[10px] font-black uppercase tracking-widest ${view === 'settings' ? 'block' : 'hidden'}`}>Equipment</span>
+            <Settings size={20} strokeWidth={view === 'settings' ? 2.5 : 2} /><span className={`text-[10px] font-black uppercase tracking-widest ${view === 'settings' ? 'block' : 'hidden'}`}>Equipment</span>
           </button>
         </nav>
       )}
