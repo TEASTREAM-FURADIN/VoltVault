@@ -158,10 +158,10 @@ const App = () => {
   const [userSettings, setUserSettings] = useState(defaultSettings);
   const [levelUpData, setLevelUpData] = useState(null);
 
+  // ★ ゲーム要素
   const [showBossDefeat, setShowBossDefeat] = useState(false);
   const [bossExp, setBossExp] = useState(0);
   const [encounterMemo, setEncounterMemo] = useState(null);
-
   const [showTrophiesModal, setShowTrophiesModal] = useState(false); 
 
   const uniqueSites = [...new Set(memos.map(m => String(m.site || "")).filter(Boolean))];
@@ -191,6 +191,7 @@ const App = () => {
         setMemos(sortedData);
         setIsSyncing(false);
 
+        // ★ 起動時エンカウント処理（1日1回確率で発動）
         if (sortedData.length > 0 && !sessionStorage.getItem('encounteredToday')) {
           const pending = sortedData.filter(m => m.needsReview && !m.isReviewed);
           if (pending.length > 0) {
@@ -308,6 +309,7 @@ const App = () => {
       if (isNew) {
         const currentStats = userSettings.stats || defaultSettings.stats;
         
+        // ★ ストリーク計算
         const todayStr = new Date().toISOString().split('T')[0];
         let newStreak = currentStats.streakDays || 0;
         const lastDate = currentStats.lastMemoDate || '';
@@ -359,7 +361,7 @@ const App = () => {
       setShowNewGenre(false);
       setShowNewTag(false);
     } catch (e) { 
-      setError("OVERLOAD: 保存に失敗しました。画像の枚数を減らすか通信環境をご確認ください。");
+      setError("OVERLOAD: 保存に失敗しました。通信環境や画像サイズをご確認ください。");
       setTimeout(()=>setError(null), 5000);
     } finally { setIsSyncing(false); }
   };
@@ -607,7 +609,7 @@ const App = () => {
 
   const [markupModal, setMarkupModal] = useState({ isOpen: false, imgIndex: null, dataUrl: null });
   
-  // ★ 究極・高速化画像エディター（テキストのドラッグ編集対応版）
+  // ★ 究極・高速化画像エディター（テキストドラッグ・再編集対応 ＋ 真っ白フリーズ完全防止）
   const MarkupModalCanvas = () => {
     const canvasRef = useRef(null);
     const containerRef = useRef(null);
@@ -616,7 +618,7 @@ const App = () => {
     const [zoom, setZoom] = useState(1);
     const [dimensions, setDimensions] = useState({ width: 0, height: 0 });
     
-    // ★ 変更：テキストは履歴（strokes）とは別の「ドラッグ可能な付箋」として独立管理
+    // ★ 追加：動かせるテキスト付箋の配列
     const [texts, setTexts] = useState([]); 
     const [editingTextId, setEditingTextId] = useState(null);
     const draggingTextRef = useRef(null);
@@ -625,7 +627,6 @@ const App = () => {
     const [strokes, setStrokes] = useState([]);
     const [redoStack, setRedoStack] = useState([]); 
     const currentStrokeRef = useRef(null);
-    
     const baseImageRef = useRef(null);
 
     const [penColor, setPenColor] = useState('#ef4444'); 
@@ -646,7 +647,7 @@ const App = () => {
       img.src = markupModal.dataUrl;
     }, [markupModal.dataUrl]);
 
-    // ★ キャンバス全体の再描画（手書きの線と消しゴムの跡だけを描く。重い処理は一切排除）
+    // ★ 変更：キャンバスを透明な画用紙として使い、描画履歴（手書き・消しゴム）だけを軽量に再描画する
     const redrawAll = (strokesToDraw = strokes) => {
       if (!dimensions.width || !canvasRef.current) return;
       const canvas = canvasRef.current;
@@ -676,6 +677,7 @@ const App = () => {
           }
         }
       });
+      ctx.globalCompositeOperation = 'source-over';
     };
 
     useEffect(() => { redrawAll(); }, [dimensions, strokes]);
@@ -702,13 +704,18 @@ const App = () => {
     const startDrawing = (e) => { 
       const p = getPos(e); 
       
-      // テキスト編集中なら、外側タップで編集終了させるだけ
-      if (editingTextId) return;
+      // テキスト編集中なら外側タップで決定させる
+      if (editingTextId) {
+         setEditingTextId(null);
+         return;
+      }
 
+      // テキストモードなら、タップした場所に新しい文字付箋を作る
       if (mode === 'text') {
         const newId = Date.now();
+        const baseFontSize = dimensions.width ? Math.max(32, dimensions.width * 0.04) : 32;
         setTexts(prev => [...prev, {
-           id: newId, text: '', x: p.x, y: p.y, color: penColor, fontSize: Math.max(32, dimensions.width * 0.04)
+           id: newId, text: '', x: p.x, y: p.y, color: penColor, fontSize: baseFontSize
         }]);
         setEditingTextId(newId);
         return;
@@ -721,7 +728,7 @@ const App = () => {
       currentStrokeRef.current = { 
         type: mode, 
         color: penColor, 
-        width: (mode === 'eraser' ? baseLineWidth * 5 : baseLineWidth) / zoom,
+        width: mode === 'eraser' ? baseLineWidth * 5 : baseLineWidth, // 消しゴムは太めに
         points: [p] 
       };
 
@@ -734,7 +741,7 @@ const App = () => {
     };
     
     const draw = (e) => { 
-      // ★ 追加：テキストのドラッグ移動処理
+      // ★ 追加：テキストのドラッグ移動
       if (draggingTextRef.current) {
          e.preventDefault();
          const p = getPos(e);
@@ -754,7 +761,7 @@ const App = () => {
       if (currentStrokeRef.current) {
         currentStrokeRef.current.points.push(p);
         
-        // 指を滑らせた「差分」だけを直接Canvasに描くので、全く重くならない
+        // ★ 変更：指を滑らせた「差分」だけを透明キャンバスに直接描く（これが高速化の秘訣）
         const ctx = canvasRef.current.getContext('2d'); 
         ctx.globalCompositeOperation = mode === 'eraser' ? 'destination-out' : 'source-over';
         ctx.strokeStyle = mode === 'eraser' ? 'rgba(0,0,0,1)' : penColor;
@@ -802,13 +809,13 @@ const App = () => {
     const handleClearAll = () => {
       if(window.confirm('書き込みをすべて消去しますか？')) {
         setStrokes([]);
-        setTexts([]); // テキストも全部消す
+        setTexts([]); 
         setRedoStack([]); 
       }
     };
 
     const handleSaveImage = () => {
-      // 保存時に、ベース画像 ＋ 手書き ＋ テキストをすべて1枚の絵に合成する
+      // 保存時に「ベース写真」＋「手書き線」＋「テキスト付箋」を1枚に合成する
       const saveCanvas = document.createElement('canvas');
       saveCanvas.width = dimensions.width;
       saveCanvas.height = dimensions.height;
@@ -832,7 +839,7 @@ const App = () => {
         }
       });
 
-      // ★ 保存時のエラーを防ぐため、画質を 0.6 に最適化
+      // 保存エラーを防ぐために画質を0.6に最適化
       const newDataUrl = saveCanvas.toDataURL('image/jpeg', 0.6);
       const newImages = [...formData.images];
       newImages[markupModal.imgIndex] = newDataUrl;
@@ -891,22 +898,27 @@ const App = () => {
             </div>
           </div>
 
-          <div ref={containerRef} className={`flex-1 overflow-auto rounded-xl border-2 border-slate-700 bg-slate-950 shadow-inner relative ${mode === 'draw' || mode === 'eraser' ? 'touch-none' : ''}`}>
+          <div ref={containerRef} className={`flex-1 overflow-auto rounded-xl border-2 border-slate-700 bg-slate-950 shadow-inner relative ${mode === 'draw' || mode === 'text' || mode === 'eraser' ? 'touch-none' : ''}`}>
             {dimensions.width > 0 && (
               <div style={{ width: `${100 * zoom}%`, minHeight: '100%', position: 'relative' }}>
+                {/* ベース画像を裏側に配置してメモリ負荷をゼロに */}
                 <img src={markupModal.dataUrl} alt="base" style={{ width: '100%', height: 'auto', display: 'block', opacity: 0.8, pointerEvents: 'none' }} />
                 
+                {/* 透明なキャンバスを被せて線だけを描画 */}
                 <canvas
                   ref={canvasRef}
                   width={dimensions.width}
                   height={dimensions.height}
-                  style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', display: 'block' }}
+                  style={{
+                    position: 'absolute',
+                    top: 0, left: 0, width: '100%', height: '100%', display: 'block'
+                  }}
                   className={`shadow-lg ${mode === 'draw' ? 'cursor-crosshair' : mode === 'text' ? 'cursor-text' : mode === 'eraser' ? 'cursor-cell' : 'cursor-grab'}`}
                   onMouseDown={startDrawing} onMouseMove={draw} onMouseUp={stopDrawing} onMouseLeave={stopDrawing}
                   onTouchStart={startDrawing} onTouchMove={draw} onTouchEnd={stopDrawing}
                 />
                 
-                {/* ★ 追加：ドラッグ＆再編集可能なテキストの付箋たち */}
+                {/* ★ 変更：ドラッグ移動＆再編集できるテキスト付箋 */}
                 {texts.map(t => {
                   if (editingTextId === t.id) {
                     return (
@@ -917,6 +929,7 @@ const App = () => {
                         onChange={(e) => setTexts(prev => prev.map(item => item.id === t.id ? { ...item, text: e.target.value } : item))}
                         onBlur={() => {
                           if (!t.text.trim()) {
+                            // 空っぽなら消去する
                             setTexts(prev => prev.filter(item => item.id !== t.id));
                           }
                           setEditingTextId(null);
@@ -928,7 +941,7 @@ const App = () => {
                           left: `${(t.x / dimensions.width) * 100}%`,
                           top: `${(t.y / dimensions.height) * 100}%`,
                           color: t.color,
-                          fontSize: `${t.fontSize * zoom}px`, 
+                          fontSize: `${Math.max(16, 24 / zoom) * zoom}px`, 
                           fontWeight: '900',
                           background: 'rgba(0,0,0,0.6)',
                           border: '2px dashed #06b6d4',
@@ -970,7 +983,7 @@ const App = () => {
                         left: `${(t.x / dimensions.width) * 100}%`,
                         top: `${(t.y / dimensions.height) * 100}%`,
                         color: t.color,
-                        fontSize: `${t.fontSize * zoom}px`, 
+                        fontSize: `${Math.max(16, 24 / zoom) * zoom}px`, 
                         fontWeight: '900',
                         cursor: 'move',
                         zIndex: 40,
@@ -1413,7 +1426,6 @@ const App = () => {
               <div className="flex items-center gap-2">
                 <span className="bg-yellow-500/20 border border-yellow-500 text-yellow-400 text-[9px] font-black px-1.5 py-0.5 rounded flex items-center gap-0.5 shadow-[0_0_5px_rgba(234,179,8,0.3)]"><Trophy size={10}/> Lv.{currentLevel}</span>
                 <span className="text-[10px] font-bold text-cyan-50 tracking-wide truncate max-w-[120px]">{getTitle(currentLevel)}</span>
-                {/* ★ ストリーク表示 */}
                 {(userSettings.stats?.streakDays || 0) > 0 && (
                   <span className="bg-orange-500/20 border border-orange-500 text-orange-400 text-[9px] font-black px-1.5 py-0.5 rounded flex items-center gap-0.5 shadow-[0_0_5px_rgba(249,115,22,0.3)]"><Flame size={10}/> {userSettings.stats.streakDays}連コンボ</span>
                 )}
@@ -1703,7 +1715,7 @@ const App = () => {
               
               <div className="text-center py-4 opacity-30">
                 <Gamepad2 size={32} className="mx-auto text-cyan-600 mb-2"/>
-                <p className="text-[10px] font-black text-cyan-600 uppercase tracking-widest">ELECTRIC CLIPPER MASTER v2.0</p>
+                <p className="text-[10px] font-black text-cyan-600 uppercase tracking-widest">ELECTRIC CLIPPER MASTER v2.1</p>
               </div>
             </div>
           )}
