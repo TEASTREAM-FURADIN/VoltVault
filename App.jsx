@@ -127,8 +127,7 @@ const DynamicIcon = ({ name, size = 16, className = "" }) => {
   return <Icon size={size} className={className} />;
 };
 
-// --- 外部コンポーネント ---
-
+// --- モーダル・コンポーネント群 ---
 const LevelUpModal = ({ levelUpData }) => {
   if (!levelUpData) return null;
   return (
@@ -571,7 +570,6 @@ const MarkupModalCanvas = ({ markupModal, setMarkupModal, formData, setFormData 
       }
     });
 
-    // ★ 保存時に、テキストの周りに「半透明の黒背景＋色付き枠線」を付けて保存する
     ctx.globalCompositeOperation = 'source-over';
     ctx.textBaseline = 'top';
     texts.forEach(t => {
@@ -651,7 +649,6 @@ const MarkupModalCanvas = ({ markupModal, setMarkupModal, formData, setFormData 
                 onMouseDown={handleStart} onMouseMove={handleMove} onMouseUp={handleEnd} onMouseLeave={handleEnd} onTouchStart={handleStart} onTouchMove={handleMove} onTouchEnd={handleEnd}
               />
               
-              {/* ★ テキストの周りにボックス（枠線と背景）を表示 */}
               {texts.map(t => editingTextId === t.id ? (
                   <textarea key={t.id} autoFocus value={t.text} onChange={(e) => setTexts(texts.map(x => x.id === t.id ? {...x, text: e.target.value} : x))}
                     onBlur={() => { if (!t.text.trim()) setTexts(texts.filter(x => x.id !== t.id)); setEditingTextId(null); }}
@@ -690,6 +687,7 @@ const MarkupModalCanvas = ({ markupModal, setMarkupModal, formData, setFormData 
     </div>
   );
 };
+
 
 // --- App 本体 ---
 const App = () => {
@@ -1205,7 +1203,133 @@ const App = () => {
                   <button onClick={() => { const input = document.getElementById('newPhraseInput'); if (input.value.trim()) { saveSettings({ ...userSettings, quickPhrases: [...userSettings.quickPhrases, input.value.trim()] }); input.value = ''; } }} className="w-full bg-slate-800 border border-cyan-500/50 text-cyan-400 px-4 py-3 rounded-xl font-black text-xs uppercase tracking-widest shadow-[0_0_10px_rgba(34,211,238,0.2)] active:scale-[0.98] hover:bg-slate-700 transition-all flex justify-center items-center gap-2"><Sword size={14}/>装備に追加</button>
                 </div>
               </div>
-              <div className="text-center py-4 opacity-30"><Gamepad2 size={32} className="mx-auto text-cyan-600 mb-2"/><p className="text-[10px] font-black text-cyan-600 uppercase tracking-widest">ELECTRIC CLIPPER MASTER v2.7</p></div>
+              <div className="text-center py-4 opacity-30"><Gamepad2 size={32} className="mx-auto text-cyan-600 mb-2"/><p className="text-[10px] font-black text-cyan-600 uppercase tracking-widest">ELECTRIC CLIPPER MASTER v3.0</p></div>
+            </div>
+          )}
+
+          {/* ★ クエスト追加・編集画面（表示バグ修正済） */}
+          {(view === 'add' || view === 'edit') && (
+            <div className="fixed inset-0 bg-slate-950 z-50 overflow-y-auto pb-32 animate-in slide-in-from-bottom-10 relative">
+              <div className="fixed inset-0 pointer-events-none z-0 opacity-10" style={{ backgroundImage: `linear-gradient(to right, #facc15 1px, transparent 1px), linear-gradient(to bottom, #facc15 1px, transparent 1px)`, backgroundSize: '40px 40px' }}></div>
+              <header className="bg-slate-900/90 backdrop-blur-md border-b border-yellow-500/30 p-5 flex justify-between items-center sticky top-0 shadow-[0_0_20px_rgba(234,179,8,0.15)] z-20">
+                <button onClick={() => setView('list')} className="text-slate-400 hover:text-yellow-400"><X size={24}/></button>
+                <h2 className="font-black text-yellow-400 tracking-tighter italic flex items-center gap-2 drop-shadow-[0_0_5px_rgba(234,179,8,0.8)]"><ClipperIcon size={18} strokeWidth={2.5}/> RECORD NEW DATA...</h2>
+                <button onClick={handleSave} className="relative group overflow-hidden bg-slate-800 text-cyan-400 px-5 py-2.5 rounded-full font-black text-[10px] uppercase shadow-[0_0_15px_rgba(34,211,238,0.3)] border border-cyan-500/50 disabled:opacity-50 active:scale-95 transition-all">
+                  <span className="relative z-10 flex items-center gap-1.5"><ClipperIcon size={14}/> ログを刻印</span>
+                  <div className="absolute inset-0 bg-gradient-to-r from-cyan-600 to-blue-600 opacity-0 group-hover:opacity-20 transition-opacity"></div>
+                </button>
+              </header>
+              
+              <div className="p-6 space-y-7 max-w-xl mx-auto relative z-10">
+                {view === 'add' && (formData.title || formData.content || formData.images.length > 0) && (
+                  <div className="flex justify-end mb-[-1rem]">
+                    <button onClick={() => { if (window.confirm('入力内容をすべてリセットしますか？')) { setFormData(initialForm); localStorage.removeItem('voltVaultDraft'); } }} className="text-[10px] text-red-400 font-bold border border-red-500/50 px-2.5 py-1.5 rounded-md bg-red-950/50 shadow-sm active:scale-95"><Trash2 size={12} className="inline mr-1"/>一時保存をクリア</button>
+                  </div>
+                )}
+
+                <div className="space-y-4">
+                  <input list="title-history" className="w-full text-2xl font-black bg-transparent border-b-2 border-slate-700 py-2 text-slate-100 focus:border-cyan-400 outline-none transition-colors placeholder:text-slate-600" placeholder="クエスト名（作業・タイトル）" value={formData.title} onChange={e => setFormData({...formData, title: e.target.value})} />
+                  <datalist id="title-history">{uniqueTitles.map(t => <option key={t} value={t} />)}</datalist>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <input type="date" className="p-3 bg-slate-900 border border-slate-700 rounded-2xl font-bold outline-none text-sm text-cyan-50 shadow-inner focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500" value={formData.date} onChange={e => setFormData({...formData, date: e.target.value})} />
+                    <div className="relative flex items-center">
+                      <select className="p-3 bg-slate-900 border border-slate-700 rounded-2xl font-bold outline-none text-sm text-cyan-50 shadow-inner w-full focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 appearance-none" value={formData.genre} onChange={e => setFormData({...formData, genre: e.target.value})}>
+                        {groupedGenresForm.map(({ category, genres }) => (<optgroup key={category} label={`【${category}】`}>{genres.map(g => <option key={g.key} value={g.key}>{g.key}</option>)}</optgroup>))}
+                      </select>
+                      <ChevronDown size={14} className="absolute right-3 text-slate-500 pointer-events-none"/>
+                      <button type="button" onClick={() => setShowNewGenre(!showNewGenre)} className="absolute -top-2 -right-2 bg-slate-800 text-cyan-400 rounded-full p-1.5 shadow-[0_0_8px_rgba(34,211,238,0.5)] border border-cyan-500/50 hover:bg-slate-700 active:scale-95 transition-all"><Plus size={14}/></button>
+                    </div>
+                  </div>
+
+                  {showNewGenre && (
+                    <div className="bg-cyan-950/30 p-3 rounded-2xl border border-cyan-900 flex flex-col gap-2 animate-in fade-in slide-in-from-top-2 shadow-inner">
+                      <div className="flex gap-2">
+                        <select value={newGenreGroup} onChange={e=>setNewGenreGroup(e.target.value)} className="bg-slate-900 border border-slate-700 p-2 rounded-xl text-[10px] sm:text-xs font-bold text-slate-200 outline-none focus:border-cyan-500 shrink-0 w-24">
+                          {MainCategories.map(c => <option key={c} value={c}>{c}</option>)}
+                        </select>
+                        <input type="text" placeholder="新ジャンル名" value={newGenreName} onChange={e=>setNewGenreName(e.target.value)} className="w-full bg-slate-900 border border-slate-700 p-2 rounded-xl text-xs font-bold text-cyan-50 outline-none focus:border-cyan-500 min-w-0" />
+                      </div>
+                      <div className="flex gap-2 items-center">
+                        <ColorSelector value={newGenreColor} onChange={setNewGenreColor} />
+                        <IconSelector value={newGenreIcon} onChange={setNewGenreIcon} />
+                        <button type="button" onClick={() => { if(newGenreName.trim()) { handleAddItem('genres', newGenreName.trim(), newGenreColor, newGenreIcon, newGenreGroup); setFormData({...formData, genre: newGenreName.trim()}); setNewGenreName(''); setNewGenreColor('blue'); setNewGenreIcon('Info'); setShowNewGenre(false); } }} className="bg-cyan-600 text-slate-900 px-4 py-2.5 rounded-xl text-xs font-black shadow-[0_0_10px_rgba(6,182,212,0.5)] active:scale-95 shrink-0">追加</button>
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="relative shadow-inner rounded-2xl">
+                    <Building className="absolute left-3 top-3.5 text-cyan-700" size={16}/>
+                    <input list="site-history" className="w-full p-3 pl-10 bg-slate-900 border border-slate-700 rounded-2xl font-bold outline-none text-sm text-cyan-50 focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500" placeholder="ダンジョン名（現場・案件）" value={formData.site} onChange={e => setFormData({...formData, site: e.target.value})} />
+                    <datalist id="site-history">{uniqueSites.map(s => <option key={s} value={s} />)}</datalist>
+                  </div>
+                </div>
+
+                <div className="space-y-3 bg-slate-900/80 backdrop-blur-sm p-4 rounded-[2rem] border border-slate-700 shadow-lg">
+                  <button type="button" onClick={() => setShowAdvanced(!showAdvanced)} className="w-full flex justify-between items-center text-xs font-black text-cyan-600 py-1"><span className="flex items-center gap-1.5 tracking-widest"><Info size={14}/> ADVANCED SETTINGS</span>{showAdvanced ? <ChevronUp size={16}/> : <ChevronDown size={16}/>}</button>
+                  {showAdvanced && (
+                    <div className="space-y-4 pt-3 border-t border-slate-800 animate-in fade-in slide-in-from-top-2">
+                      <div className="relative shadow-inner rounded-2xl"><User className="absolute left-3 top-3.5 text-cyan-700" size={16}/><input className="w-full p-3 pl-10 bg-slate-950 border border-slate-800 rounded-2xl font-bold outline-none text-sm text-cyan-50 focus:border-cyan-500 transition-colors" placeholder="教えてくれた人（師匠・先輩など）" value={formData.teacher || ''} onChange={e => setFormData({...formData, teacher: e.target.value})} /></div>
+                      <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800 space-y-4 shadow-inner">
+                        <label className="flex items-center gap-3 cursor-pointer group"><div className={`w-5 h-5 rounded-md flex items-center justify-center border transition-all ${formData.needsReview ? 'bg-cyan-600 border-cyan-500 shadow-[0_0_10px_rgba(6,182,212,0.5)]' : 'bg-slate-800 border-slate-600 group-hover:border-cyan-500'}`}>{formData.needsReview && <Check size={14} className="text-slate-900" strokeWidth={4}/>}</div><input type="checkbox" checked={formData.needsReview || false} onChange={e => setFormData({...formData, needsReview: e.target.checked})} className="hidden" /><span className="text-xs font-black text-slate-300 group-hover:text-cyan-100 transition-colors">後で確認・復習が必要</span></label>
+                        {formData.needsReview && (
+                          <div className="pl-8 space-y-4 animate-in fade-in">
+                            <div className="flex items-center gap-2"><Bell size={14} className="text-orange-500 shrink-0 drop-shadow-[0_0_5px_rgba(249,115,22,0.8)]"/><input type="date" className="p-2 bg-slate-900 border border-slate-700 rounded-xl font-bold outline-none text-xs text-cyan-50 shadow-inner w-full focus:border-orange-500 focus:ring-1 focus:ring-orange-500" value={formData.reviewDate || ''} onChange={e => setFormData({...formData, reviewDate: e.target.value})} /><span className="text-[10px] text-slate-500 font-bold shrink-0">にお知らせ</span></div>
+                            <label className="flex items-center gap-3 cursor-pointer group"><div className={`w-5 h-5 rounded-md flex items-center justify-center border transition-all ${formData.isReviewed ? 'bg-green-500 border-green-400 shadow-[0_0_10px_rgba(34,197,94,0.5)]' : 'bg-slate-800 border-slate-600 group-hover:border-green-500'}`}>{formData.isReviewed && <Check size={14} className="text-slate-900" strokeWidth={4}/>}</div><input type="checkbox" checked={formData.isReviewed || false} onChange={e => setFormData({...formData, isReviewed: e.target.checked})} className="hidden" /><span className="text-xs font-black text-slate-300 group-hover:text-green-100 transition-colors">確認完了（クリア！）</span></label>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                <div className="space-y-3">
+                  <div className="flex justify-between items-end">
+                    <p className="text-[10px] font-black text-cyan-600 flex items-center gap-1 tracking-widest"><Tags size={12}/> COMPONENTS & TAGS</p>
+                    <button type="button" onClick={() => setShowNewTag(!showNewTag)} className="text-[10px] font-bold text-cyan-400 bg-slate-800 px-2.5 py-1.5 rounded-lg flex items-center gap-1 border border-cyan-900 shadow-[0_0_8px_rgba(6,182,212,0.2)] active:scale-95 transition-all"><Plus size={12}/>新規タグ作成</button>
+                  </div>
+                  {showNewTag && (
+                    <div className="bg-cyan-950/30 p-3 rounded-2xl border border-cyan-900 flex flex-col gap-2 animate-in fade-in slide-in-from-top-2 shadow-inner">
+                      <div className="flex gap-2">
+                        <select value={newTagGroup} onChange={e=>setNewTagGroup(e.target.value)} className="bg-slate-900 border border-slate-700 p-2 rounded-xl text-[10px] sm:text-xs font-bold text-slate-200 outline-none focus:border-cyan-500 shrink-0 w-24">{MainCategories.map(c => <option key={c} value={c}>{c}</option>)}</select>
+                        <input type="text" placeholder="新タグ名" value={newTagName} onChange={e=>setNewTagName(e.target.value)} className="w-full bg-slate-900 border border-slate-700 p-2 rounded-xl text-xs font-bold text-cyan-50 outline-none focus:border-cyan-500 min-w-0" />
+                      </div>
+                      <div className="flex gap-2 items-center">
+                        <ColorSelector value={newTagColor} onChange={setNewTagColor} />
+                        <IconSelector value={newTagIcon} onChange={setNewTagIcon} />
+                        <button type="button" onClick={() => { if(newTagName.trim()) { handleAddItem('tags', newTagName.trim(), newTagColor, newTagIcon, newTagGroup); const mats = formData.materials || []; if (!mats.includes(newTagName.trim())) { setFormData({...formData, materials: [...mats, newTagName.trim()]}); } setNewTagName(''); setNewTagColor('gray'); setNewTagIcon('Tags'); setShowNewTag(false); } }} className="bg-cyan-600 text-slate-900 px-4 py-2.5 rounded-xl text-xs font-black shadow-[0_0_10px_rgba(6,182,212,0.5)] active:scale-95 shrink-0">追加</button>
+                      </div>
+                    </div>
+                  )}
+                  <div className="flex flex-col gap-2">{groupedTagsForm.map(({ category, tags }) => <TagAccordion key={category} groupName={`【${category}】`} tags={tags} formData={formData} setFormData={setFormData} />)}</div>
+                </div>
+                
+                <div className="space-y-3 bg-slate-900/80 backdrop-blur-sm p-5 rounded-[2.5rem] border border-slate-700 shadow-lg">
+                  <div className="flex justify-between items-center text-[10px] font-black text-cyan-600 mb-2 tracking-widest"><span className="flex items-center gap-1"><Camera size={14}/> VISUAL EVIDENCE</span><label className="text-slate-900 bg-cyan-600 px-3 py-1.5 rounded-xl flex items-center gap-1 cursor-pointer active:scale-95 transition-all shadow-[0_0_10px_rgba(6,182,212,0.4)] hover:bg-cyan-500"><Upload size={14}/> 撮影 / 一括追加<input type="file" accept="image/*" multiple onChange={handleFileUpload} className="hidden" /></label></div>
+                  <div className="flex gap-4 overflow-x-auto pb-4 snap-x">
+                    {!formData.images || formData.images.length === 0 ? (
+                      <div className="w-full flex-shrink-0 h-32 border-2 border-dashed border-slate-700 rounded-[2rem] flex flex-col items-center justify-center text-slate-500 font-bold text-xs bg-slate-950/50 shadow-inner"><ImageIcon size={24} className="mb-2 opacity-50"/> 現場の様子を記録しましょう</div>
+                    ) : (
+                      formData.images.map((img, i) => (
+                        <div key={i} className="relative w-48 flex-shrink-0 snap-center group">
+                          <img src={img} className="w-full h-32 object-cover rounded-[1.5rem] border border-slate-700 shadow-lg cursor-pointer opacity-90 hover:opacity-100 transition-opacity" onClick={() => setMarkupModal({ isOpen: true, imgIndex: i, dataUrl: img })} />
+                          <button type="button" onClick={() => { const newImgs = [...formData.images]; newImgs.splice(i, 1); setFormData({...formData, images: newImgs}); }} className="absolute -top-2 -right-2 bg-red-500 text-slate-900 p-1.5 rounded-full shadow-[0_0_10px_rgba(239,68,68,0.8)]"><X size={14}/></button>
+                          <div className="absolute bottom-2 right-2 bg-cyan-900/80 text-cyan-100 p-1.5 rounded-full pointer-events-none border border-cyan-500"><Edit3 size={12}/></div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+                
+                <div className="space-y-3 bg-slate-900/80 backdrop-blur-sm p-5 rounded-[2.5rem] border border-slate-700 shadow-lg">
+                  <div className="flex flex-wrap gap-2 pb-2 border-b border-slate-800">
+                    {userSettings.quickPhrases.map(p => <button key={p} type="button" onClick={() => setFormData({...formData, content: formData.content + (formData.content?'\n':'') + p})} className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-cyan-100 rounded-xl text-[10px] border border-slate-600 font-black transition-colors shadow-inner">+ {p}</button>)}
+                  </div>
+                  <textarea className="w-full h-40 pt-2 bg-transparent outline-none text-sm font-medium leading-relaxed resize-none text-cyan-50 placeholder:text-slate-600" placeholder="攻略のヒント、配線の色、次回への引き継ぎ事項などを記録..." value={formData.content} onChange={e => setFormData({...formData, content: e.target.value})} />
+                </div>
+                
+                {view === 'edit' && <button type="button" onClick={() => handleDelete(selectedMemo.id)} className="w-full py-5 text-red-500 font-black text-xs border-2 border-red-900/50 border-dashed rounded-[2.5rem] uppercase tracking-widest hover:bg-red-950 transition-all mt-8 shadow-inner">クエストを破棄する</button>}
+              </div>
             </div>
           )}
 
@@ -1267,132 +1391,6 @@ const App = () => {
             </div>
           )}
         </main>
-
-        {/* --- ビュー: フォーム (追加/編集) --- */}
-        {(view === 'add' || view === 'edit') && (
-          <div className="fixed inset-0 bg-slate-950 z-50 overflow-y-auto pb-32 animate-in slide-in-from-bottom-10 relative">
-            <div className="fixed inset-0 pointer-events-none z-0 opacity-10" style={{ backgroundImage: `linear-gradient(to right, #facc15 1px, transparent 1px), linear-gradient(to bottom, #facc15 1px, transparent 1px)`, backgroundSize: '40px 40px' }}></div>
-            <header className="bg-slate-900/90 backdrop-blur-md border-b border-yellow-500/30 p-5 flex justify-between items-center sticky top-0 shadow-[0_0_20px_rgba(234,179,8,0.15)] z-20">
-              <button onClick={() => setView('list')} className="text-slate-400 hover:text-yellow-400"><X size={24}/></button>
-              <h2 className="font-black text-yellow-400 tracking-tighter italic flex items-center gap-2 drop-shadow-[0_0_5px_rgba(234,179,8,0.8)]"><ClipperIcon size={18} strokeWidth={2.5}/> RECORD NEW DATA...</h2>
-              <button onClick={handleSave} className="relative group overflow-hidden bg-slate-800 text-cyan-400 px-5 py-2.5 rounded-full font-black text-[10px] uppercase shadow-[0_0_15px_rgba(34,211,238,0.3)] border border-cyan-500/50 disabled:opacity-50 active:scale-95 transition-all">
-                <span className="relative z-10 flex items-center gap-1.5"><ClipperIcon size={14}/> ログを刻印</span>
-                <div className="absolute inset-0 bg-gradient-to-r from-cyan-600 to-blue-600 opacity-0 group-hover:opacity-20 transition-opacity"></div>
-              </button>
-            </header>
-            
-            <div className="p-6 space-y-7 max-w-xl mx-auto relative z-10">
-              {view === 'add' && (formData.title || formData.content || formData.images.length > 0) && (
-                <div className="flex justify-end mb-[-1rem]">
-                  <button onClick={() => { if (window.confirm('入力内容をすべてリセットしますか？')) { setFormData(initialForm); localStorage.removeItem('voltVaultDraft'); } }} className="text-[10px] text-red-400 font-bold border border-red-500/50 px-2.5 py-1.5 rounded-md bg-red-950/50 shadow-sm active:scale-95"><Trash2 size={12} className="inline mr-1"/>一時保存をクリア</button>
-                </div>
-              )}
-
-              <div className="space-y-4">
-                <input list="title-history" className="w-full text-2xl font-black bg-transparent border-b-2 border-slate-700 py-2 text-slate-100 focus:border-cyan-400 outline-none transition-colors placeholder:text-slate-600" placeholder="クエスト名（作業・タイトル）" value={formData.title} onChange={e => setFormData({...formData, title: e.target.value})} />
-                <datalist id="title-history">{uniqueTitles.map(t => <option key={t} value={t} />)}</datalist>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <input type="date" className="p-3 bg-slate-900 border border-slate-700 rounded-2xl font-bold outline-none text-sm text-cyan-50 shadow-inner focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500" value={formData.date} onChange={e => setFormData({...formData, date: e.target.value})} />
-                  <div className="relative flex items-center">
-                    <select className="p-3 bg-slate-900 border border-slate-700 rounded-2xl font-bold outline-none text-sm text-cyan-50 shadow-inner w-full focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 appearance-none" value={formData.genre} onChange={e => setFormData({...formData, genre: e.target.value})}>
-                      {groupedGenresForm.map(({ category, genres }) => (<optgroup key={category} label={`【${category}】`}>{genres.map(g => <option key={g.key} value={g.key}>{g.key}</option>)}</optgroup>))}
-                    </select>
-                    <ChevronDown size={14} className="absolute right-3 text-slate-500 pointer-events-none"/>
-                    <button type="button" onClick={() => setShowNewGenre(!showNewGenre)} className="absolute -top-2 -right-2 bg-slate-800 text-cyan-400 rounded-full p-1.5 shadow-[0_0_8px_rgba(34,211,238,0.5)] border border-cyan-500/50 hover:bg-slate-700 active:scale-95 transition-all"><Plus size={14}/></button>
-                  </div>
-                </div>
-
-                {showNewGenre && (
-                  <div className="bg-cyan-950/30 p-3 rounded-2xl border border-cyan-900 flex flex-col gap-2 animate-in fade-in slide-in-from-top-2 shadow-inner">
-                    <div className="flex gap-2">
-                      <select value={newGenreGroup} onChange={e=>setNewGenreGroup(e.target.value)} className="bg-slate-900 border border-slate-700 p-2 rounded-xl text-[10px] sm:text-xs font-bold text-slate-200 outline-none focus:border-cyan-500 shrink-0 w-24">
-                        {MainCategories.map(c => <option key={c} value={c}>{c}</option>)}
-                      </select>
-                      <input type="text" placeholder="新ジャンル名" value={newGenreName} onChange={e=>setNewGenreName(e.target.value)} className="w-full bg-slate-900 border border-slate-700 p-2 rounded-xl text-xs font-bold text-cyan-50 outline-none focus:border-cyan-500 min-w-0" />
-                    </div>
-                    <div className="flex gap-2 items-center">
-                      <ColorSelector value={newGenreColor} onChange={setNewGenreColor} />
-                      <IconSelector value={newGenreIcon} onChange={setNewGenreIcon} />
-                      <button type="button" onClick={() => { if(newGenreName.trim()) { handleAddItem('genres', newGenreName.trim(), newGenreColor, newGenreIcon, newGenreGroup); setFormData({...formData, genre: newGenreName.trim()}); setNewGenreName(''); setNewGenreColor('blue'); setNewGenreIcon('Info'); setShowNewGenre(false); } }} className="bg-cyan-600 text-slate-900 px-4 py-2.5 rounded-xl text-xs font-black shadow-[0_0_10px_rgba(6,182,212,0.5)] active:scale-95 shrink-0">追加</button>
-                    </div>
-                  </div>
-                )}
-
-                <div className="relative shadow-inner rounded-2xl">
-                  <Building className="absolute left-3 top-3.5 text-cyan-700" size={16}/>
-                  <input list="site-history" className="w-full p-3 pl-10 bg-slate-900 border border-slate-700 rounded-2xl font-bold outline-none text-sm text-cyan-50 focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500" placeholder="ダンジョン名（現場・案件）" value={formData.site} onChange={e => setFormData({...formData, site: e.target.value})} />
-                  <datalist id="site-history">{uniqueSites.map(s => <option key={s} value={s} />)}</datalist>
-                </div>
-              </div>
-
-              <div className="space-y-3 bg-slate-900/80 backdrop-blur-sm p-4 rounded-[2rem] border border-slate-700 shadow-lg">
-                <button type="button" onClick={() => setShowAdvanced(!showAdvanced)} className="w-full flex justify-between items-center text-xs font-black text-cyan-600 py-1"><span className="flex items-center gap-1.5 tracking-widest"><Info size={14}/> ADVANCED SETTINGS</span>{showAdvanced ? <ChevronUp size={16}/> : <ChevronDown size={16}/>}</button>
-                {showAdvanced && (
-                  <div className="space-y-4 pt-3 border-t border-slate-800 animate-in fade-in slide-in-from-top-2">
-                    <div className="relative shadow-inner rounded-2xl"><User className="absolute left-3 top-3.5 text-cyan-700" size={16}/><input className="w-full p-3 pl-10 bg-slate-950 border border-slate-800 rounded-2xl font-bold outline-none text-sm text-cyan-50 focus:border-cyan-500 transition-colors" placeholder="教えてくれた人（師匠・先輩など）" value={formData.teacher || ''} onChange={e => setFormData({...formData, teacher: e.target.value})} /></div>
-                    <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800 space-y-4 shadow-inner">
-                      <label className="flex items-center gap-3 cursor-pointer group"><div className={`w-5 h-5 rounded-md flex items-center justify-center border transition-all ${formData.needsReview ? 'bg-cyan-600 border-cyan-500 shadow-[0_0_10px_rgba(6,182,212,0.5)]' : 'bg-slate-800 border-slate-600 group-hover:border-cyan-500'}`}>{formData.needsReview && <Check size={14} className="text-slate-900" strokeWidth={4}/>}</div><input type="checkbox" checked={formData.needsReview || false} onChange={e => setFormData({...formData, needsReview: e.target.checked})} className="hidden" /><span className="text-xs font-black text-slate-300 group-hover:text-cyan-100 transition-colors">後で確認・復習が必要</span></label>
-                      {formData.needsReview && (
-                        <div className="pl-8 space-y-4 animate-in fade-in">
-                          <div className="flex items-center gap-2"><Bell size={14} className="text-orange-500 shrink-0 drop-shadow-[0_0_5px_rgba(249,115,22,0.8)]"/><input type="date" className="p-2 bg-slate-900 border border-slate-700 rounded-xl font-bold outline-none text-xs text-cyan-50 shadow-inner w-full focus:border-orange-500 focus:ring-1 focus:ring-orange-500" value={formData.reviewDate || ''} onChange={e => setFormData({...formData, reviewDate: e.target.value})} /><span className="text-[10px] text-slate-500 font-bold shrink-0">にお知らせ</span></div>
-                          <label className="flex items-center gap-3 cursor-pointer group"><div className={`w-5 h-5 rounded-md flex items-center justify-center border transition-all ${formData.isReviewed ? 'bg-green-500 border-green-400 shadow-[0_0_10px_rgba(34,197,94,0.5)]' : 'bg-slate-800 border-slate-600 group-hover:border-green-500'}`}>{formData.isReviewed && <Check size={14} className="text-slate-900" strokeWidth={4}/>}</div><input type="checkbox" checked={formData.isReviewed || false} onChange={e => setFormData({...formData, isReviewed: e.target.checked})} className="hidden" /><span className="text-xs font-black text-slate-300 group-hover:text-green-100 transition-colors">確認完了（クリア！）</span></label>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              <div className="space-y-3">
-                <div className="flex justify-between items-end">
-                  <p className="text-[10px] font-black text-cyan-600 flex items-center gap-1 tracking-widest"><Tags size={12}/> COMPONENTS & TAGS</p>
-                  <button type="button" onClick={() => setShowNewTag(!showNewTag)} className="text-[10px] font-bold text-cyan-400 bg-slate-800 px-2.5 py-1.5 rounded-lg flex items-center gap-1 border border-cyan-900 shadow-[0_0_8px_rgba(6,182,212,0.2)] active:scale-95 transition-all"><Plus size={12}/>新規タグ作成</button>
-                </div>
-                {showNewTag && (
-                  <div className="bg-cyan-950/30 p-3 rounded-2xl border border-cyan-900 flex flex-col gap-2 animate-in fade-in slide-in-from-top-2 shadow-inner">
-                    <div className="flex gap-2">
-                      <select value={newTagGroup} onChange={e=>setNewTagGroup(e.target.value)} className="bg-slate-900 border border-slate-700 p-2 rounded-xl text-[10px] sm:text-xs font-bold text-slate-200 outline-none focus:border-cyan-500 shrink-0 w-24">{MainCategories.map(c => <option key={c} value={c}>{c}</option>)}</select>
-                      <input type="text" placeholder="新タグ名" value={newTagName} onChange={e=>setNewTagName(e.target.value)} className="w-full bg-slate-900 border border-slate-700 p-2 rounded-xl text-xs font-bold text-cyan-50 outline-none focus:border-cyan-500 min-w-0" />
-                    </div>
-                    <div className="flex gap-2 items-center">
-                      <ColorSelector value={newTagColor} onChange={setNewTagColor} />
-                      <IconSelector value={newTagIcon} onChange={setNewTagIcon} />
-                      <button type="button" onClick={() => { if(newTagName.trim()) { handleAddItem('tags', newTagName.trim(), newTagColor, newTagIcon, newTagGroup); const mats = formData.materials || []; if (!mats.includes(newTagName.trim())) { setFormData({...formData, materials: [...mats, newTagName.trim()]}); } setNewTagName(''); setNewTagColor('gray'); setNewTagIcon('Tags'); setShowNewTag(false); } }} className="bg-cyan-600 text-slate-900 px-4 py-2.5 rounded-xl text-xs font-black shadow-[0_0_10px_rgba(6,182,212,0.5)] active:scale-95 shrink-0">追加</button>
-                    </div>
-                  </div>
-                )}
-                <div className="flex flex-col gap-2">{groupedTagsForm.map(({ category, tags }) => <TagAccordion key={category} groupName={`【${category}】`} tags={tags} formData={formData} setFormData={setFormData} />)}</div>
-              </div>
-              
-              <div className="space-y-3 bg-slate-900/80 backdrop-blur-sm p-5 rounded-[2.5rem] border border-slate-700 shadow-lg">
-                <div className="flex justify-between items-center text-[10px] font-black text-cyan-600 mb-2 tracking-widest"><span className="flex items-center gap-1"><Camera size={14}/> VISUAL EVIDENCE</span><label className="text-slate-900 bg-cyan-600 px-3 py-1.5 rounded-xl flex items-center gap-1 cursor-pointer active:scale-95 transition-all shadow-[0_0_10px_rgba(6,182,212,0.4)] hover:bg-cyan-500"><Upload size={14}/> 撮影 / 一括追加<input type="file" accept="image/*" multiple onChange={handleFileUpload} className="hidden" /></label></div>
-                <div className="flex gap-4 overflow-x-auto pb-4 snap-x">
-                  {!formData.images || formData.images.length === 0 ? (
-                    <div className="w-full flex-shrink-0 h-32 border-2 border-dashed border-slate-700 rounded-[2rem] flex flex-col items-center justify-center text-slate-500 font-bold text-xs bg-slate-950/50 shadow-inner"><ImageIcon size={24} className="mb-2 opacity-50"/> 現場の様子を記録しましょう</div>
-                  ) : (
-                    formData.images.map((img, i) => (
-                      <div key={i} className="relative w-48 flex-shrink-0 snap-center group">
-                        <img src={img} className="w-full h-32 object-cover rounded-[1.5rem] border border-slate-700 shadow-lg cursor-pointer opacity-90 hover:opacity-100 transition-opacity" onClick={() => setMarkupModal({ isOpen: true, imgIndex: i, dataUrl: img })} />
-                        <button type="button" onClick={() => { const newImgs = [...formData.images]; newImgs.splice(i, 1); setFormData({...formData, images: newImgs}); }} className="absolute -top-2 -right-2 bg-red-500 text-slate-900 p-1.5 rounded-full shadow-[0_0_10px_rgba(239,68,68,0.8)]"><X size={14}/></button>
-                        <div className="absolute bottom-2 right-2 bg-cyan-900/80 text-cyan-100 p-1.5 rounded-full pointer-events-none border border-cyan-500"><Edit3 size={12}/></div>
-                      </div>
-                    ))
-                  )}
-                </div>
-              </div>
-              
-              <div className="space-y-3 bg-slate-900/80 backdrop-blur-sm p-5 rounded-[2.5rem] border border-slate-700 shadow-lg">
-                <div className="flex flex-wrap gap-2 pb-2 border-b border-slate-800">
-                  {userSettings.quickPhrases.map(p => <button key={p} type="button" onClick={() => setFormData({...formData, content: formData.content + (formData.content?'\n':'') + p})} className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-cyan-100 rounded-xl text-[10px] border border-slate-600 font-black transition-colors shadow-inner">+ {p}</button>)}
-                </div>
-                <textarea className="w-full h-40 pt-2 bg-transparent outline-none text-sm font-medium leading-relaxed resize-none text-cyan-50 placeholder:text-slate-600" placeholder="攻略のヒント、配線の色、次回への引き継ぎ事項などを記録..." value={formData.content} onChange={e => setFormData({...formData, content: e.target.value})} />
-              </div>
-              
-              {view === 'edit' && <button type="button" onClick={() => handleDelete(selectedMemo.id)} className="w-full py-5 text-red-500 font-black text-xs border-2 border-red-900/50 border-dashed rounded-[2.5rem] uppercase tracking-widest hover:bg-red-950 transition-all mt-8 shadow-inner">クエストを破棄する</button>}
-            </div>
-          </div>
-        )}
       </div>
 
       {!markupModal.isOpen && view !== 'add' && view !== 'edit' && (
