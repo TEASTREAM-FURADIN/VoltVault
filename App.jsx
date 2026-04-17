@@ -208,6 +208,30 @@ const App = () => {
   const [newTagColor, setNewTagColor] = useState('gray');
   const [newTagIcon, setNewTagIcon] = useState('Tags');
 
+  // ★ 安全にドラフトを読み込む関数（データ壊れによる真っ白エラーを完全防止）
+  const loadDraft = () => {
+    const draft = localStorage.getItem('voltVaultDraft');
+    if (draft) {
+      try {
+        const p = JSON.parse(draft);
+        if (p && typeof p === 'object') {
+          setFormData({
+            ...initialForm,
+            ...p,
+            materials: Array.isArray(p.materials) ? p.materials : [],
+            images: Array.isArray(p.images) ? p.images : []
+          });
+        } else {
+          setFormData(initialForm);
+        }
+      } catch(e) { 
+        setFormData(initialForm); 
+      }
+    } else {
+      setFormData(initialForm);
+    }
+  };
+
   useEffect(() => {
     if (view === 'add') {
       const timeoutId = setTimeout(() => localStorage.setItem('voltVaultDraft', JSON.stringify(formData)), 500);
@@ -694,7 +718,7 @@ const App = () => {
                       onMouseDown={e => e.stopPropagation()} onTouchStart={e => e.stopPropagation()}
                       style={{
                         position: 'absolute', left: `${t.x * 100}%`, top: `${t.y * 100}%`, color: t.color, fontSize: `${Math.max(16, dimensions.dispW * 0.04 / zoom)}px`, fontWeight: '900',
-                        background: 'rgba(0,0,0,0.6)', border: `2px solid ${t.color}`, borderRadius: '8px', outline: 'none', resize: 'both', zIndex: 50, padding: '8px', whiteSpace: 'pre-wrap', lineHeight: '1.2', minWidth: '6em', minHeight: '2em'
+                        background: 'rgba(0,0,0,0.6)', border: `2px dashed ${t.color}`, borderRadius: '8px', outline: 'none', resize: 'both', zIndex: 50, padding: '8px', whiteSpace: 'pre-wrap', lineHeight: '1.2', minWidth: '6em', minHeight: '2em'
                       }} placeholder="文字を入力..."
                     />
                   ) : (
@@ -765,7 +789,7 @@ const App = () => {
     return (
       <div className="relative flex-[0.8]" ref={dropdownRef}>
         <button type="button" onClick={() => setIsOpen(!isOpen)} className="w-full bg-slate-900 border border-slate-700 p-2.5 rounded-xl text-xs font-bold outline-none flex items-center justify-between hover:bg-slate-800 transition-colors text-slate-200">
-          <span className="flex items-center gap-2"><span className={`w-3.5 h-3.5 rounded-full ${ColorMap[value].bg} shadow-[0_0_5px_currentColor]`}></span>{ColorNames[value]}</span>
+          <span className="flex items-center gap-2"><span className={`w-3.5 h-3.5 rounded-full ${ColorMap[value]?.bg || 'bg-blue-500'} shadow-[0_0_5px_currentColor]`}></span>{ColorNames[value] || 'ブルー'}</span>
           <ChevronDown size={14} className="text-slate-500"/>
         </button>
         {isOpen && (
@@ -797,7 +821,7 @@ const App = () => {
     return (
       <div className="relative flex-1" ref={dropdownRef}>
         <button type="button" onClick={() => setIsOpen(!isOpen)} className="w-full bg-slate-900 border border-slate-700 p-2.5 rounded-xl text-xs font-bold outline-none flex items-center justify-between hover:bg-slate-800 transition-colors text-slate-200">
-          <span className="flex items-center gap-2"><DynamicIcon name={value} size={16} className="text-cyan-400"/> <span className="truncate">{IconNames[value] || value}</span></span>
+          <span className="flex items-center gap-2"><DynamicIcon name={value || 'Info'} size={16} className="text-cyan-400"/> <span className="truncate">{IconNames[value] || value || '情報'}</span></span>
           <ChevronDown size={14} className="text-slate-500"/>
         </button>
         {isOpen && (
@@ -981,11 +1005,7 @@ const App = () => {
                 <Bell size={22} />
                 {pendingReviews.length > 0 && !filterPending && <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[9px] font-black w-4 h-4 rounded-full flex items-center justify-center animate-pulse shadow-[0_0_8px_rgba(239,68,68,0.8)] border border-slate-900">{pendingReviews.length}</span>}
               </button>
-              <button onClick={() => { 
-                const draft = localStorage.getItem('voltVaultDraft');
-                if (draft) { try { const p = JSON.parse(draft); if (p.title || p.content || p.images?.length > 0) setFormData(p); else setFormData(initialForm); } catch(e) { setFormData(initialForm); } } else { setFormData(initialForm); }
-                setShowAdvanced(false); setShowNewGenre(false); setShowNewTag(false); setView('add'); 
-              }} className={`${weaponStyle.bg} ${weaponStyle.text} p-2.5 rounded-xl ${weaponStyle.shadow} border ${weaponStyle.border} active:scale-90 hover:scale-105 transition-all`}><ClipperIcon size={22} /></button>
+              <button onClick={() => { loadDraft(); setShowAdvanced(false); setShowNewGenre(false); setShowNewTag(false); setView('add'); }} className={`${weaponStyle.bg} ${weaponStyle.text} p-2.5 rounded-xl ${weaponStyle.shadow} border ${weaponStyle.border} active:scale-90 hover:scale-105 transition-all`}><ClipperIcon size={22} /></button>
             </div>
           </div>
 
@@ -1171,7 +1191,7 @@ const App = () => {
                   <button onClick={() => { const input = document.getElementById('newPhraseInput'); if (input.value.trim()) { saveSettings({ ...userSettings, quickPhrases: [...userSettings.quickPhrases, input.value.trim()] }); input.value = ''; } }} className="w-full bg-slate-800 border border-cyan-500/50 text-cyan-400 px-4 py-3 rounded-xl font-black text-xs uppercase tracking-widest shadow-[0_0_10px_rgba(34,211,238,0.2)] active:scale-[0.98] hover:bg-slate-700 transition-all flex justify-center items-center gap-2"><Sword size={14}/>装備に追加</button>
                 </div>
               </div>
-              <div className="text-center py-4 opacity-30"><Gamepad2 size={32} className="mx-auto text-cyan-600 mb-2"/><p className="text-[10px] font-black text-cyan-600 uppercase tracking-widest">ELECTRIC CLIPPER MASTER v2.3</p></div>
+              <div className="text-center py-4 opacity-30"><Gamepad2 size={32} className="mx-auto text-cyan-600 mb-2"/><p className="text-[10px] font-black text-cyan-600 uppercase tracking-widest">ELECTRIC CLIPPER MASTER v2.4</p></div>
             </div>
           )}
 
