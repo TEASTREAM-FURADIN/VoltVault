@@ -21,7 +21,7 @@ import { initializeApp } from 'firebase/app';
 import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
 import { getFirestore, doc, setDoc, collection, onSnapshot, deleteDoc } from 'firebase/firestore';
 
-// --- アイコン・定数定義 ---
+// --- 定数・アイコン定義 ---
 const ClipperIcon = ({ size = 24, className = "", strokeWidth = 2 }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round" className={className}>
     <path d="M14.5 9.5L21 18.5a2 2 0 0 1-2.8 2.8L9.5 14.5" />
@@ -128,7 +128,7 @@ const DynamicIcon = ({ name, size = 16, className = "" }) => {
   return <Icon size={size} className={className} />;
 };
 
-// --- 外部コンポーネント（独立させてフリーズを完全に防止） ---
+// --- 独立したコンポーネント群 ---
 
 const LevelUpModal = ({ levelUpData }) => {
   if (!levelUpData) return null;
@@ -231,331 +231,13 @@ const RadarChart = ({ memos, userSettings }) => {
   );
 };
 
-// ★ 真っ白フリーズを完全解決した、超軽量・プロ仕様の画像エディター
-const MarkupModalCanvas = ({ markupModal, setMarkupModal, formData, setFormData }) => {
-  const canvasRef = useRef(null);
-  const [mode, setMode] = useState('draw'); 
-  const [dimensions, setDimensions] = useState(null);
-  
-  const [texts, setTexts] = useState([]); 
-  const [editingTextId, setEditingTextId] = useState(null);
-  const dragRef = useRef(null);
-
-  const [strokes, setStrokes] = useState([]);
-  const [redoStack, setRedoStack] = useState([]); 
-  const currentStroke = useRef(null);
-  const [penColor, setPenColor] = useState('#ef4444'); 
-
-  const PEN_COLORS = [
-    { id: 'red', value: '#ef4444', tw: 'bg-red-500' },
-    { id: 'cyan', value: '#22d3ee', tw: 'bg-cyan-400' },
-    { id: 'yellow', value: '#facc15', tw: 'bg-yellow-400' },
-    { id: 'green', value: '#4ade80', tw: 'bg-green-400' }
-  ];
-
-  useEffect(() => {
-    if (!markupModal.dataUrl) return;
-    const img = new Image();
-    img.onload = () => {
-      // 画面サイズに収まるように表示用のサイズを計算（これでメモリパンクを防ぎます）
-      const maxWidth = window.innerWidth - 32;
-      const maxHeight = window.innerHeight * 0.55;
-      const scale = Math.min(maxWidth / img.width, maxHeight / img.height, 1);
-      setDimensions({ 
-        dispW: img.width * scale, 
-        dispH: img.height * scale, 
-        origW: img.width, 
-        origH: img.height, 
-        img: img 
-      });
-    };
-    img.src = markupModal.dataUrl;
-  }, [markupModal.dataUrl]);
-
-  // ★ 手書きと消しゴムの跡だけを再描画する超軽量関数
-  const redraw = () => {
-    if (!dimensions || !canvasRef.current) return;
-    const cvs = canvasRef.current;
-    const ctx = cvs.getContext('2d');
-    ctx.clearRect(0, 0, cvs.width, cvs.height); // 一旦透明にする
-    
-    strokes.forEach(s => {
-      ctx.globalCompositeOperation = s.type === 'eraser' ? 'destination-out' : 'source-over';
-      ctx.strokeStyle = s.type === 'eraser' ? 'rgba(0,0,0,1)' : s.color;
-      ctx.lineWidth = s.width * cvs.width; // 画面サイズに対する割合で太さを計算
-      ctx.lineCap = 'round';
-      ctx.lineJoin = 'round';
-      
-      if (s.points.length > 0) {
-        ctx.beginPath();
-        const p0x = s.points[0].x * cvs.width;
-        const p0y = s.points[0].y * cvs.height;
-        if (s.points.length === 1) {
-          ctx.fillStyle = s.type === 'eraser' ? 'rgba(0,0,0,1)' : s.color;
-          ctx.arc(p0x, p0y, (s.width * cvs.width) / 2, 0, Math.PI * 2);
-          ctx.fill();
-        } else {
-          ctx.moveTo(p0x, p0y);
-          s.points.forEach((p, i) => { if (i > 0) ctx.lineTo(p.x * cvs.width, p.y * cvs.height); });
-          ctx.stroke();
-        }
-      }
-    });
-    ctx.globalCompositeOperation = 'source-over';
-  };
-
-  // 履歴（strokes）が変わった時だけ再描画
-  useEffect(() => { redraw(); }, [dimensions, strokes]);
-
-  const getPos = (e) => {
-    if (!canvasRef.current) return { x: 0, y: 0 };
-    const r = canvasRef.current.getBoundingClientRect();
-    const cx = e.touches && e.touches.length > 0 ? e.touches[0].clientX : (e.changedTouches && e.changedTouches.length > 0 ? e.changedTouches[0].clientX : e.clientX);
-    const cy = e.touches && e.touches.length > 0 ? e.touches[0].clientY : (e.changedTouches && e.changedTouches.length > 0 ? e.changedTouches[0].clientY : e.clientY);
-    // x, y を 0.0〜1.0 の「割合」として保存することで、どんな画面サイズでもズレない
-    return { x: (cx - r.left) / r.width, y: (cy - r.top) / r.height };
-  };
-
-  const handleStart = (e) => {
-    const p = getPos(e);
-    if (editingTextId) { setEditingTextId(null); return; } // テキスト編集中なら外側タップで決定
-    if (mode === 'text') {
-      const id = Date.now();
-      setTexts([...texts, { id, text: '', x: p.x, y: p.y, color: penColor }]);
-      setEditingTextId(id);
-      return;
-    }
-    if (mode !== 'draw' && mode !== 'eraser') return;
-    
-    // 消しゴムはペンの5倍の太さ
-    const wRatio = mode === 'eraser' ? 0.05 : 0.01; 
-    currentStroke.current = { type: mode, color: penColor, width: wRatio, points: [p] };
-    
-    // タップした瞬間に「点」を描く（直接描画で激軽）
-    const cvs = canvasRef.current;
-    const ctx = cvs.getContext('2d');
-    ctx.globalCompositeOperation = mode === 'eraser' ? 'destination-out' : 'source-over';
-    ctx.fillStyle = mode === 'eraser' ? 'rgba(0,0,0,1)' : penColor;
-    ctx.beginPath();
-    ctx.arc(p.x * cvs.width, p.y * cvs.height, (wRatio * cvs.width) / 2, 0, Math.PI * 2);
-    ctx.fill();
-  };
-
-  const handleMove = (e) => {
-    if (dragRef.current) {
-      e.preventDefault();
-      const p = getPos(e);
-      setTexts(texts.map(t => t.id === dragRef.current.id ? { ...t, x: p.x - dragRef.current.ox, y: p.y - dragRef.current.oy } : t));
-      return;
-    }
-    if (!currentStroke.current) return;
-    e.preventDefault();
-    const p = getPos(e);
-    const pts = currentStroke.current.points;
-    const prev = pts[pts.length - 1];
-    pts.push(p);
-
-    // ★ 指を動かした「差分」の線だけをCanvasに直接引くため、処理落ちゼロ！
-    const cvs = canvasRef.current;
-    const ctx = cvs.getContext('2d');
-    ctx.globalCompositeOperation = mode === 'eraser' ? 'destination-out' : 'source-over';
-    ctx.strokeStyle = mode === 'eraser' ? 'rgba(0,0,0,1)' : penColor;
-    ctx.lineWidth = currentStroke.current.width * cvs.width;
-    ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
-    ctx.beginPath();
-    ctx.moveTo(prev.x * cvs.width, prev.y * cvs.height);
-    ctx.lineTo(p.x * cvs.width, p.y * cvs.height);
-    ctx.stroke();
-  };
-
-  const handleEnd = () => {
-    if (dragRef.current) dragRef.current = null;
-    if (currentStroke.current) {
-      setStrokes(prev => [...prev, currentStroke.current]);
-      setRedoStack([]);
-      currentStroke.current = null;
-    }
-  };
-
-  const handleUndo = () => {
-    if (strokes.length === 0) return;
-    const lastStroke = strokes[strokes.length - 1];
-    setStrokes(prev => prev.slice(0, -1));
-    setRedoStack(prev => [...prev, lastStroke]); 
-  };
-
-  const handleRedo = () => {
-    if (redoStack.length === 0) return;
-    const nextStroke = redoStack[redoStack.length - 1];
-    setRedoStack(prev => prev.slice(0, -1));
-    setStrokes(prev => [...prev, nextStroke]); 
-  };
-
-  const handleClearAll = () => {
-    if(window.confirm('書き込みをすべて消去しますか？')) {
-      setStrokes([]); setTexts([]); setRedoStack([]); 
-    }
-  };
-
-  const handleSaveImage = () => {
-    // 保存時にのみ、高画質の裏キャンバスを作って画像を書き出す
-    const cvs = document.createElement('canvas');
-    
-    // ★ 保存時の画像サイズを最大1000pxに制限して、保存エラーを防止！
-    const MAX_SAVE_SIZE = 1000;
-    const scale = Math.min(MAX_SAVE_SIZE / dimensions.origW, MAX_SAVE_SIZE / dimensions.origH, 1);
-    cvs.width = dimensions.origW * scale;
-    cvs.height = dimensions.origH * scale;
-
-    const ctx = cvs.getContext('2d');
-    
-    // 1. ベースの現場写真を敷く
-    ctx.drawImage(dimensions.img, 0, 0, cvs.width, cvs.height);
-    
-    // 2. 手書きの線と消しゴムを重ねる
-    strokes.forEach(s => {
-      ctx.globalCompositeOperation = s.type === 'eraser' ? 'destination-out' : 'source-over';
-      ctx.strokeStyle = s.type === 'eraser' ? 'rgba(0,0,0,1)' : s.color;
-      const w = s.width * cvs.width;
-      ctx.lineWidth = w; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-      if(s.points.length > 0){
-        ctx.beginPath();
-        if (s.points.length === 1) {
-          ctx.fillStyle = s.type === 'eraser' ? 'rgba(0,0,0,1)' : s.color;
-          ctx.arc(s.points[0].x * cvs.width, s.points[0].y * cvs.height, w / 2, 0, Math.PI * 2);
-          ctx.fill();
-        } else {
-          ctx.moveTo(s.points[0].x * cvs.width, s.points[0].y * cvs.height);
-          s.points.forEach((p, i) => { if(i>0) ctx.lineTo(p.x * cvs.width, p.y * cvs.height); });
-          ctx.stroke();
-        }
-      }
-    });
-
-    // 3. テキスト（黒背景＋色枠つき）を重ねる
-    ctx.globalCompositeOperation = 'source-over';
-    ctx.textBaseline = 'top';
-    texts.forEach(t => {
-      if (!t.text) return;
-      const fSize = cvs.width * 0.04; // 画像の幅に対する文字の大きさ
-      ctx.font = `900 ${fSize}px sans-serif`;
-      const lines = t.text.split('\n');
-      
-      let maxW = 0;
-      lines.forEach(l => { const w = ctx.measureText(l).width; if(w > maxW) maxW = w; });
-      
-      const pad = fSize * 0.4;
-      const rectW = maxW + pad * 2;
-      const rectH = lines.length * fSize * 1.2 + pad * 2;
-      const tx = t.x * cvs.width;
-      const ty = t.y * cvs.height;
-
-      // 半透明の黒背景
-      ctx.fillStyle = 'rgba(0,0,0,0.6)';
-      ctx.fillRect(tx, ty, rectW, rectH);
-      // 色付きの枠線
-      ctx.strokeStyle = t.color;
-      ctx.lineWidth = Math.max(2, cvs.width * 0.004);
-      ctx.strokeRect(tx, ty, rectW, rectH);
-      // 文字
-      ctx.fillStyle = t.color;
-      lines.forEach((l, i) => ctx.fillText(l, tx + pad, ty + pad + (i * fSize * 1.2)));
-    });
-
-    // 圧縮率0.7で保存し、Firebaseへの保存エラーを防ぐ
-    const newDataUrl = cvs.toDataURL('image/jpeg', 0.7); 
-    const newImages = [...formData.images];
-    newImages[markupModal.imgIndex] = newDataUrl;
-    setFormData({...formData, images: newImages});
-    setMarkupModal({ isOpen: false, imgIndex: null, dataUrl: null });
-  };
-
-  return (
-    <div className="fixed inset-0 bg-slate-950 z-[150] flex flex-col items-center justify-center p-2 sm:p-4 animate-in fade-in">
-      <div className="w-full max-w-lg bg-slate-900 rounded-[2rem] p-3 flex flex-col gap-3 shadow-[0_0_30px_rgba(6,182,212,0.2)] border border-cyan-900/50 absolute top-4 bottom-4">
-        <div className="flex justify-between items-center px-2 pt-1 shrink-0">
-          <h3 className="font-black text-cyan-400 flex items-center gap-2 tracking-widest"><Edit3 size={18}/> MARKUP TERMINAL</h3>
-          <button onClick={() => setMarkupModal({ isOpen: false })} className="text-slate-500 hover:text-cyan-400"><X size={28}/></button>
-        </div>
-
-        <div className="flex flex-col gap-2 bg-slate-800 p-2 rounded-xl border border-slate-700 shrink-0">
-          <div className="flex justify-between items-center bg-slate-900 p-1.5 rounded-lg border border-slate-700 shadow-inner">
-            <div className="flex gap-1">
-              <button onClick={() => setMode('draw')} className={`p-2 rounded-md ${mode === 'draw' ? 'bg-cyan-900/50 text-cyan-400 shadow-inner' : 'text-slate-500'}`}><PenTool size={16}/></button>
-              <button onClick={() => setMode('eraser')} className={`p-2 rounded-md ${mode === 'eraser' ? 'bg-cyan-900/50 text-cyan-400 shadow-inner' : 'text-slate-500'}`}><Eraser size={16}/></button>
-              <button onClick={() => setMode('text')} className={`p-2 rounded-md ${mode === 'text' ? 'bg-cyan-900/50 text-cyan-400 shadow-inner' : 'text-slate-500'}`}><Type size={16}/></button>
-            </div>
-            <div className="flex gap-2">
-              {PEN_COLORS.map(c => (
-                <button key={c.id} onClick={() => { setPenColor(c.value); if(mode==='eraser' || mode==='move') setMode('draw'); }} 
-                  className={`w-6 h-6 rounded-full ${c.tw} border-2 ${penColor === c.value ? 'border-white scale-110' : 'border-transparent opacity-50 scale-90'} transition-all`} />
-              ))}
-            </div>
-          </div>
-          <div className="flex justify-between items-center bg-slate-900 p-1.5 rounded-lg border border-slate-700 shadow-inner">
-            <div className="flex gap-2">
-              <button onClick={() => setMode('move')} className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1 transition-all ${mode === 'move' ? 'bg-slate-800 shadow-inner text-cyan-400 border border-cyan-900' : 'text-slate-400 hover:bg-slate-700'}`}><Move size={14}/> 移動</button>
-            </div>
-            <div className="flex gap-2">
-              <button onClick={handleUndo} disabled={strokes.length === 0} className="px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1 text-slate-300 bg-slate-800 disabled:opacity-30 hover:text-yellow-400 border border-slate-700"><RotateCcw size={14}/>戻る</button>
-              <button onClick={handleRedo} disabled={redoStack.length === 0} className="px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1 text-slate-300 bg-slate-800 disabled:opacity-30 hover:text-cyan-400 border border-slate-700"><RotateCw size={14}/>進む</button>
-              <button onClick={handleClearAll} disabled={strokes.length === 0 && texts.length === 0} className="px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1 text-slate-300 bg-slate-800 disabled:opacity-30 hover:text-red-400 border border-slate-700"><Trash2 size={14}/>消去</button>
-            </div>
-          </div>
-        </div>
-
-        <div className="flex-1 relative flex justify-center items-center bg-slate-950 rounded-xl overflow-hidden shadow-inner border border-slate-700" style={{ touchAction: 'none' }}>
-          {dimensions ? (
-            <div style={{ width: dimensions.dispW, height: dimensions.dispH, position: 'relative' }}>
-              {/* 写真を裏に配置 */}
-              <img src={markupModal.dataUrl} alt="base" style={{ width: '100%', height: '100%', display: 'block', opacity: 0.8, pointerEvents: 'none' }} />
-              {/* 透明なキャンバスを手前に配置 */}
-              <canvas ref={canvasRef} width={dimensions.dispW} height={dimensions.dispH} style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', zIndex: 10 }}
-                className={`shadow-lg ${mode === 'draw' ? 'cursor-crosshair' : mode === 'text' ? 'cursor-text' : mode === 'eraser' ? 'cursor-cell' : 'cursor-grab'}`}
-                onMouseDown={handleStart} onMouseMove={handleMove} onMouseUp={handleEnd} onMouseLeave={handleEnd} onTouchStart={handleStart} onTouchMove={handleMove} onTouchEnd={handleEnd}
-              />
-              
-              {/* テキスト付箋 */}
-              {texts.map(t => editingTextId === t.id ? (
-                  <textarea key={t.id} autoFocus value={t.text} onChange={(e) => setTexts(texts.map(x => x.id === t.id ? {...x, text: e.target.value} : x))}
-                    onBlur={() => { if (!t.text.trim()) setTexts(texts.filter(x => x.id !== t.id)); setEditingTextId(null); }}
-                    onMouseDown={e => e.stopPropagation()} onTouchStart={e => e.stopPropagation()}
-                    style={{
-                      position: 'absolute', left: `${t.x * 100}%`, top: `${t.y * 100}%`, color: t.color, fontSize: `${Math.max(16, dimensions.dispW * 0.04)}px`, fontWeight: '900',
-                      background: 'rgba(0,0,0,0.6)', border: `2px dashed ${t.color}`, borderRadius: '8px', outline: 'none', resize: 'both', zIndex: 50, padding: '8px', whiteSpace: 'pre-wrap', lineHeight: '1.2', minWidth: '6em', minHeight: '2em'
-                    }} placeholder="文字を入力..."
-                  />
-                ) : (
-                  <div key={t.id}
-                    onMouseDown={(e) => { e.stopPropagation(); dragRef.current = { id: t.id, ox: getPos(e).x - t.x, oy: getPos(e).y - t.y }; }}
-                    onTouchStart={(e) => { e.stopPropagation(); dragRef.current = { id: t.id, ox: getPos(e).x - t.x, oy: getPos(e).y - t.y }; }}
-                    onClick={(e) => { e.stopPropagation(); setEditingTextId(t.id); }}
-                    style={{
-                      position: 'absolute', left: `${t.x * 100}%`, top: `${t.y * 100}%`, color: t.color, fontSize: `${Math.max(16, dimensions.dispW * 0.04)}px`, fontWeight: '900',
-                      cursor: 'move', zIndex: 40, whiteSpace: 'pre-wrap', lineHeight: '1.2', background: 'rgba(0,0,0,0.6)', border: `2px solid ${t.color}`, borderRadius: '8px', padding: '8px', boxShadow: '0px 0px 10px rgba(0,0,0,0.5)'
-                    }}
-                  >{t.text}</div>
-                )
-              )}
-            </div>
-          ) : <Loader2 size={24} className="animate-spin text-cyan-500"/>}
-        </div>
-
-        <button onClick={handleSaveImage} className="w-full shrink-0 bg-cyan-600 hover:bg-cyan-500 text-slate-900 py-4 rounded-2xl font-black uppercase tracking-widest shadow-[0_0_15px_rgba(6,182,212,0.4)] active:scale-[0.98] transition-all mt-3">
-          編集を確定する
-        </button>
-      </div>
-    </div>
-  );
-};
-
 const ColorSelector = ({ value, onChange }) => {
   const [isOpen, setIsOpen] = useState(false);
   const dropdownRef = useRef(null);
   useEffect(() => {
     const handleClickOutside = (e) => { if (dropdownRef.current && !dropdownRef.current.contains(e.target)) setIsOpen(false); };
-    document.addEventListener("mousedown", handleClickOutside); return () => document.removeEventListener("mousedown", handleClickOutside);
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
   return (
     <div className="relative flex-[0.8]" ref={dropdownRef}>
@@ -580,10 +262,13 @@ const IconSelector = ({ value, onChange }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [activeCategory, setActiveCategory] = useState(IconCategories[0].name);
   const dropdownRef = useRef(null);
+
   useEffect(() => {
     const handleClickOutside = (e) => { if (dropdownRef.current && !dropdownRef.current.contains(e.target)) setIsOpen(false); };
-    document.addEventListener("mousedown", handleClickOutside); return () => document.removeEventListener("mousedown", handleClickOutside);
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
+
   return (
     <div className="relative flex-1" ref={dropdownRef}>
       <button type="button" onClick={() => setIsOpen(!isOpen)} className="w-full bg-slate-900 border border-slate-700 p-2.5 rounded-xl text-xs font-bold outline-none flex items-center justify-between hover:bg-slate-800 transition-colors text-slate-200">
@@ -705,6 +390,305 @@ const EditorSection = ({ title, icon: Icon, items, onAdd, onUpdate, onDelete, on
   );
 };
 
+// ★ 真っ白フリーズを完全に防いだ、プロ仕様の画像エディター（枠付き文字対応）
+const MarkupModalCanvas = ({ markupModal, setMarkupModal, formData, setFormData }) => {
+  const canvasRef = useRef(null);
+  const [mode, setMode] = useState('draw'); 
+  const [zoom, setZoom] = useState(1);
+  const [dimensions, setDimensions] = useState(null);
+  
+  const [texts, setTexts] = useState([]); 
+  const [editingTextId, setEditingTextId] = useState(null);
+  const dragRef = useRef(null);
+
+  const [strokes, setStrokes] = useState([]);
+  const [redoStack, setRedoStack] = useState([]); 
+  
+  const currentStroke = useRef(null);
+  const [penColor, setPenColor] = useState('#ef4444'); 
+
+  const PEN_COLORS = [
+    { id: 'red', value: '#ef4444', tw: 'bg-red-500' },
+    { id: 'cyan', value: '#22d3ee', tw: 'bg-cyan-400' },
+    { id: 'yellow', value: '#facc15', tw: 'bg-yellow-400' },
+    { id: 'green', value: '#4ade80', tw: 'bg-green-400' }
+  ];
+
+  useEffect(() => {
+    if (!markupModal.dataUrl) return;
+    const img = new Image();
+    img.onload = () => {
+      const maxWidth = window.innerWidth - 32;
+      const maxHeight = window.innerHeight * 0.55;
+      const scale = Math.min(maxWidth / img.width, maxHeight / img.height, 1);
+      setDimensions({ dispW: img.width * scale, dispH: img.height * scale, origW: img.width, origH: img.height, img: img });
+    };
+    img.src = markupModal.dataUrl;
+  }, [markupModal.dataUrl]);
+
+  const redraw = () => {
+    if (!dimensions || !canvasRef.current) return;
+    const cvs = canvasRef.current;
+    const ctx = cvs.getContext('2d');
+    ctx.clearRect(0, 0, cvs.width, cvs.height);
+    
+    strokes.forEach(s => {
+      ctx.globalCompositeOperation = s.type === 'eraser' ? 'destination-out' : 'source-over';
+      ctx.strokeStyle = s.type === 'eraser' ? 'rgba(0,0,0,1)' : s.color;
+      ctx.lineWidth = s.width;
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      
+      if (s.points.length > 0) {
+        ctx.beginPath();
+        const p0x = s.points[0].x * cvs.width;
+        const p0y = s.points[0].y * cvs.height;
+        if (s.points.length === 1) {
+          ctx.fillStyle = s.type === 'eraser' ? 'rgba(0,0,0,1)' : s.color;
+          ctx.arc(p0x, p0y, s.width / 2, 0, Math.PI * 2);
+          ctx.fill();
+        } else {
+          ctx.moveTo(p0x, p0y);
+          s.points.forEach((p, i) => { if (i > 0) ctx.lineTo(p.x * cvs.width, p.y * cvs.height); });
+          ctx.stroke();
+        }
+      }
+    });
+    ctx.globalCompositeOperation = 'source-over';
+  };
+
+  useEffect(() => { redraw(); }, [dimensions, strokes]);
+
+  const getPos = (e) => {
+    if (!canvasRef.current) return { x: 0, y: 0 };
+    const r = canvasRef.current.getBoundingClientRect();
+    const cx = e.touches && e.touches.length > 0 ? e.touches[0].clientX : (e.changedTouches && e.changedTouches.length > 0 ? e.changedTouches[0].clientX : e.clientX);
+    const cy = e.touches && e.touches.length > 0 ? e.touches[0].clientY : (e.changedTouches && e.changedTouches.length > 0 ? e.changedTouches[0].clientY : e.clientY);
+    return { x: (cx - r.left) / r.width, y: (cy - r.top) / r.height };
+  };
+
+  const handleStart = (e) => {
+    const p = getPos(e);
+    if (editingTextId) { setEditingTextId(null); return; }
+    if (mode === 'text') {
+      const id = Date.now();
+      setTexts([...texts, { id, text: '', x: p.x, y: p.y, color: penColor }]);
+      setEditingTextId(id);
+      return;
+    }
+    if (mode !== 'draw' && mode !== 'eraser') return;
+    
+    const cvs = canvasRef.current;
+    const baseW = dimensions.dispW ? Math.max(4, dimensions.dispW * 0.01) : 4;
+    currentStroke.current = { type: mode, color: penColor, width: mode === 'eraser' ? baseW * 5 / zoom : baseW / zoom, points: [p] };
+    
+    const ctx = cvs.getContext('2d');
+    ctx.globalCompositeOperation = mode === 'eraser' ? 'destination-out' : 'source-over';
+    ctx.fillStyle = mode === 'eraser' ? 'rgba(0,0,0,1)' : penColor;
+    ctx.beginPath();
+    ctx.arc(p.x * cvs.width, p.y * cvs.height, currentStroke.current.width / 2, 0, Math.PI * 2);
+    ctx.fill();
+  };
+
+  const handleMove = (e) => {
+    if (dragRef.current) {
+      e.preventDefault();
+      const p = getPos(e);
+      setTexts(texts.map(t => t.id === dragRef.current.id ? { ...t, x: p.x - dragRef.current.ox, y: p.y - dragRef.current.oy } : t));
+      return;
+    }
+    if (!currentStroke.current) return;
+    e.preventDefault();
+    const p = getPos(e);
+    const pts = currentStroke.current.points;
+    const prev = pts[pts.length - 1];
+    pts.push(p);
+
+    const cvs = canvasRef.current;
+    const ctx = cvs.getContext('2d');
+    ctx.globalCompositeOperation = mode === 'eraser' ? 'destination-out' : 'source-over';
+    ctx.strokeStyle = mode === 'eraser' ? 'rgba(0,0,0,1)' : penColor;
+    ctx.lineWidth = currentStroke.current.width;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.beginPath();
+    ctx.moveTo(prev.x * cvs.width, prev.y * cvs.height);
+    ctx.lineTo(p.x * cvs.width, p.y * cvs.height);
+    ctx.stroke();
+  };
+
+  const handleEnd = () => {
+    if (dragRef.current) dragRef.current = null;
+    if (currentStroke.current) {
+      setStrokes(prev => [...prev, currentStroke.current]);
+      setRedoStack([]);
+      currentStroke.current = null;
+    }
+  };
+
+  const handleUndo = () => {
+    if (strokes.length === 0) return;
+    const lastStroke = strokes[strokes.length - 1];
+    setStrokes(prev => prev.slice(0, -1));
+    setRedoStack(prev => [...prev, lastStroke]); 
+  };
+
+  const handleRedo = () => {
+    if (redoStack.length === 0) return;
+    const nextStroke = redoStack[redoStack.length - 1];
+    setRedoStack(prev => prev.slice(0, -1));
+    setStrokes(prev => [...prev, nextStroke]); 
+  };
+
+  const handleClearAll = () => {
+    if(window.confirm('書き込みをすべて消去しますか？')) {
+      setStrokes([]); setTexts([]); setRedoStack([]); 
+    }
+  };
+
+  const handleSaveImage = () => {
+    const cvs = document.createElement('canvas');
+    cvs.width = dimensions.origW; cvs.height = dimensions.origH;
+    const ctx = cvs.getContext('2d');
+    ctx.drawImage(dimensions.img, 0, 0, cvs.width, cvs.height);
+    
+    strokes.forEach(s => {
+      ctx.globalCompositeOperation = s.type === 'eraser' ? 'destination-out' : 'source-over';
+      ctx.strokeStyle = s.type === 'eraser' ? 'rgba(0,0,0,1)' : s.color;
+      const w = s.type === 'eraser' ? cvs.width * 0.05 : cvs.width * 0.01;
+      ctx.lineWidth = w; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+      if(s.points.length > 0){
+        ctx.beginPath();
+        if (s.points.length === 1) {
+          ctx.fillStyle = s.type === 'eraser' ? 'rgba(0,0,0,1)' : s.color;
+          ctx.arc(s.points[0].x * cvs.width, s.points[0].y * cvs.height, w / 2, 0, Math.PI * 2);
+          ctx.fill();
+        } else {
+          ctx.moveTo(s.points[0].x * cvs.width, s.points[0].y * cvs.height);
+          s.points.forEach((p, i) => { if(i>0) ctx.lineTo(p.x * cvs.width, p.y * cvs.height); });
+          ctx.stroke();
+        }
+      }
+    });
+
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.textBaseline = 'top';
+    texts.forEach(t => {
+      if (!t.text) return;
+      const fSize = cvs.width * 0.04; 
+      ctx.font = `900 ${fSize}px sans-serif`;
+      const lines = t.text.split('\n');
+      
+      let maxW = 0;
+      lines.forEach(l => { const w = ctx.measureText(l).width; if(w > maxW) maxW = w; });
+      
+      const pad = fSize * 0.4;
+      const rectW = maxW + pad * 2;
+      const rectH = lines.length * fSize * 1.2 + pad * 2;
+      const tx = t.x * cvs.width;
+      const ty = t.y * cvs.height;
+
+      ctx.fillStyle = 'rgba(0,0,0,0.6)';
+      ctx.fillRect(tx, ty, rectW, rectH);
+      ctx.strokeStyle = t.color;
+      ctx.lineWidth = Math.max(2, cvs.width * 0.004);
+      ctx.strokeRect(tx, ty, rectW, rectH);
+
+      ctx.fillStyle = t.color;
+      lines.forEach((l, i) => ctx.fillText(l, tx + pad, ty + pad + (i * fSize * 1.2)));
+    });
+
+    const newDataUrl = cvs.toDataURL('image/jpeg', 0.6); 
+    const newImages = [...formData.images];
+    newImages[markupModal.imgIndex] = newDataUrl;
+    setFormData({...formData, images: newImages});
+    setMarkupModal({ isOpen: false, imgIndex: null, dataUrl: null });
+  };
+
+  return (
+    <div className="fixed inset-0 bg-slate-950 z-[100] flex flex-col items-center justify-center p-2 sm:p-4 animate-in fade-in">
+      <div className="w-full max-w-lg bg-slate-900 rounded-[2rem] p-3 flex flex-col gap-3 shadow-[0_0_30px_rgba(6,182,212,0.2)] border border-cyan-900/50 absolute top-4 bottom-4">
+        <div className="flex justify-between items-center px-2 pt-1 shrink-0">
+          <h3 className="font-black text-cyan-400 flex items-center gap-2 tracking-widest"><Edit3 size={18}/> MARKUP TERMINAL</h3>
+          <button onClick={() => setMarkupModal({ isOpen: false })} className="text-slate-500 hover:text-cyan-400"><X size={28}/></button>
+        </div>
+
+        <div className="flex flex-col gap-2 bg-slate-800 p-2 rounded-xl border border-slate-700 shrink-0">
+          <div className="flex justify-between items-center bg-slate-900 p-1.5 rounded-lg border border-slate-700 shadow-inner">
+            <div className="flex gap-1">
+              <button onClick={() => setMode('draw')} className={`p-2 rounded-md ${mode === 'draw' ? 'bg-cyan-900/50 text-cyan-400 shadow-inner' : 'text-slate-500'}`}><PenTool size={16}/></button>
+              <button onClick={() => setMode('eraser')} className={`p-2 rounded-md ${mode === 'eraser' ? 'bg-cyan-900/50 text-cyan-400 shadow-inner' : 'text-slate-500'}`}><Eraser size={16}/></button>
+              <button onClick={() => setMode('text')} className={`p-2 rounded-md ${mode === 'text' ? 'bg-cyan-900/50 text-cyan-400 shadow-inner' : 'text-slate-500'}`}><Type size={16}/></button>
+            </div>
+            <div className="flex gap-2">
+              {PEN_COLORS.map(c => (
+                <button key={c.id} onClick={() => { setPenColor(c.value); if(mode==='eraser' || mode==='move') setMode('draw'); }} 
+                  className={`w-6 h-6 rounded-full ${c.tw} border-2 ${penColor === c.value ? 'border-white scale-110' : 'border-transparent opacity-50 scale-90'} transition-all`} />
+              ))}
+            </div>
+          </div>
+          <div className="flex justify-between items-center bg-slate-900 p-1.5 rounded-lg border border-slate-700 shadow-inner">
+            <div className="flex gap-2">
+              <button onClick={() => setMode('move')} className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1 transition-all ${mode === 'move' ? 'bg-slate-800 shadow-inner text-cyan-400 border border-cyan-900' : 'text-slate-400 hover:bg-slate-700'}`}>
+                <Move size={14}/> 移動
+              </button>
+            </div>
+            <div className="flex gap-2">
+              <button onClick={handleUndo} disabled={strokes.length === 0} className="px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1 text-slate-300 bg-slate-800 disabled:opacity-30 hover:text-yellow-400 border border-slate-700"><RotateCcw size={14}/>戻る</button>
+              <button onClick={handleRedo} disabled={redoStack.length === 0} className="px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1 text-slate-300 bg-slate-800 disabled:opacity-30 hover:text-cyan-400 border border-slate-700"><RotateCw size={14}/>進む</button>
+              <button onClick={handleClearAll} disabled={strokes.length === 0 && texts.length === 0} className="px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1 text-slate-300 bg-slate-800 disabled:opacity-30 hover:text-red-400 border border-slate-700"><Trash2 size={14}/>消去</button>
+            </div>
+          </div>
+        </div>
+
+        <div className="flex-1 relative flex justify-center items-center bg-slate-950 rounded-xl overflow-hidden shadow-inner border border-slate-700" style={{ touchAction: 'none' }}>
+          {dimensions ? (
+            <div style={{ width: dimensions.dispW, height: dimensions.dispH, position: 'relative', transform: `scale(${zoom})`, transformOrigin: 'top left' }}>
+              <img src={markupModal.dataUrl} alt="base" style={{ width: '100%', height: '100%', display: 'block', opacity: 0.8, pointerEvents: 'none' }} />
+              <canvas ref={canvasRef} width={dimensions.dispW} height={dimensions.dispH} style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', zIndex: 10 }}
+                className={`shadow-lg ${mode === 'draw' ? 'cursor-crosshair' : mode === 'text' ? 'cursor-text' : mode === 'eraser' ? 'cursor-cell' : 'cursor-grab'}`}
+                onMouseDown={handleStart} onMouseMove={handleMove} onMouseUp={handleEnd} onMouseLeave={handleEnd} onTouchStart={handleStart} onTouchMove={handleMove} onTouchEnd={handleEnd}
+              />
+              
+              {texts.map(t => editingTextId === t.id ? (
+                  <textarea key={t.id} autoFocus value={t.text} onChange={(e) => setTexts(texts.map(x => x.id === t.id ? {...x, text: e.target.value} : x))}
+                    onBlur={() => { if (!t.text.trim()) setTexts(texts.filter(x => x.id !== t.id)); setEditingTextId(null); }}
+                    onMouseDown={e => e.stopPropagation()} onTouchStart={e => e.stopPropagation()}
+                    style={{
+                      position: 'absolute', left: `${t.x * 100}%`, top: `${t.y * 100}%`, color: t.color, fontSize: `${Math.max(16, dimensions.dispW * 0.04 / zoom)}px`, fontWeight: '900',
+                      background: 'rgba(0,0,0,0.6)', border: `2px dashed ${t.color}`, borderRadius: '8px', outline: 'none', resize: 'both', zIndex: 50, padding: '8px', whiteSpace: 'pre-wrap', lineHeight: '1.2', minWidth: '6em', minHeight: '2em'
+                    }} placeholder="文字を入力..."
+                  />
+                ) : (
+                  <div key={t.id}
+                    onMouseDown={(e) => { e.stopPropagation(); dragRef.current = { id: t.id, ox: getPos(e).x - t.x, oy: getPos(e).y - t.y }; }}
+                    onTouchStart={(e) => { e.stopPropagation(); dragRef.current = { id: t.id, ox: getPos(e).x - t.x, oy: getPos(e).y - t.y }; }}
+                    onClick={(e) => { e.stopPropagation(); setEditingTextId(t.id); }}
+                    style={{
+                      position: 'absolute', left: `${t.x * 100}%`, top: `${t.y * 100}%`, color: t.color, fontSize: `${Math.max(16, dimensions.dispW * 0.04 / zoom)}px`, fontWeight: '900',
+                      cursor: 'move', zIndex: 40, whiteSpace: 'pre-wrap', lineHeight: '1.2', background: 'rgba(0,0,0,0.6)', border: `2px solid ${t.color}`, borderRadius: '8px', padding: '8px'
+                    }}
+                  >{t.text}</div>
+                )
+              )}
+            </div>
+          ) : <Loader2 size={24} className="animate-spin text-cyan-500"/>}
+        </div>
+
+        <div className="flex gap-2 items-center justify-center bg-slate-900 py-1.5 rounded-lg border border-slate-700 shadow-inner shrink-0">
+          <button onClick={() => setZoom(z => Math.max(1, z - 0.5))} className="p-1 text-slate-400 active:scale-95 hover:text-cyan-400"><ZoomOut size={16}/></button>
+          <span className="text-[10px] font-black w-12 text-center text-cyan-400 drop-shadow-[0_0_5px_rgba(34,211,238,0.5)]">{Math.round(zoom * 100)}%</span>
+          <button onClick={() => setZoom(z => Math.min(4, z + 0.5))} className="p-1 text-slate-400 active:scale-95 hover:text-cyan-400"><ZoomIn size={16}/></button>
+        </div>
+
+        <button onClick={handleSaveImage} className="w-full shrink-0 bg-cyan-600 hover:bg-cyan-500 text-slate-900 py-4 rounded-2xl font-black uppercase tracking-widest shadow-[0_0_15px_rgba(6,182,212,0.4)] active:scale-[0.98] transition-all mt-3">
+          編集を確定する
+        </button>
+      </div>
+    </div>
+  );
+};
+
 
 // --- App 本体 ---
 const App = () => {
@@ -715,6 +699,7 @@ const App = () => {
   const [selectedMemo, setSelectedMemo] = useState(null);
   const [editingMemo, setEditingMemo] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
+  
   const [sortOrder, setSortOrder] = useState('newest'); 
   const [dateRange, setDateRange] = useState({ start: '', end: '' });
   const [filterPending, setFilterPending] = useState(false);
@@ -1078,133 +1063,7 @@ const App = () => {
           )}
         </header>
 
-        {/* --- フォーム画面（追加/編集）の復元 --- */}
-        {(view === 'add' || view === 'edit') && (
-          <div className="fixed inset-0 bg-slate-950 z-50 overflow-y-auto pb-32 animate-in slide-in-from-bottom-10">
-            <div className="fixed inset-0 pointer-events-none z-0 opacity-10" style={{ backgroundImage: `linear-gradient(to right, #facc15 1px, transparent 1px), linear-gradient(to bottom, #facc15 1px, transparent 1px)`, backgroundSize: '40px 40px' }}></div>
-            <header className="bg-slate-900/90 backdrop-blur-md border-b border-yellow-500/30 p-5 flex justify-between items-center sticky top-0 shadow-[0_0_20px_rgba(234,179,8,0.15)] z-20">
-              <button onClick={() => setView('list')} className="text-slate-400 hover:text-yellow-400 active:scale-90 transition-all"><X size={24}/></button>
-              <h2 className="font-black text-yellow-400 tracking-tighter italic flex items-center gap-2 drop-shadow-[0_0_5px_rgba(234,179,8,0.8)]"><ClipperIcon size={18} strokeWidth={2.5}/> RECORD NEW DATA...</h2>
-              <button onClick={handleSave} className="relative group overflow-hidden bg-slate-800 text-cyan-400 px-5 py-2.5 rounded-full font-black text-[10px] uppercase shadow-[0_0_15px_rgba(34,211,238,0.3)] border border-cyan-500/50 disabled:opacity-50 active:scale-95 transition-all">
-                <span className="relative z-10 flex items-center gap-1.5"><ClipperIcon size={14}/> ログを刻印</span>
-                <div className="absolute inset-0 bg-gradient-to-r from-cyan-600 to-blue-600 opacity-0 group-hover:opacity-20 transition-opacity"></div>
-              </button>
-            </header>
-            
-            <div className="p-6 space-y-7 max-w-xl mx-auto relative z-10">
-              {view === 'add' && (formData.title || formData.content || formData.images.length > 0) && (
-                <div className="flex justify-end mb-[-1rem]">
-                  <button onClick={() => { if (window.confirm('入力内容をすべてリセットしますか？')) { setFormData(initialForm); localStorage.removeItem('voltVaultDraft'); } }} className="text-[10px] text-red-400 font-bold border border-red-500/50 px-2.5 py-1.5 rounded-md bg-red-950/50 shadow-sm active:scale-95"><Trash2 size={12} className="inline mr-1"/>一時保存をクリア</button>
-                </div>
-              )}
-
-              <div className="space-y-4">
-                <input list="title-history" className="w-full text-2xl font-black bg-transparent border-b-2 border-slate-700 py-2 text-slate-100 focus:border-cyan-400 outline-none transition-colors placeholder:text-slate-600" placeholder="クエスト名（作業・タイトル）" value={formData.title} onChange={e => setFormData({...formData, title: e.target.value})} />
-                <datalist id="title-history">{uniqueTitles.map(t => <option key={t} value={t} />)}</datalist>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <input type="date" className="p-3 bg-slate-900 border border-slate-700 rounded-2xl font-bold outline-none text-sm text-cyan-50 shadow-inner focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500" value={formData.date} onChange={e => setFormData({...formData, date: e.target.value})} />
-                  <div className="relative flex items-center">
-                    <select className="p-3 bg-slate-900 border border-slate-700 rounded-2xl font-bold outline-none text-sm text-cyan-50 shadow-inner w-full focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 appearance-none" value={formData.genre} onChange={e => setFormData({...formData, genre: e.target.value})}>
-                      {groupedGenresForm.map(({ category, genres }) => (<optgroup key={category} label={`【${category}】`}>{genres.map(g => <option key={g.key} value={g.key}>{g.key}</option>)}</optgroup>))}
-                    </select>
-                    <ChevronDown size={14} className="absolute right-3 text-slate-500 pointer-events-none"/>
-                    <button type="button" onClick={() => setShowNewGenre(!showNewGenre)} className="absolute -top-2 -right-2 bg-slate-800 text-cyan-400 rounded-full p-1.5 shadow-[0_0_8px_rgba(34,211,238,0.5)] border border-cyan-500/50 hover:bg-slate-700 active:scale-95 transition-all"><Plus size={14}/></button>
-                  </div>
-                </div>
-
-                {showNewGenre && (
-                  <div className="bg-cyan-950/30 p-3 rounded-2xl border border-cyan-900 flex flex-col gap-2 animate-in fade-in slide-in-from-top-2 shadow-inner">
-                    <div className="flex gap-2">
-                      <select value={newGenreGroup} onChange={e=>setNewGenreGroup(e.target.value)} className="bg-slate-900 border border-slate-700 p-2 rounded-xl text-[10px] sm:text-xs font-bold text-slate-200 outline-none focus:border-cyan-500 shrink-0 w-24">
-                        {MainCategories.map(c => <option key={c} value={c}>{c}</option>)}
-                      </select>
-                      <input type="text" placeholder="新ジャンル名" value={newGenreName} onChange={e=>setNewGenreName(e.target.value)} className="w-full bg-slate-900 border border-slate-700 p-2 rounded-xl text-xs font-bold text-cyan-50 outline-none focus:border-cyan-500 min-w-0" />
-                    </div>
-                    <div className="flex gap-2 items-center">
-                      <ColorSelector value={newGenreColor} onChange={setNewGenreColor} />
-                      <IconSelector value={newGenreIcon} onChange={setNewGenreIcon} />
-                      <button type="button" onClick={() => { if(newGenreName.trim()) { handleAddItem('genres', newGenreName.trim(), newGenreColor, newGenreIcon, newGenreGroup); setFormData({...formData, genre: newGenreName.trim()}); setNewGenreName(''); setNewGenreColor('blue'); setNewGenreIcon('Info'); setShowNewGenre(false); } }} className="bg-cyan-600 text-slate-900 px-4 py-2.5 rounded-xl text-xs font-black shadow-[0_0_10px_rgba(6,182,212,0.5)] active:scale-95 shrink-0">追加</button>
-                    </div>
-                  </div>
-                )}
-
-                <div className="relative shadow-inner rounded-2xl">
-                  <Building className="absolute left-3 top-3.5 text-cyan-700" size={16}/>
-                  <input list="site-history" className="w-full p-3 pl-10 bg-slate-900 border border-slate-700 rounded-2xl font-bold outline-none text-sm text-cyan-50 focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500" placeholder="ダンジョン名（現場・案件）" value={formData.site} onChange={e => setFormData({...formData, site: e.target.value})} />
-                  <datalist id="site-history">{uniqueSites.map(s => <option key={s} value={s} />)}</datalist>
-                </div>
-              </div>
-
-              <div className="space-y-3 bg-slate-900/80 backdrop-blur-sm p-4 rounded-[2rem] border border-slate-700 shadow-lg">
-                <button type="button" onClick={() => setShowAdvanced(!showAdvanced)} className="w-full flex justify-between items-center text-xs font-black text-cyan-600 py-1"><span className="flex items-center gap-1.5 tracking-widest"><Info size={14}/> ADVANCED SETTINGS</span>{showAdvanced ? <ChevronUp size={16}/> : <ChevronDown size={16}/>}</button>
-                {showAdvanced && (
-                  <div className="space-y-4 pt-3 border-t border-slate-800 animate-in fade-in slide-in-from-top-2">
-                    <div className="relative shadow-inner rounded-2xl"><User className="absolute left-3 top-3.5 text-cyan-700" size={16}/><input className="w-full p-3 pl-10 bg-slate-950 border border-slate-800 rounded-2xl font-bold outline-none text-sm text-cyan-50 focus:border-cyan-500 transition-colors" placeholder="教えてくれた人（師匠・先輩など）" value={formData.teacher || ''} onChange={e => setFormData({...formData, teacher: e.target.value})} /></div>
-                    <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800 space-y-4 shadow-inner">
-                      <label className="flex items-center gap-3 cursor-pointer group"><div className={`w-5 h-5 rounded-md flex items-center justify-center border transition-all ${formData.needsReview ? 'bg-cyan-600 border-cyan-500 shadow-[0_0_10px_rgba(6,182,212,0.5)]' : 'bg-slate-800 border-slate-600 group-hover:border-cyan-500'}`}>{formData.needsReview && <Check size={14} className="text-slate-900" strokeWidth={4}/>}</div><input type="checkbox" checked={formData.needsReview || false} onChange={e => setFormData({...formData, needsReview: e.target.checked})} className="hidden" /><span className="text-xs font-black text-slate-300 group-hover:text-cyan-100 transition-colors">後で確認・復習が必要</span></label>
-                      {formData.needsReview && (
-                        <div className="pl-8 space-y-4 animate-in fade-in">
-                          <div className="flex items-center gap-2"><Bell size={14} className="text-orange-500 shrink-0 drop-shadow-[0_0_5px_rgba(249,115,22,0.8)]"/><input type="date" className="p-2 bg-slate-900 border border-slate-700 rounded-xl font-bold outline-none text-xs text-cyan-50 shadow-inner w-full focus:border-orange-500 focus:ring-1 focus:ring-orange-500" value={formData.reviewDate || ''} onChange={e => setFormData({...formData, reviewDate: e.target.value})} /><span className="text-[10px] text-slate-500 font-bold shrink-0">にお知らせ</span></div>
-                          <label className="flex items-center gap-3 cursor-pointer group"><div className={`w-5 h-5 rounded-md flex items-center justify-center border transition-all ${formData.isReviewed ? 'bg-green-500 border-green-400 shadow-[0_0_10px_rgba(34,197,94,0.5)]' : 'bg-slate-800 border-slate-600 group-hover:border-green-500'}`}>{formData.isReviewed && <Check size={14} className="text-slate-900" strokeWidth={4}/>}</div><input type="checkbox" checked={formData.isReviewed || false} onChange={e => setFormData({...formData, isReviewed: e.target.checked})} className="hidden" /><span className="text-xs font-black text-slate-300 group-hover:text-green-100 transition-colors">確認完了（クリア！）</span></label>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              <div className="space-y-3">
-                <div className="flex justify-between items-end">
-                  <p className="text-[10px] font-black text-cyan-600 flex items-center gap-1 tracking-widest"><Tags size={12}/> COMPONENTS & TAGS</p>
-                  <button type="button" onClick={() => setShowNewTag(!showNewTag)} className="text-[10px] font-bold text-cyan-400 bg-slate-800 px-2.5 py-1.5 rounded-lg flex items-center gap-1 border border-cyan-900 shadow-[0_0_8px_rgba(6,182,212,0.2)] active:scale-95 transition-all"><Plus size={12}/>新規タグ作成</button>
-                </div>
-                {showNewTag && (
-                  <div className="bg-cyan-950/30 p-3 rounded-2xl border border-cyan-900 flex flex-col gap-2 animate-in fade-in slide-in-from-top-2 shadow-inner">
-                    <div className="flex gap-2">
-                      <select value={newTagGroup} onChange={e=>setNewTagGroup(e.target.value)} className="bg-slate-900 border border-slate-700 p-2 rounded-xl text-[10px] sm:text-xs font-bold text-slate-200 outline-none focus:border-cyan-500 shrink-0 w-24">{MainCategories.map(c => <option key={c} value={c}>{c}</option>)}</select>
-                      <input type="text" placeholder="新タグ名" value={newTagName} onChange={e=>setNewTagName(e.target.value)} className="w-full bg-slate-900 border border-slate-700 p-2 rounded-xl text-xs font-bold text-cyan-50 outline-none focus:border-cyan-500 min-w-0" />
-                    </div>
-                    <div className="flex gap-2 items-center">
-                      <ColorSelector value={newTagColor} onChange={setNewTagColor} />
-                      <IconSelector value={newTagIcon} onChange={setNewTagIcon} />
-                      <button type="button" onClick={() => { if(newTagName.trim()) { handleAddItem('tags', newTagName.trim(), newTagColor, newTagIcon, newTagGroup); const mats = formData.materials || []; if (!mats.includes(newTagName.trim())) { setFormData({...formData, materials: [...mats, newTagName.trim()]}); } setNewTagName(''); setNewTagColor('gray'); setNewTagIcon('Tags'); setShowNewTag(false); } }} className="bg-cyan-600 text-slate-900 px-4 py-2.5 rounded-xl text-xs font-black shadow-[0_0_10px_rgba(6,182,212,0.5)] active:scale-95 shrink-0">追加</button>
-                    </div>
-                  </div>
-                )}
-                <div className="flex flex-col gap-2">{groupedTagsForm.map(({ category, tags }) => <TagAccordion key={category} groupName={`【${category}】`} tags={tags} formData={formData} setFormData={setFormData} />)}</div>
-              </div>
-              
-              <div className="space-y-3 bg-slate-900/80 backdrop-blur-sm p-5 rounded-[2.5rem] border border-slate-700 shadow-lg">
-                <div className="flex justify-between items-center text-[10px] font-black text-cyan-600 mb-2 tracking-widest"><span className="flex items-center gap-1"><Camera size={14}/> VISUAL EVIDENCE</span><label className="text-slate-900 bg-cyan-600 px-3 py-1.5 rounded-xl flex items-center gap-1 cursor-pointer active:scale-95 transition-all shadow-[0_0_10px_rgba(6,182,212,0.4)] hover:bg-cyan-500"><Upload size={14}/> 撮影 / 一括追加<input type="file" accept="image/*" multiple onChange={handleFileUpload} className="hidden" /></label></div>
-                <div className="flex gap-4 overflow-x-auto pb-4 snap-x">
-                  {!formData.images || formData.images.length === 0 ? (
-                    <div className="w-full flex-shrink-0 h-32 border-2 border-dashed border-slate-700 rounded-[2rem] flex flex-col items-center justify-center text-slate-500 font-bold text-xs bg-slate-950/50 shadow-inner"><ImageIcon size={24} className="mb-2 opacity-50"/> 現場の様子を記録しましょう</div>
-                  ) : (
-                    formData.images.map((img, i) => (
-                      <div key={i} className="relative w-48 flex-shrink-0 snap-center group">
-                        <img src={img} className="w-full h-32 object-cover rounded-[1.5rem] border border-slate-700 shadow-lg cursor-pointer opacity-90 hover:opacity-100 transition-opacity" onClick={() => setMarkupModal({ isOpen: true, imgIndex: i, dataUrl: img })} />
-                        <button type="button" onClick={() => { const newImgs = [...formData.images]; newImgs.splice(i, 1); setFormData({...formData, images: newImgs}); }} className="absolute -top-2 -right-2 bg-red-500 text-slate-900 p-1.5 rounded-full shadow-[0_0_10px_rgba(239,68,68,0.8)]"><X size={14}/></button>
-                        <div className="absolute bottom-2 right-2 bg-cyan-900/80 text-cyan-100 p-1.5 rounded-full pointer-events-none border border-cyan-500"><Edit3 size={12}/></div>
-                      </div>
-                    ))
-                  )}
-                </div>
-              </div>
-              
-              <div className="space-y-3 bg-slate-900/80 backdrop-blur-sm p-5 rounded-[2.5rem] border border-slate-700 shadow-lg">
-                <div className="flex flex-wrap gap-2 pb-2 border-b border-slate-800">
-                  {userSettings.quickPhrases.map(p => <button key={p} type="button" onClick={() => setFormData({...formData, content: formData.content + (formData.content?'\n':'') + p})} className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-cyan-100 rounded-xl text-[10px] border border-slate-600 font-black transition-colors shadow-inner">+ {p}</button>)}
-                </div>
-                <textarea className="w-full h-40 pt-2 bg-transparent outline-none text-sm font-medium leading-relaxed resize-none text-cyan-50 placeholder:text-slate-600" placeholder="攻略のヒント、配線の色、次回への引き継ぎ事項などを記録..." value={formData.content} onChange={e => setFormData({...formData, content: e.target.value})} />
-              </div>
-              
-              {view === 'edit' && <button type="button" onClick={() => handleDelete(selectedMemo.id)} className="w-full py-5 text-red-500 font-black text-xs border-2 border-red-900/50 border-dashed rounded-[2.5rem] uppercase tracking-widest hover:bg-red-950 transition-all mt-8 shadow-inner">クエストを破棄する</button>}
-            </div>
-          </div>
-        )}
-
-        <main className="p-4 max-w-xl mx-auto">
+        <main className="p-4 max-w-xl mx-auto relative z-10">
           {view === 'list' && (
             <div className="space-y-4">
               {listMode === 'all' ? (
@@ -1407,6 +1266,132 @@ const App = () => {
             </div>
           )}
         </main>
+
+        {/* --- ビュー: フォーム (追加/編集) 完全復元 --- */}
+        {(view === 'add' || view === 'edit') && (
+          <div className="fixed inset-0 bg-slate-950 z-[100] overflow-y-auto pb-32 animate-in slide-in-from-bottom-10">
+            <div className="fixed inset-0 pointer-events-none z-0 opacity-10" style={{ backgroundImage: `linear-gradient(to right, #facc15 1px, transparent 1px), linear-gradient(to bottom, #facc15 1px, transparent 1px)`, backgroundSize: '40px 40px' }}></div>
+            <header className="bg-slate-900/90 backdrop-blur-md border-b border-yellow-500/30 p-5 flex justify-between items-center sticky top-0 shadow-[0_0_20px_rgba(234,179,8,0.15)] z-20">
+              <button onClick={() => setView('list')} className="text-slate-400 hover:text-yellow-400 active:scale-90 transition-all"><X size={24}/></button>
+              <h2 className="font-black text-yellow-400 tracking-tighter italic flex items-center gap-2 drop-shadow-[0_0_5px_rgba(234,179,8,0.8)]"><ClipperIcon size={18} strokeWidth={2.5}/> RECORD NEW DATA...</h2>
+              <button onClick={handleSave} className="relative group overflow-hidden bg-slate-800 text-cyan-400 px-5 py-2.5 rounded-full font-black text-[10px] uppercase shadow-[0_0_15px_rgba(34,211,238,0.3)] border border-cyan-500/50 disabled:opacity-50 active:scale-95 transition-all">
+                <span className="relative z-10 flex items-center gap-1.5"><ClipperIcon size={14}/> ログを刻印</span>
+                <div className="absolute inset-0 bg-gradient-to-r from-cyan-600 to-blue-600 opacity-0 group-hover:opacity-20 transition-opacity"></div>
+              </button>
+            </header>
+            
+            <div className="p-6 space-y-7 max-w-xl mx-auto relative z-10">
+              {view === 'add' && (formData.title || formData.content || formData.images.length > 0) && (
+                <div className="flex justify-end mb-[-1rem]">
+                  <button onClick={() => { if (window.confirm('入力内容をすべてリセットしますか？')) { setFormData(initialForm); localStorage.removeItem('voltVaultDraft'); } }} className="text-[10px] text-red-400 font-bold border border-red-500/50 px-2.5 py-1.5 rounded-md bg-red-950/50 shadow-sm active:scale-95"><Trash2 size={12} className="inline mr-1"/>一時保存をクリア</button>
+                </div>
+              )}
+
+              <div className="space-y-4">
+                <input list="title-history" className="w-full text-2xl font-black bg-transparent border-b-2 border-slate-700 py-2 text-slate-100 focus:border-cyan-400 outline-none transition-colors placeholder:text-slate-600" placeholder="クエスト名（作業・タイトル）" value={formData.title} onChange={e => setFormData({...formData, title: e.target.value})} />
+                <datalist id="title-history">{uniqueTitles.map(t => <option key={t} value={t} />)}</datalist>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <input type="date" className="p-3 bg-slate-900 border border-slate-700 rounded-2xl font-bold outline-none text-sm text-cyan-50 shadow-inner focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500" value={formData.date} onChange={e => setFormData({...formData, date: e.target.value})} />
+                  <div className="relative flex items-center">
+                    <select className="p-3 bg-slate-900 border border-slate-700 rounded-2xl font-bold outline-none text-sm text-cyan-50 shadow-inner w-full focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 appearance-none" value={formData.genre} onChange={e => setFormData({...formData, genre: e.target.value})}>
+                      {groupedGenresForm.map(({ category, genres }) => (<optgroup key={category} label={`【${category}】`}>{genres.map(g => <option key={g.key} value={g.key}>{g.key}</option>)}</optgroup>))}
+                    </select>
+                    <ChevronDown size={14} className="absolute right-3 text-slate-500 pointer-events-none"/>
+                    <button type="button" onClick={() => setShowNewGenre(!showNewGenre)} className="absolute -top-2 -right-2 bg-slate-800 text-cyan-400 rounded-full p-1.5 shadow-[0_0_8px_rgba(34,211,238,0.5)] border border-cyan-500/50 hover:bg-slate-700 active:scale-95 transition-all"><Plus size={14}/></button>
+                  </div>
+                </div>
+
+                {showNewGenre && (
+                  <div className="bg-cyan-950/30 p-3 rounded-2xl border border-cyan-900 flex flex-col gap-2 animate-in fade-in slide-in-from-top-2 shadow-inner">
+                    <div className="flex gap-2">
+                      <select value={newGenreGroup} onChange={e=>setNewGenreGroup(e.target.value)} className="bg-slate-900 border border-slate-700 p-2 rounded-xl text-[10px] sm:text-xs font-bold text-slate-200 outline-none focus:border-cyan-500 shrink-0 w-24">
+                        {MainCategories.map(c => <option key={c} value={c}>{c}</option>)}
+                      </select>
+                      <input type="text" placeholder="新ジャンル名" value={newGenreName} onChange={e=>setNewGenreName(e.target.value)} className="w-full bg-slate-900 border border-slate-700 p-2 rounded-xl text-xs font-bold text-cyan-50 outline-none focus:border-cyan-500 min-w-0" />
+                    </div>
+                    <div className="flex gap-2 items-center">
+                      <ColorSelector value={newGenreColor} onChange={setNewGenreColor} />
+                      <IconSelector value={newGenreIcon} onChange={setNewGenreIcon} />
+                      <button type="button" onClick={() => { if(newGenreName.trim()) { handleAddItem('genres', newGenreName.trim(), newGenreColor, newGenreIcon, newGenreGroup); setFormData({...formData, genre: newGenreName.trim()}); setNewGenreName(''); setNewGenreColor('blue'); setNewGenreIcon('Info'); setShowNewGenre(false); } }} className="bg-cyan-600 text-slate-900 px-4 py-2.5 rounded-xl text-xs font-black shadow-[0_0_10px_rgba(6,182,212,0.5)] active:scale-95 shrink-0">追加</button>
+                    </div>
+                  </div>
+                )}
+
+                <div className="relative shadow-inner rounded-2xl">
+                  <Building className="absolute left-3 top-3.5 text-cyan-700" size={16}/>
+                  <input list="site-history" className="w-full p-3 pl-10 bg-slate-900 border border-slate-700 rounded-2xl font-bold outline-none text-sm text-cyan-50 focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500" placeholder="ダンジョン名（現場・案件）" value={formData.site} onChange={e => setFormData({...formData, site: e.target.value})} />
+                  <datalist id="site-history">{uniqueSites.map(s => <option key={s} value={s} />)}</datalist>
+                </div>
+              </div>
+
+              <div className="space-y-3 bg-slate-900/80 backdrop-blur-sm p-4 rounded-[2rem] border border-slate-700 shadow-lg">
+                <button type="button" onClick={() => setShowAdvanced(!showAdvanced)} className="w-full flex justify-between items-center text-xs font-black text-cyan-600 py-1"><span className="flex items-center gap-1.5 tracking-widest"><Info size={14}/> ADVANCED SETTINGS</span>{showAdvanced ? <ChevronUp size={16}/> : <ChevronDown size={16}/>}</button>
+                {showAdvanced && (
+                  <div className="space-y-4 pt-3 border-t border-slate-800 animate-in fade-in slide-in-from-top-2">
+                    <div className="relative shadow-inner rounded-2xl"><User className="absolute left-3 top-3.5 text-cyan-700" size={16}/><input className="w-full p-3 pl-10 bg-slate-950 border border-slate-800 rounded-2xl font-bold outline-none text-sm text-cyan-50 focus:border-cyan-500 transition-colors" placeholder="教えてくれた人（師匠・先輩など）" value={formData.teacher || ''} onChange={e => setFormData({...formData, teacher: e.target.value})} /></div>
+                    <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800 space-y-4 shadow-inner">
+                      <label className="flex items-center gap-3 cursor-pointer group"><div className={`w-5 h-5 rounded-md flex items-center justify-center border transition-all ${formData.needsReview ? 'bg-cyan-600 border-cyan-500 shadow-[0_0_10px_rgba(6,182,212,0.5)]' : 'bg-slate-800 border-slate-600 group-hover:border-cyan-500'}`}>{formData.needsReview && <Check size={14} className="text-slate-900" strokeWidth={4}/>}</div><input type="checkbox" checked={formData.needsReview || false} onChange={e => setFormData({...formData, needsReview: e.target.checked})} className="hidden" /><span className="text-xs font-black text-slate-300 group-hover:text-cyan-100 transition-colors">後で確認・復習が必要</span></label>
+                      {formData.needsReview && (
+                        <div className="pl-8 space-y-4 animate-in fade-in">
+                          <div className="flex items-center gap-2"><Bell size={14} className="text-orange-500 shrink-0 drop-shadow-[0_0_5px_rgba(249,115,22,0.8)]"/><input type="date" className="p-2 bg-slate-900 border border-slate-700 rounded-xl font-bold outline-none text-xs text-cyan-50 shadow-inner w-full focus:border-orange-500 focus:ring-1 focus:ring-orange-500" value={formData.reviewDate || ''} onChange={e => setFormData({...formData, reviewDate: e.target.value})} /><span className="text-[10px] text-slate-500 font-bold shrink-0">にお知らせ</span></div>
+                          <label className="flex items-center gap-3 cursor-pointer group"><div className={`w-5 h-5 rounded-md flex items-center justify-center border transition-all ${formData.isReviewed ? 'bg-green-500 border-green-400 shadow-[0_0_10px_rgba(34,197,94,0.5)]' : 'bg-slate-800 border-slate-600 group-hover:border-green-500'}`}>{formData.isReviewed && <Check size={14} className="text-slate-900" strokeWidth={4}/>}</div><input type="checkbox" checked={formData.isReviewed || false} onChange={e => setFormData({...formData, isReviewed: e.target.checked})} className="hidden" /><span className="text-xs font-black text-slate-300 group-hover:text-green-100 transition-colors">確認完了（クリア！）</span></label>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <div className="space-y-3">
+                <div className="flex justify-between items-end">
+                  <p className="text-[10px] font-black text-cyan-600 flex items-center gap-1 tracking-widest"><Tags size={12}/> COMPONENTS & TAGS</p>
+                  <button type="button" onClick={() => setShowNewTag(!showNewTag)} className="text-[10px] font-bold text-cyan-400 bg-slate-800 px-2.5 py-1.5 rounded-lg flex items-center gap-1 border border-cyan-900 shadow-[0_0_8px_rgba(6,182,212,0.2)] active:scale-95 transition-all"><Plus size={12}/>新規タグ作成</button>
+                </div>
+                {showNewTag && (
+                  <div className="bg-cyan-950/30 p-3 rounded-2xl border border-cyan-900 flex flex-col gap-2 animate-in fade-in slide-in-from-top-2 shadow-inner">
+                    <div className="flex gap-2">
+                      <select value={newTagGroup} onChange={e=>setNewTagGroup(e.target.value)} className="bg-slate-900 border border-slate-700 p-2 rounded-xl text-[10px] sm:text-xs font-bold text-slate-200 outline-none focus:border-cyan-500 shrink-0 w-24">{MainCategories.map(c => <option key={c} value={c}>{c}</option>)}</select>
+                      <input type="text" placeholder="新タグ名" value={newTagName} onChange={e=>setNewTagName(e.target.value)} className="w-full bg-slate-900 border border-slate-700 p-2 rounded-xl text-xs font-bold text-cyan-50 outline-none focus:border-cyan-500 min-w-0" />
+                    </div>
+                    <div className="flex gap-2 items-center">
+                      <ColorSelector value={newTagColor} onChange={setNewTagColor} />
+                      <IconSelector value={newTagIcon} onChange={setNewTagIcon} />
+                      <button type="button" onClick={() => { if(newTagName.trim()) { handleAddItem('tags', newTagName.trim(), newTagColor, newTagIcon, newTagGroup); const mats = formData.materials || []; if (!mats.includes(newTagName.trim())) { setFormData({...formData, materials: [...mats, newTagName.trim()]}); } setNewTagName(''); setNewTagColor('gray'); setNewTagIcon('Tags'); setShowNewTag(false); } }} className="bg-cyan-600 text-slate-900 px-4 py-2.5 rounded-xl text-xs font-black shadow-[0_0_10px_rgba(6,182,212,0.5)] active:scale-95 shrink-0">追加</button>
+                    </div>
+                  </div>
+                )}
+                <div className="flex flex-col gap-2">{groupedTagsForm.map(({ category, tags }) => <TagAccordion key={category} groupName={`【${category}】`} tags={tags} formData={formData} setFormData={setFormData} />)}</div>
+              </div>
+              
+              <div className="space-y-3 bg-slate-900/80 backdrop-blur-sm p-5 rounded-[2.5rem] border border-slate-700 shadow-lg">
+                <div className="flex justify-between items-center text-[10px] font-black text-cyan-600 mb-2 tracking-widest"><span className="flex items-center gap-1"><Camera size={14}/> VISUAL EVIDENCE</span><label className="text-slate-900 bg-cyan-600 px-3 py-1.5 rounded-xl flex items-center gap-1 cursor-pointer active:scale-95 transition-all shadow-[0_0_10px_rgba(6,182,212,0.4)] hover:bg-cyan-500"><Upload size={14}/> 撮影 / 一括追加<input type="file" accept="image/*" multiple onChange={handleFileUpload} className="hidden" /></label></div>
+                <div className="flex gap-4 overflow-x-auto pb-4 snap-x">
+                  {!formData.images || formData.images.length === 0 ? (
+                    <div className="w-full flex-shrink-0 h-32 border-2 border-dashed border-slate-700 rounded-[2rem] flex flex-col items-center justify-center text-slate-500 font-bold text-xs bg-slate-950/50 shadow-inner"><ImageIcon size={24} className="mb-2 opacity-50"/> 現場の様子を記録しましょう</div>
+                  ) : (
+                    formData.images.map((img, i) => (
+                      <div key={i} className="relative w-48 flex-shrink-0 snap-center group">
+                        <img src={img} className="w-full h-32 object-cover rounded-[1.5rem] border border-slate-700 shadow-lg cursor-pointer opacity-90 hover:opacity-100 transition-opacity" onClick={() => setMarkupModal({ isOpen: true, imgIndex: i, dataUrl: img })} />
+                        <button type="button" onClick={() => { const newImgs = [...formData.images]; newImgs.splice(i, 1); setFormData({...formData, images: newImgs}); }} className="absolute -top-2 -right-2 bg-red-500 text-slate-900 p-1.5 rounded-full shadow-[0_0_10px_rgba(239,68,68,0.8)]"><X size={14}/></button>
+                        <div className="absolute bottom-2 right-2 bg-cyan-900/80 text-cyan-100 p-1.5 rounded-full pointer-events-none border border-cyan-500"><Edit3 size={12}/></div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+              
+              <div className="space-y-3 bg-slate-900/80 backdrop-blur-sm p-5 rounded-[2.5rem] border border-slate-700 shadow-lg">
+                <div className="flex flex-wrap gap-2 pb-2 border-b border-slate-800">
+                  {userSettings.quickPhrases.map(p => <button key={p} type="button" onClick={() => setFormData({...formData, content: formData.content + (formData.content?'\n':'') + p})} className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-cyan-100 rounded-xl text-[10px] border border-slate-600 font-black transition-colors shadow-inner">+ {p}</button>)}
+                </div>
+                <textarea className="w-full h-40 pt-2 bg-transparent outline-none text-sm font-medium leading-relaxed resize-none text-cyan-50 placeholder:text-slate-600" placeholder="攻略のヒント、配線の色、次回への引き継ぎ事項などを記録..." value={formData.content} onChange={e => setFormData({...formData, content: e.target.value})} />
+              </div>
+              
+              {view === 'edit' && <button type="button" onClick={() => handleDelete(selectedMemo.id)} className="w-full py-5 text-red-500 font-black text-xs border-2 border-red-900/50 border-dashed rounded-[2.5rem] uppercase tracking-widest hover:bg-red-950 transition-all mt-8 shadow-inner">クエストを破棄する</button>}
+            </div>
+          </div>
+        )}
       </div>
 
       {!markupModal.isOpen && view !== 'add' && view !== 'edit' && (
