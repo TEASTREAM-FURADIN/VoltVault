@@ -33,15 +33,6 @@ const ClipperIcon = ({ size = 24, className = "", strokeWidth = 2 }) => (
   </svg>
 );
 
-const TeaCupIcon = ({ size = 24, className = "", strokeWidth = 2 }) => (
-  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round" className={className}>
-    <path d="M6 8v5a6 6 0 0 0 12 0V8" />
-    <line x1="5" y1="8" x2="19" y2="8" />
-    <path d="M10 3s1 1.5 1 2.5-1 1.5-1 2.5" />
-    <path d="M14 3s-1 1.5-1 2.5 1 1.5 1 2.5" />
-  </svg>
-);
-
 const IconMap = {
   Zap, Plug, Cable, Power, Lightbulb, Wrench, Hammer, HardHat, AlertCircle, CheckCircle, Info, Tags, Folder, MapPin, Building, Truck, Grid, ListFilter,
   Shield, Flame, Droplets, Wind, Thermometer, Scissors, Battery, FileText, PenTool, Ruler, Compass, Home, Activity, Radio, Wifi, Phone, Car, Clock, Lock, Unlock, Sun, Moon,
@@ -128,7 +119,7 @@ const DynamicIcon = ({ name, size = 16, className = "" }) => {
   return <Icon size={size} className={className} />;
 };
 
-// --- 独立したコンポーネント群 ---
+// --- 独立コンポーネント群 ---
 
 const LevelUpModal = ({ levelUpData }) => {
   if (!levelUpData) return null;
@@ -390,7 +381,6 @@ const EditorSection = ({ title, icon: Icon, items, onAdd, onUpdate, onDelete, on
   );
 };
 
-// ★ 真っ白フリーズを完全に防いだ、プロ仕様の画像エディター（枠付き文字対応）
 const MarkupModalCanvas = ({ markupModal, setMarkupModal, formData, setFormData }) => {
   const canvasRef = useRef(null);
   const [mode, setMode] = useState('draw'); 
@@ -468,6 +458,7 @@ const MarkupModalCanvas = ({ markupModal, setMarkupModal, formData, setFormData 
   };
 
   const handleStart = (e) => {
+    if (!canvasRef.current) return;
     const p = getPos(e);
     if (editingTextId) { setEditingTextId(null); return; }
     if (mode === 'text') {
@@ -497,7 +488,7 @@ const MarkupModalCanvas = ({ markupModal, setMarkupModal, formData, setFormData 
       setTexts(texts.map(t => t.id === dragRef.current.id ? { ...t, x: p.x - dragRef.current.ox, y: p.y - dragRef.current.oy } : t));
       return;
     }
-    if (!currentStroke.current) return;
+    if (!currentStroke.current || !canvasRef.current) return;
     e.preventDefault();
     const p = getPos(e);
     const pts = currentStroke.current.points;
@@ -606,7 +597,7 @@ const MarkupModalCanvas = ({ markupModal, setMarkupModal, formData, setFormData 
   };
 
   return (
-    <div className="fixed inset-0 bg-slate-950 z-[100] flex flex-col items-center justify-center p-2 sm:p-4 animate-in fade-in">
+    <div className="fixed inset-0 bg-slate-950 z-[150] flex flex-col items-center justify-center p-2 sm:p-4 animate-in fade-in">
       <div className="w-full max-w-lg bg-slate-900 rounded-[2rem] p-3 flex flex-col gap-3 shadow-[0_0_30px_rgba(6,182,212,0.2)] border border-cyan-900/50 absolute top-4 bottom-4">
         <div className="flex justify-between items-center px-2 pt-1 shrink-0">
           <h3 className="font-black text-cyan-400 flex items-center gap-2 tracking-widest"><Edit3 size={18}/> MARKUP TERMINAL</h3>
@@ -688,7 +679,6 @@ const MarkupModalCanvas = ({ markupModal, setMarkupModal, formData, setFormData 
     </div>
   );
 };
-
 
 // --- App 本体 ---
 const App = () => {
@@ -773,13 +763,27 @@ const App = () => {
   const [newTagColor, setNewTagColor] = useState('gray');
   const [newTagIcon, setNewTagIcon] = useState('Tags');
 
+  // ★ 絶対にクラッシュさせないための強力なデータ修復フィルター
   const loadDraft = () => {
     const draft = localStorage.getItem('voltVaultDraft');
     if (draft) {
       try {
         const p = JSON.parse(draft);
         if (p && typeof p === 'object') {
-          setFormData({ ...initialForm, ...p, materials: Array.isArray(p.materials) ? p.materials : [], images: Array.isArray(p.images) ? p.images : [] });
+          // ★ もし過去のバグで「オブジェクト」が混ざっていても、必ず「文字列」や「配列」に強制変換する
+          setFormData({ 
+            title: typeof p.title === 'string' ? p.title : '', 
+            site: typeof p.site === 'string' ? p.site : '', 
+            genre: typeof p.genre === 'string' ? p.genre : '', 
+            materials: Array.isArray(p.materials) ? p.materials.filter(m => typeof m === 'string') : [], 
+            content: typeof p.content === 'string' ? p.content : '', 
+            date: typeof p.date === 'string' ? p.date : initialForm.date, 
+            images: Array.isArray(p.images) ? p.images.filter(img => typeof img === 'string') : [],
+            teacher: typeof p.teacher === 'string' ? p.teacher : '', 
+            needsReview: Boolean(p.needsReview), 
+            reviewDate: typeof p.reviewDate === 'string' ? p.reviewDate : '', 
+            isReviewed: Boolean(p.isReviewed)
+          });
         } else { setFormData(initialForm); }
       } catch(e) { setFormData(initialForm); }
     } else { setFormData(initialForm); }
@@ -920,46 +924,6 @@ const App = () => {
     e.target.value = null; 
   };
 
-  const handleMoveItem = (type, key, direction) => {
-    const items = userSettings[type]; 
-    const arr = Object.entries(items).map(([k, v]) => ({ key: k, ...v })).sort((a, b) => a.order - b.order);
-    const index = arr.findIndex(item => item.key === key);
-    if (index === -1) return;
-    if (direction === 'up' && index > 0) { const temp = arr[index].order; arr[index].order = arr[index - 1].order; arr[index - 1].order = temp; } 
-    else if (direction === 'down' && index < arr.length - 1) { const temp = arr[index].order; arr[index].order = arr[index + 1].order; arr[index + 1].order = temp; } 
-    else { return; }
-    const newItems = {}; arr.forEach(item => { const { key, ...rest } = item; newItems[key] = rest; });
-    saveSettings({ ...userSettings, [type]: newItems });
-  };
-
-  const handleAddItem = (type, name, colorId, icon, group) => {
-    const items = userSettings[type] || {};
-    const maxOrder = Math.max(...Object.values(items).map(i => i.order || 0), -1);
-    const newItem = { colorId, icon, group, order: maxOrder + 1 };
-    saveSettings({ ...userSettings, [type]: { ...items, [name]: newItem } });
-  };
-
-  const handleUpdateItem = async (type, oldKey, newKey, colorId, icon, group) => {
-    const items = userSettings[type];
-    const oldOrder = items[oldKey].order;
-    if (oldKey !== newKey && items[newKey]) { alert("WARNING: その名前はすでに登録されています！"); return; }
-    const newItems = { ...items }; delete newItems[oldKey]; newItems[newKey] = { colorId, icon, group, order: oldOrder };
-    await saveSettings({ ...userSettings, [type]: newItems });
-
-    if (oldKey !== newKey) {
-      setIsSyncing(true);
-      try {
-        const promises = memos.map(async (memo) => {
-          let needsUpdate = false; let updatedData = {};
-          if (type === 'genres' && memo.genre === oldKey) { needsUpdate = true; updatedData.genre = newKey; } 
-          else if (type === 'tags' && memo.materials && memo.materials.includes(oldKey)) { needsUpdate = true; updatedData.materials = memo.materials.map(m => m === oldKey ? newKey : m); }
-          if (needsUpdate) await setDoc(doc(db, 'artifacts', currentAppId, 'public', 'data', 'memos', memo.id), updatedData, { merge: true });
-        });
-        await Promise.all(promises);
-      } catch (e) { console.error(e); } finally { setIsSyncing(false); }
-    }
-  };
-
   return (
     <div className="min-h-screen bg-slate-950 pb-28 text-slate-200 font-sans antialiased selection:bg-cyan-500/30 relative">
       <div className="fixed inset-0 pointer-events-none z-0 opacity-20" style={{ backgroundImage: `linear-gradient(to right, #06b6d4 1px, transparent 1px), linear-gradient(to bottom, #06b6d4 1px, transparent 1px)`, backgroundSize: '30px 30px' }}></div>
@@ -1018,6 +982,7 @@ const App = () => {
                 <Bell size={22} />
                 {pendingReviews.length > 0 && !filterPending && <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[9px] font-black w-4 h-4 rounded-full flex items-center justify-center animate-pulse shadow-[0_0_8px_rgba(239,68,68,0.8)] border border-slate-900">{pendingReviews.length}</span>}
               </button>
+              {/* ★ ここで安全にデータを読み込み、フォーム画面を開く */}
               <button onClick={() => { loadDraft(); setShowAdvanced(false); setShowNewGenre(false); setShowNewTag(false); setView('add'); }} className={`${weaponStyle.bg} ${weaponStyle.text} p-2.5 rounded-xl ${weaponStyle.shadow} border ${weaponStyle.border} active:scale-90 hover:scale-105 transition-all`}><ClipperIcon size={22} /></button>
             </div>
           </div>
@@ -1063,6 +1028,7 @@ const App = () => {
           )}
         </header>
 
+        {/* メイン画面群（List, Stats, Settings, Detail） */}
         <main className="p-4 max-w-xl mx-auto relative z-10">
           {view === 'list' && (
             <div className="space-y-4">
@@ -1267,7 +1233,7 @@ const App = () => {
           )}
         </main>
 
-        {/* --- ビュー: フォーム (追加/編集) 完全復元 --- */}
+        {/* ★ 追加・編集フォーム画面（安全フィルター付き） */}
         {(view === 'add' || view === 'edit') && (
           <div className="fixed inset-0 bg-slate-950 z-[100] overflow-y-auto pb-32 animate-in slide-in-from-bottom-10">
             <div className="fixed inset-0 pointer-events-none z-0 opacity-10" style={{ backgroundImage: `linear-gradient(to right, #facc15 1px, transparent 1px), linear-gradient(to bottom, #facc15 1px, transparent 1px)`, backgroundSize: '40px 40px' }}></div>
