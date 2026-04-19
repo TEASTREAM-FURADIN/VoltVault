@@ -471,7 +471,13 @@ const MarkupModalCanvas = ({ markupModal, setMarkupModal, formData, setFormData 
   };
 
   const handleMove = (e) => {
-    if (dragRef.current) { e.preventDefault(); const p = getPos(e); setTexts(texts.map(t => t.id === dragRef.current.id ? { ...t, x: p.x - dragRef.current.ox, y: p.y - dragRef.current.oy } : t)); return; }
+    if (dragRef.current) { 
+      e.preventDefault(); 
+      const p = getPos(e); 
+      dragRef.current.moved = true;
+      setTexts(texts.map(t => t.id === dragRef.current.id ? { ...t, x: p.x - dragRef.current.ox, y: p.y - dragRef.current.oy } : t)); 
+      return; 
+    }
     if (!currentStroke.current || !canvasRef.current) return;
     e.preventDefault(); const p = getPos(e); const pts = currentStroke.current.points; const prev = pts[pts.length - 1]; pts.push(p);
     const cvs = canvasRef.current; const ctx = cvs.getContext('2d');
@@ -581,12 +587,34 @@ const MarkupModalCanvas = ({ markupModal, setMarkupModal, formData, setFormData 
                 className={`${mode === 'draw' ? 'cursor-crosshair' : mode === 'text' ? 'cursor-text' : mode === 'eraser' ? 'cursor-cell' : 'cursor-grab'}`}
                 onPointerDown={handleStart} onPointerMove={handleMove} onPointerUp={handleEnd} onPointerLeave={handleEnd} />
               
-              {/* ★ PCでもスマホでも確実に入力できるイベントストップ付きテキスト入力 */}
+              {/* ★ PCでもスマホでも確実に入力・ドラッグ移動できるテキスト処理 */}
               {texts.map(t => editingTextId === t.id ? (
                   <TextEditor key={t.id} t={t} texts={texts} setTexts={setTexts} setEditingTextId={setEditingTextId} zoom={zoom} dimensions={dimensions} />
                 ) : (
-                  <div key={t.id} onPointerDown={(e) => { e.stopPropagation(); dragRef.current = { id: t.id, ox: getPos(e).x - t.x, oy: getPos(e).y - t.y }; }} onClick={(e) => { e.stopPropagation(); setEditingTextId(t.id); }}
-                    style={{ position: 'absolute', left: `${t.x * 100}%`, top: `${t.y * 100}%`, color: t.color, fontSize: `${Math.max(16, dimensions.dispW * 0.04 / zoom)}px`, fontWeight: '900', cursor: 'move', zIndex: 40, whiteSpace: 'pre-wrap', lineHeight: '1.2', background: 'rgba(0,0,0,0.6)', border: `2px solid ${t.color}`, borderRadius: '8px', padding: '8px', pointerEvents: 'auto' }}
+                  <div key={t.id} 
+                    onPointerDown={(e) => { 
+                      e.stopPropagation(); 
+                      dragRef.current = { id: t.id, ox: getPos(e).x - t.x, oy: getPos(e).y - t.y, moved: false }; 
+                      if(e.target.setPointerCapture) e.target.setPointerCapture(e.pointerId);
+                    }} 
+                    onPointerMove={(e) => {
+                      if (dragRef.current && dragRef.current.id === t.id) {
+                        e.stopPropagation(); e.preventDefault();
+                        dragRef.current.moved = true;
+                        const p = getPos(e);
+                        setTexts(texts.map(x => x.id === t.id ? { ...x, x: p.x - dragRef.current.ox, y: p.y - dragRef.current.oy } : x));
+                      }
+                    }}
+                    onPointerUp={(e) => {
+                      e.stopPropagation();
+                      if (dragRef.current && dragRef.current.id === t.id) {
+                        const wasMoved = dragRef.current.moved;
+                        dragRef.current = null;
+                        if(e.target.releasePointerCapture) e.target.releasePointerCapture(e.pointerId);
+                        if (!wasMoved) setEditingTextId(t.id);
+                      }
+                    }}
+                    style={{ position: 'absolute', left: `${t.x * 100}%`, top: `${t.y * 100}%`, color: t.color, fontSize: `${Math.max(16, dimensions.dispW * 0.04 / zoom)}px`, fontWeight: '900', cursor: 'move', zIndex: 40, whiteSpace: 'pre-wrap', lineHeight: '1.2', background: 'rgba(0,0,0,0.6)', border: `2px solid ${t.color}`, borderRadius: '8px', padding: '8px', pointerEvents: 'auto', touchAction: 'none', userSelect: 'none' }}
                   >{String(t.text)}</div>
                 )
               )}
