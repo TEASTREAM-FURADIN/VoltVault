@@ -21,6 +21,7 @@ import { initializeApp } from 'firebase/app';
 import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from 'firebase/auth';
 import { getFirestore, doc, setDoc, collection, onSnapshot, deleteDoc } from 'firebase/firestore';
 
+// --- 定数・アイコン定義 ---
 const ClipperIcon = ({ size = 24, className = "", strokeWidth = 2 }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round" className={className}>
     <path d="M14.5 9.5L21 18.5a2 2 0 0 1-2.8 2.8L9.5 14.5" />
@@ -29,6 +30,15 @@ const ClipperIcon = ({ size = 24, className = "", strokeWidth = 2 }) => (
     <path d="M9.5 9.5C8 8 7 6 7 6C7 6 9 5 11 7L12 8" />
     <path d="M14.5 9.5C16 8 17 6 17 6C17 6 15 5 13 7L12 8" />
     <path d="M12 2L11 4H13L12 6" stroke="#06b6d4" strokeWidth="1.5"/>
+  </svg>
+);
+
+const TeaCupIcon = ({ size = 24, className = "", strokeWidth = 2 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round" className={className}>
+    <path d="M6 8v5a6 6 0 0 0 12 0V8" />
+    <line x1="5" y1="8" x2="19" y2="8" />
+    <path d="M10 3s1 1.5 1 2.5-1 1.5-1 2.5" />
+    <path d="M14 3s-1 1.5-1 2.5 1 1.5 1 2.5" />
   </svg>
 );
 
@@ -88,7 +98,7 @@ const defaultSettings = {
     '分電盤': { colorId: 'blue', icon: 'Grid', group: '電気', order: 2 },
     '重要目標': { colorId: 'red', icon: 'Target', group: 'その他', order: 3 }
   },
-  stats: { exp: 0, level: 1, totalMemos: 0, clipperDurability: 100, lastMemoDate: '', streakDays: 0, completedSites: [] }
+  stats: { clipperDurability: 100, lastMemoDate: '', streakDays: 0, completedSites: [], bonusExp: 0 }
 };
 
 const getTitle = (level) => {
@@ -373,6 +383,28 @@ const EditorSection = ({ title, icon: Icon, items, onAdd, onUpdate, onDelete, on
 };
 
 // ★ PC（マウス）からのクリックでも絶対に文字が入力できるテキストエディター
+const TextEditor = ({ t, texts, setTexts, setEditingTextId, zoom, dimensions }) => {
+  const ref = useRef(null);
+  useEffect(() => { if (ref.current) ref.current.focus(); }, []);
+  return (
+    <textarea
+      ref={ref}
+      value={t.text}
+      onChange={(e) => setTexts(texts.map(x => x.id === t.id ? {...x, text: e.target.value} : x))}
+      onBlur={() => { if (!t.text.trim()) setTexts(texts.filter(x => x.id !== t.id)); setEditingTextId(null); }}
+      onPointerDown={e => e.stopPropagation()}
+      style={{
+        position: 'absolute', left: `${t.x * 100}%`, top: `${t.y * 100}%`, color: t.color,
+        fontSize: `${Math.max(16, dimensions.dispW * 0.04 / zoom)}px`, fontWeight: '900',
+        background: 'rgba(0,0,0,0.6)', border: `2px dashed ${t.color}`, borderRadius: '8px',
+        outline: 'none', resize: 'both', zIndex: 50, padding: '8px',
+        whiteSpace: 'pre-wrap', lineHeight: '1.2', minWidth: '6em', minHeight: '2em'
+      }}
+      placeholder="文字を入力..."
+    />
+  );
+};
+
 const MarkupModalCanvas = ({ markupModal, setMarkupModal, formData, setFormData }) => {
   const canvasRef = useRef(null); const [mode, setMode] = useState('draw'); const [zoom, setZoom] = useState(1);
   const [dimensions, setDimensions] = useState(null); const [texts, setTexts] = useState([]); 
@@ -453,7 +485,6 @@ const MarkupModalCanvas = ({ markupModal, setMarkupModal, formData, setFormData 
     if (e && e.target && e.target.releasePointerCapture) e.target.releasePointerCapture(e.pointerId);
   };
 
-  // ★ 復元された取り消し関連の関数
   const handleUndo = () => {
     if (strokes.length === 0) return;
     const lastStroke = strokes[strokes.length - 1];
@@ -480,13 +511,31 @@ const MarkupModalCanvas = ({ markupModal, setMarkupModal, formData, setFormData 
       const MAX_SAVE_SIZE = 400;
       const scale = Math.min(MAX_SAVE_SIZE / dimensions.origW, MAX_SAVE_SIZE / dimensions.origH, 1);
       cvs.width = dimensions.origW * scale; cvs.height = dimensions.origH * scale;
-      const ctx = cvs.getContext('2d'); ctx.drawImage(dimensions.img, 0, 0, cvs.width, cvs.height);
+      const ctx = cvs.getContext('2d'); 
+      
+      // ★ 透過画像の背景が真っ黒になるのを防ぐため、保存用画用紙を一度真っ白に塗る
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, cvs.width, cvs.height);
+      
+      ctx.drawImage(dimensions.img, 0, 0, cvs.width, cvs.height);
       
       strokes.forEach(s => {
         ctx.globalCompositeOperation = s.type === 'eraser' ? 'destination-out' : 'source-over'; ctx.strokeStyle = s.type === 'eraser' ? 'rgba(0,0,0,1)' : s.color;
         const w = s.width * cvs.width; ctx.lineWidth = w; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-        if(s.points.length > 0){ ctx.beginPath(); ctx.moveTo(s.points[0].x * cvs.width, s.points[0].y * cvs.height); s.points.forEach((p, i) => { if(i>0) ctx.lineTo(p.x * cvs.width, p.y * cvs.height); }); ctx.stroke(); }
+        if(s.points.length > 0){
+          ctx.beginPath();
+          if (s.points.length === 1) {
+            ctx.fillStyle = s.type === 'eraser' ? 'rgba(0,0,0,1)' : s.color;
+            ctx.arc(s.points[0].x * cvs.width, s.points[0].y * cvs.height, w / 2, 0, Math.PI * 2);
+            ctx.fill();
+          } else {
+            ctx.moveTo(s.points[0].x * cvs.width, s.points[0].y * cvs.height);
+            s.points.forEach((p, i) => { if(i>0) ctx.lineTo(p.x * cvs.width, p.y * cvs.height); });
+            ctx.stroke();
+          }
+        }
       });
+
       ctx.globalCompositeOperation = 'source-over'; ctx.textBaseline = 'top';
       texts.forEach(t => {
         if (!t.text) return;
@@ -497,7 +546,7 @@ const MarkupModalCanvas = ({ markupModal, setMarkupModal, formData, setFormData 
         ctx.fillStyle = t.color; lines.forEach((l, i) => ctx.fillText(l, tx + pad, ty + pad + (i * fSize * 1.2)));
       });
       
-      const newDataUrl = cvs.toDataURL('image/jpeg', 0.3); 
+      const newDataUrl = cvs.toDataURL('image/jpeg', 0.5); 
       const newImages = Array.isArray(formData.images) ? [...formData.images] : [];
       newImages[markupModal.imgIndex] = newDataUrl;
       setFormData({...formData, images: newImages}); setMarkupModal({ isOpen: false, imgIndex: null, dataUrl: null });
@@ -534,10 +583,7 @@ const MarkupModalCanvas = ({ markupModal, setMarkupModal, formData, setFormData 
               
               {/* ★ PCでもスマホでも確実に入力できるイベントストップ付きテキスト入力 */}
               {texts.map(t => editingTextId === t.id ? (
-                  <textarea key={t.id} autoFocus value={t.text} onChange={(e) => setTexts(texts.map(x => x.id === t.id ? {...x, text: e.target.value} : x))} 
-                    onBlur={() => { if (!t.text.trim()) setTexts(texts.filter(x => x.id !== t.id)); setEditingTextId(null); }} 
-                    onPointerDown={e => e.stopPropagation()} 
-                    style={{ position: 'absolute', left: `${t.x * 100}%`, top: `${t.y * 100}%`, color: t.color, fontSize: `${Math.max(16, dimensions.dispW * 0.04 / zoom)}px`, fontWeight: '900', background: 'rgba(0,0,0,0.6)', border: `2px dashed ${t.color}`, borderRadius: '8px', outline: 'none', resize: 'both', zIndex: 50, padding: '8px', whiteSpace: 'pre-wrap', lineHeight: '1.2', minWidth: '6em', minHeight: '2em', pointerEvents: 'auto' }} placeholder="文字を入力..." />
+                  <TextEditor key={t.id} t={t} texts={texts} setTexts={setTexts} setEditingTextId={setEditingTextId} zoom={zoom} dimensions={dimensions} />
                 ) : (
                   <div key={t.id} onPointerDown={(e) => { e.stopPropagation(); dragRef.current = { id: t.id, ox: getPos(e).x - t.x, oy: getPos(e).y - t.y }; }} onClick={(e) => { e.stopPropagation(); setEditingTextId(t.id); }}
                     style={{ position: 'absolute', left: `${t.x * 100}%`, top: `${t.y * 100}%`, color: t.color, fontSize: `${Math.max(16, dimensions.dispW * 0.04 / zoom)}px`, fontWeight: '900', cursor: 'move', zIndex: 40, whiteSpace: 'pre-wrap', lineHeight: '1.2', background: 'rgba(0,0,0,0.6)', border: `2px solid ${t.color}`, borderRadius: '8px', padding: '8px', pointerEvents: 'auto' }}
@@ -633,7 +679,8 @@ export default function App() {
         }
       } catch (e) { setError("SYSTEM ERROR."); } 
     };
-    initAuth(); return onAuthStateChanged(auth, setUser);
+    initAuth();
+    return onAuthStateChanged(auth, setUser);
   }, []);
 
   useEffect(() => {
@@ -642,13 +689,15 @@ export default function App() {
     const unsubscribeMemos = onSnapshot(collection(db, 'artifacts', currentAppId, 'public', 'data', 'memos'), 
       (snap) => {
         const sortedData = snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => (b.date || "").localeCompare(a.date || ""));
-        setMemos(sortedData); setIsSyncing(false);
+        setMemos(sortedData);
+        setIsSyncing(false);
         if (sortedData.length > 0 && !sessionStorage.getItem('encounteredToday')) {
           const pending = sortedData.filter(m => m.needsReview && !m.isReviewed);
           if (pending.length > 0 && Math.random() < 0.4) setEncounterMemo(pending[Math.floor(Math.random() * pending.length)]);
           sessionStorage.setItem('encounteredToday', 'true');
         }
-      }, () => { setError("SYNC FAILED."); setIsSyncing(false); }
+      },
+      () => { setError("SYNC FAILED."); setIsSyncing(false); }
     );
     const unsubscribeSettings = onSnapshot(doc(db, 'artifacts', currentAppId, 'public', 'data', 'settings', 'user'), (d) => {
       if (d.exists()) {
@@ -669,8 +718,17 @@ export default function App() {
   const initialForm = { title: '', site: '', genre: '', materials: [], content: '', date: new Date().toISOString().split('T')[0], images: [], teacher: '', needsReview: false, reviewDate: '', isReviewed: false };
   const [formData, setFormData] = useState(initialForm);
 
-  const [showNewGenre, setShowNewGenre] = useState(false); const [newGenreName, setNewGenreName] = useState(''); const [newGenreGroup, setNewGenreGroup] = useState(MainCategories[0]); const [newGenreColor, setNewGenreColor] = useState('blue'); const [newGenreIcon, setNewGenreIcon] = useState('Info');
-  const [showNewTag, setShowNewTag] = useState(false); const [newTagName, setNewTagName] = useState(''); const [newTagGroup, setNewTagGroup] = useState(MainCategories[0]); const [newTagColor, setNewTagColor] = useState('gray'); const [newTagIcon, setNewTagIcon] = useState('Tags');
+  const [showNewGenre, setShowNewGenre] = useState(false);
+  const [newGenreName, setNewGenreName] = useState('');
+  const [newGenreGroup, setNewGenreGroup] = useState(MainCategories[0]);
+  const [newGenreColor, setNewGenreColor] = useState('blue');
+  const [newGenreIcon, setNewGenreIcon] = useState('Info');
+  
+  const [showNewTag, setShowNewTag] = useState(false);
+  const [newTagName, setNewTagName] = useState('');
+  const [newTagGroup, setNewTagGroup] = useState(MainCategories[0]);
+  const [newTagColor, setNewTagColor] = useState('gray');
+  const [newTagIcon, setNewTagIcon] = useState('Tags');
 
   const loadDraft = () => {
     const draft = localStorage.getItem('voltVaultDraft');
@@ -678,13 +736,13 @@ export default function App() {
       try {
         const p = JSON.parse(draft);
         if (p && typeof p === 'object') {
-          const safeStr = (val) => typeof val === 'string' ? val : '';
-          const safeArr = (val) => Array.isArray(val) ? val.map(safeStr).filter(Boolean) : [];
+          const safeString = (val) => typeof val === 'string' ? val : '';
+          const safeArray = (val) => Array.isArray(val) ? val.map(safeString).filter(Boolean) : [];
           setFormData({ 
-            title: safeStr(p.title), site: safeStr(p.site), genre: safeStr(p.genre), 
-            materials: safeArr(p.materials), content: safeStr(p.content), 
-            date: safeStr(p.date) || initialForm.date, images: safeArr(p.images),
-            teacher: safeStr(p.teacher), needsReview: Boolean(p.needsReview), reviewDate: safeStr(p.reviewDate), isReviewed: Boolean(p.isReviewed)
+            title: safeString(p.title), site: safeString(p.site), genre: safeString(p.genre), 
+            materials: safeArray(p.materials), content: safeString(p.content), 
+            date: safeString(p.date) || initialForm.date, images: safeArray(p.images),
+            teacher: safeString(p.teacher), needsReview: Boolean(p.needsReview), reviewDate: safeString(p.reviewDate), isReviewed: Boolean(p.isReviewed)
           });
         } else { setFormData(initialForm); }
       } catch(e) { setFormData(initialForm); }
@@ -696,61 +754,93 @@ export default function App() {
   const sortedTags = Object.entries(userSettings.tags || {}).map(([k, v]) => ({ key: k, ...v })).sort((a, b) => (a.order || 0) - (b.order || 0));
   const groupedTagsForm = MainCategories.map(cat => ({ category: cat, tags: sortedTags.filter(t => t.group === cat) })).filter(t => t.tags && t.tags.length > 0);
 
-  useEffect(() => { if (view === 'add') { const t = setTimeout(() => localStorage.setItem('voltVaultDraft', JSON.stringify(formData)), 500); return () => clearTimeout(t); } }, [formData, view]);
-  useEffect(() => { if (view === 'add' && !formData.genre && Object.keys(userSettings.genres || {}).length > 0) setFormData(prev => ({ ...prev, genre: Object.keys(userSettings.genres)[0] })); }, [view, userSettings]);
+  useEffect(() => {
+    if (view === 'add') {
+      const timeoutId = setTimeout(() => localStorage.setItem('voltVaultDraft', JSON.stringify(formData)), 500);
+      return () => clearTimeout(timeoutId);
+    }
+  }, [formData, view]);
+
+  useEffect(() => {
+    if (view === 'add' && !formData.genre && Object.keys(userSettings.genres || {}).length > 0) setFormData(prev => ({ ...prev, genre: Object.keys(userSettings.genres)[0] }));
+  }, [view, userSettings]);
 
   const escapeRegExp = (string) => String(string).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
   const handleSave = async () => {
-    if (!formData.title || formData.title.trim() === '') { alert("クエスト名（タイトル）を入力してください！"); return; }
-    if (!user) { alert("データベースの鍵（認証）を確認中です。数秒待ってからもう一度お試しください。"); return; }
-    
-    // ★ 1MBの壁にぶつかる前にお知らせするセンサー
+    if (!formData.title || formData.title.trim() === '') {
+      alert("クエスト名（タイトル）を入力してください！");
+      return;
+    }
+    if (!user) {
+      alert("データベースの鍵（認証）を確認中です。数秒待ってからもう一度お試しください。");
+      return;
+    }
+
     const payloadSize = JSON.stringify(formData).length;
     if (payloadSize > 900000) { 
-      alert(`データサイズ制限エラー（約${Math.round(payloadSize/1000)}KB）\n\n1回の保存限界（1MB）を超えています。\n画像を減らして再度お試しください。`);
-      return; 
+      alert(`データサイズ制限エラー（約${Math.round(payloadSize/1000)}KB）\n\nスマホの高画質カメラの影響で、1回の保存容量の限界を超えています。\n画像を減らすか、一度アプリを再読み込みしてください。`);
+      return;
     }
 
     setIsSyncing(true);
     try {
-      const isNew = view !== 'edit'; const id = isNew ? `memo_${Date.now()}` : editingMemo.id;
+      const isNew = view !== 'edit';
+      const id = isNew ? `memo_${Date.now()}` : editingMemo.id;
       let finalTitle = String(formData.title).trim();
       if (isNew) {
         const regex = new RegExp(`^${String(finalTitle).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?:\\s+(\\d+))?$`);
         let maxNum = 0, hasBase = false;
         memos.filter(m => String(m.site || "") === String(formData.site || "")).forEach(m => {
           const match = String(m.title || "").match(regex);
-          if (match) { hasBase = true; if (match[1]) maxNum = Math.max(maxNum, parseInt(match[1], 10)); else maxNum = Math.max(maxNum, 1); }
+          if (match) { hasBase = true; if (match[1]) { maxNum = Math.max(maxNum, parseInt(match[1], 10)); } else { maxNum = Math.max(maxNum, 1); } }
         });
         if (hasBase) finalTitle = `${finalTitle} ${maxNum + 1}`;
       }
 
-      await setDoc(doc(db, 'artifacts', currentAppId, 'public', 'data', 'memos', id), { ...formData, title: finalTitle, id }, { merge: true });
+      const memoToSave = {
+        title: finalTitle, id: id, site: String(formData.site || ''), genre: String(formData.genre || ''), content: String(formData.content || ''),
+        date: String(formData.date || ''), materials: Array.isArray(formData.materials) ? formData.materials.map(String) : [],
+        images: Array.isArray(formData.images) ? formData.images.map(String) : [], teacher: String(formData.teacher || ''),
+        needsReview: Boolean(formData.needsReview), reviewDate: String(formData.reviewDate || ''), isReviewed: Boolean(formData.isReviewed)
+      };
+
+      await setDoc(doc(db, 'artifacts', currentAppId, 'public', 'data', 'memos', id), memoToSave, { merge: true });
       
       if (isNew) {
         const stats = userSettings.stats || defaultSettings.stats;
         const todayStr = new Date().toISOString().split('T')[0];
-        const newStreak = stats.lastMemoDate !== todayStr ? (stats.lastMemoDate === new Date(Date.now() - 86400000).toISOString().split('T')[0] ? (stats.streakDays || 0) + 1 : 1) : (stats.streakDays || 0);
-        let earnedExp = 25 + (newStreak >= 7 ? 15 : newStreak >= 3 ? 10 : 0);
-        if ((stats.clipperDurability ?? 100) <= 20) earnedExp = Math.floor(earnedExp * 0.5); 
+        let newStreak = stats.streakDays || 0;
+        if (stats.lastMemoDate !== todayStr) {
+          newStreak = stats.lastMemoDate === new Date(Date.now() - 86400000).toISOString().split('T')[0] ? newStreak + 1 : 1;
+        }
 
-        const newExp = (stats.exp || 0) + earnedExp; const newLevel = Math.floor(newExp / 100) + 1;
+        const newTotalMemos = memos.length + 1;
+        const newExp = (newTotalMemos * 25) + (newStreak * 10) + (stats.bonusExp || 0);
+        const newLevel = Math.floor(newExp / 100) + 1;
+        
         if (newLevel > (stats.level || 1)) { setLevelUpData({ level: newLevel, title: getTitle(newLevel) }); setTimeout(() => setLevelUpData(null), 4000); }
 
-        await saveSettings({ ...userSettings, stats: { ...stats, exp: newExp, level: newLevel, totalMemos: (stats.totalMemos || 0) + 1, clipperDurability: Math.max(0, (stats.clipperDurability ?? 100) - 5), lastMemoDate: todayStr, streakDays: newStreak } });
+        await saveSettings({ ...userSettings, stats: { ...stats, exp: newExp, level: newLevel, totalMemos: newTotalMemos, clipperDurability: Math.max(0, (stats.clipperDurability ?? 100) - 5), lastMemoDate: todayStr, streakDays: newStreak } });
         localStorage.removeItem('voltVaultDraft');
       }
+
       setView('list'); setFormData(initialForm); setShowAdvanced(false); setShowNewGenre(false); setShowNewTag(false);
     } catch (e) { 
-      console.error(e); 
-      alert(`保存失敗！\n【原因】${e.message}\n画像が重すぎるか、通信が不安定な可能性があります。`); 
+      console.error(e);
+      alert(`保存に失敗しました。\n通信環境を確認するか、画像サイズを減らしてください。\n詳細: ${e.message}`); 
       setTimeout(()=>setError(null), 5000); 
     } finally { setIsSyncing(false); }
   };
 
-  const handleDelete = async (id) => { if (!user) return; setIsSyncing(true); try { await deleteDoc(doc(db, 'artifacts', currentAppId, 'public', 'data', 'memos', id)); setView('list'); } catch (e) { setError("DELETE FAILED."); setTimeout(()=>setError(null), 5000); } finally { setIsSyncing(false); } };
-  const saveSettings = async (ns) => { setUserSettings(ns); await setDoc(doc(db, 'artifacts', currentAppId, 'public', 'data', 'settings', 'user'), ns); };
+  const handleDelete = async (id) => {
+    if (!user) return;
+    setIsSyncing(true);
+    try { await deleteDoc(doc(db, 'artifacts', currentAppId, 'public', 'data', 'memos', id)); setView('list'); } 
+    catch (e) { setError("DELETE FAILED."); setTimeout(()=>setError(null), 5000); } finally { setIsSyncing(false); }
+  };
+
+  const saveSettings = async (newSettings) => { setUserSettings(newSettings); await setDoc(doc(db, 'artifacts', currentAppId, 'public', 'data', 'settings', 'user'), newSettings); };
 
   const handleBossDefeat = async (siteName, memoCount) => {
     if (!window.confirm(`「${siteName}」の討伐（現場完了）を報告しますか？`)) return;
@@ -758,10 +848,32 @@ export default function App() {
     const comps = stats.completedSites || [];
     if (comps.includes(siteName)) return;
 
-    const bonus = memoCount * 50; setBossExp(bonus); setShowBossDefeat(true);
-    const newExp = (stats.exp || 0) + bonus; const newLevel = Math.floor(newExp / 100) + 1;
-    await saveSettings({ ...userSettings, stats: { ...stats, exp: newExp, level: newLevel, completedSites: [...comps, siteName] } });
-    setTimeout(() => { setShowBossDefeat(false); if (newLevel > (stats.level || 1)) { setLevelUpData({ level: newLevel, title: getTitle(newLevel) }); setTimeout(() => setLevelUpData(null), 4000); } }, 3000);
+    const bonus = memoCount * 50; 
+    setBossExp(bonus); setShowBossDefeat(true);
+    
+    const newBonusExp = (stats.bonusExp || 0) + bonus;
+    const newExp = (memos.length * 25) + ((stats.streakDays || 0) * 10) + newBonusExp;
+    const newLevel = Math.floor(newExp / 100) + 1;
+
+    await saveSettings({ ...userSettings, stats: { ...stats, exp: newExp, level: newLevel, bonusExp: newBonusExp, completedSites: [...comps, siteName] } });
+    setTimeout(() => {
+      setShowBossDefeat(false);
+      if (newLevel > (stats.level || 1)) { setLevelUpData({ level: newLevel, title: getTitle(newLevel) }); setTimeout(() => setLevelUpData(null), 4000); }
+    }, 3000);
+  };
+
+  const handleEditClick = () => { 
+    setEditingMemo(selectedMemo); 
+    const safeMemo = {
+      title: String(selectedMemo.title || ''), site: String(selectedMemo.site || ''), genre: String(selectedMemo.genre || (Object.keys(userSettings.genres || {})[0]) || ''),
+      content: String(selectedMemo.content || ''), date: String(selectedMemo.date || new Date().toISOString().split('T')[0]),
+      materials: Array.isArray(selectedMemo.materials) ? selectedMemo.materials.filter(Boolean).map(String) : [],
+      images: Array.isArray(selectedMemo.images) ? selectedMemo.images.filter(Boolean).map(String) : [],
+      teacher: String(selectedMemo.teacher || ''), needsReview: Boolean(selectedMemo.needsReview), reviewDate: String(selectedMemo.reviewDate || ''), isReviewed: Boolean(selectedMemo.isReviewed)
+    };
+    if (selectedMemo.markupImage && safeMemo.images.length === 0) safeMemo.images.push(String(selectedMemo.markupImage));
+    setFormData(safeMemo); 
+    setView('edit'); 
   };
 
   const filteredMemos = memos.filter(m => {
@@ -777,60 +889,90 @@ export default function App() {
     return acc;
   }, {});
 
-  const currentExp = userSettings.stats?.exp || 0; const currentLevel = userSettings.stats?.level || 1; const expPercentage = currentExp % 100;
+  const currentExp = (memos.length * 25) + ((userSettings.stats?.streakDays || 0) * 10) + (userSettings.stats?.bonusExp || 0);
+  const currentLevel = Math.floor(currentExp / 100) + 1;
+  const expPercentage = currentExp % 100;
   const pendingReviews = memos.filter(m => m.needsReview && !m.isReviewed);
-  const getWeaponStyle = (l) => { if(l>=50) return {bg:'bg-cyan-900',text:'text-cyan-300',border:'border-cyan-400',shadow:'shadow-[0_0_20px_rgba(34,211,238,0.8)]'}; if(l>=20) return {bg:'bg-yellow-900',text:'text-yellow-400',border:'border-yellow-500',shadow:'shadow-[0_0_15px_rgba(250,204,21,0.5)]'}; if(l>=10) return {bg:'bg-orange-950',text:'text-orange-400',border:'border-orange-500',shadow:'shadow-[0_0_10px_rgba(251,146,60,0.4)]'}; return {bg:'bg-slate-800',text:'text-slate-400',border:'border-slate-600',shadow:'shadow-md'}; };
+
+  const getWeaponStyle = (level) => {
+    if (level >= 50) return { bg: 'bg-cyan-900', text: 'text-cyan-300', border: 'border-cyan-400', shadow: 'shadow-[0_0_20px_rgba(34,211,238,0.8)]' };
+    if (level >= 20) return { bg: 'bg-yellow-900', text: 'text-yellow-400', border: 'border-yellow-500', shadow: 'shadow-[0_0_15px_rgba(250,204,21,0.5)]' };
+    if (level >= 10) return { bg: 'bg-orange-950', text: 'text-orange-400', border: 'border-orange-500', shadow: 'shadow-[0_0_10px_rgba(251,146,60,0.4)]' };
+    return { bg: 'bg-slate-800', text: 'text-slate-400', border: 'border-slate-600', shadow: 'shadow-md' };
+  };
   const weaponStyle = getWeaponStyle(currentLevel);
 
   const handleFileUpload = async (e) => {
-    const files = Array.from(e.target.files); if (files.length === 0) return;
-    const p = (file) => new Promise((res) => { 
-      const r = new FileReader(); 
-      r.onload = (ev) => { 
-        const img = new Image(); 
-        img.onload = () => { 
-          const cvs = document.createElement('canvas'); 
-          const s = Math.min(400 / img.width, 1); 
-          cvs.width = img.width * s; cvs.height = img.height * s; 
-          const ctx = cvs.getContext('2d'); ctx.drawImage(img, 0, 0, cvs.width, cvs.height); 
-          res(cvs.toDataURL('image/jpeg', 0.3)); 
-        }; 
-        img.src = ev.target.result; 
-      }; r.readAsDataURL(file); 
-    });
-    const newImgs = await Promise.all(files.map(p)); setFormData(pr => ({...pr, images: Array.isArray(pr.images) ? [...pr.images, ...newImgs] : [...newImgs]})); e.target.value = null; 
+    const files = Array.from(e.target.files);
+    if (files.length === 0) return;
+    const processFile = (file) => {
+      return new Promise((resolve) => {
+        const reader = new FileReader();
+        reader.onload = (event) => {
+          const img = new Image();
+          img.onload = () => {
+            const canvas = document.createElement('canvas');
+            const MAX_WIDTH = 600; 
+            const scale = Math.min(MAX_WIDTH / img.width, 1);
+            canvas.width = img.width * scale; canvas.height = img.height * scale;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+            resolve(canvas.toDataURL('image/jpeg', 0.4)); 
+          };
+          img.src = event.target.result;
+        };
+        reader.readAsDataURL(file);
+      });
+    };
+    const newImageUrls = await Promise.all(files.map(processFile));
+    setFormData(prev => ({...prev, images: Array.isArray(prev.images) ? [...prev.images, ...newImageUrls] : [...newImageUrls]}));
+    e.target.value = null; 
   };
 
-  const handleMoveItem = (type, key, dir) => {
-    const arr = Object.entries(userSettings[type]).map(([k, v]) => ({ key: k, ...v })).sort((a, b) => a.order - b.order);
-    const idx = arr.findIndex(i => i.key === key); if (idx === -1) return;
-    if (dir === 'up' && idx > 0) { [arr[idx].order, arr[idx - 1].order] = [arr[idx - 1].order, arr[idx].order]; } 
-    else if (dir === 'down' && idx < arr.length - 1) { [arr[idx].order, arr[idx + 1].order] = [arr[idx + 1].order, arr[idx].order]; } else return;
-    const res = {}; arr.forEach(i => { const { key: k, ...r } = i; res[k] = r; }); saveSettings({ ...userSettings, [type]: res });
+  const handleMoveItem = (type, key, direction) => {
+    const items = userSettings[type]; 
+    const arr = Object.entries(items).map(([k, v]) => ({ key: k, ...v })).sort((a, b) => a.order - b.order);
+    const index = arr.findIndex(item => item.key === key);
+    if (index === -1) return;
+    if (direction === 'up' && index > 0) { const temp = arr[index].order; arr[index].order = arr[index - 1].order; arr[index - 1].order = temp; } 
+    else if (direction === 'down' && index < arr.length - 1) { const temp = arr[index].order; arr[index].order = arr[index + 1].order; arr[index + 1].order = temp; } 
+    else { return; }
+    const newItems = {}; arr.forEach(item => { const { key, ...rest } = item; newItems[key] = rest; });
+    saveSettings({ ...userSettings, [type]: newItems });
   };
-  const handleAddItem = (type, name, colorId, icon, group) => { const items = userSettings[type] || {}; const max = Math.max(...Object.values(items).map(i => i.order || 0), -1); saveSettings({ ...userSettings, [type]: { ...items, [name]: { colorId, icon, group, order: max + 1 } } }); };
+
+  const handleAddItem = (type, name, colorId, icon, group) => {
+    const items = userSettings[type] || {};
+    const maxOrder = Math.max(...Object.values(items).map(i => i.order || 0), -1);
+    const newItem = { colorId, icon, group, order: maxOrder + 1 };
+    saveSettings({ ...userSettings, [type]: { ...items, [name]: newItem } });
+  };
+
   const handleUpdateItem = async (type, oldKey, newKey, colorId, icon, group) => {
-    const items = userSettings[type]; const oldOrd = items[oldKey].order;
+    const items = userSettings[type];
+    const oldOrder = items[oldKey].order;
     if (oldKey !== newKey && items[newKey]) { alert("WARNING: その名前はすでに登録されています！"); return; }
-    const newItems = { ...items }; delete newItems[oldKey]; newItems[newKey] = { colorId, icon, group, order: oldOrd };
+    const newItems = { ...items }; delete newItems[oldKey]; newItems[newKey] = { colorId, icon, group, order: oldOrder };
     await saveSettings({ ...userSettings, [type]: newItems });
+
     if (oldKey !== newKey) {
       setIsSyncing(true);
       try {
-        const p = memos.map(async (m) => {
-          let u = false; let d = {};
-          if (type === 'genres' && m.genre === oldKey) { u = true; d.genre = newKey; } 
-          else if (type === 'tags' && m.materials && m.materials.includes(oldKey)) { u = true; d.materials = m.materials.map(x => x === oldKey ? newKey : x); }
-          if (u) await setDoc(doc(db, 'artifacts', currentAppId, 'public', 'data', 'memos', m.id), d, { merge: true });
-        }); await Promise.all(p);
+        const promises = memos.map(async (memo) => {
+          let needsUpdate = false; let updatedData = {};
+          if (type === 'genres' && memo.genre === oldKey) { needsUpdate = true; updatedData.genre = newKey; } 
+          else if (type === 'tags' && memo.materials && memo.materials.includes(oldKey)) { needsUpdate = true; updatedData.materials = memo.materials.map(m => m === oldKey ? newKey : m); }
+          if (needsUpdate) await setDoc(doc(db, 'artifacts', currentAppId, 'public', 'data', 'memos', memo.id), updatedData, { merge: true });
+        });
+        await Promise.all(promises);
       } catch (e) { console.error(e); } finally { setIsSyncing(false); }
     }
   };
 
   return (
     <div className="min-h-screen bg-slate-950 pb-28 text-slate-200 font-sans antialiased selection:bg-cyan-500/30 relative">
-      <div className="fixed inset-0 pointer-events-none z-0 opacity-20" style={{ backgroundImage: `linear-gradient(to right, #06b6d4 1px, transparent 1px), linear-gradient(to bottom, #06b6d4 1px, transparent 1px)`, backgroundSize: '30px 30px' }} />
-      <div className="fixed inset-0 pointer-events-none z-0 bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-transparent via-slate-950/80 to-slate-950" />
+      <div className="fixed inset-0 pointer-events-none z-0 opacity-20" style={{ backgroundImage: `linear-gradient(to right, #06b6d4 1px, transparent 1px), linear-gradient(to bottom, #06b6d4 1px, transparent 1px)`, backgroundSize: '30px 30px' }}></div>
+      <div className="fixed inset-0 pointer-events-none z-0 bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-transparent via-slate-950/80 to-slate-950"></div>
 
       <div className="relative z-10">
         <LevelUpModal levelUpData={levelUpData} />
@@ -896,7 +1038,7 @@ export default function App() {
                 <span className="text-[10px] font-bold text-cyan-50 tracking-wide truncate max-w-[120px]">{String(getTitle(currentLevel))}</span>
                 {(userSettings.stats?.streakDays || 0) > 0 && <span className="bg-orange-500/20 border border-orange-500 text-orange-400 text-[9px] font-black px-1.5 py-0.5 rounded flex items-center gap-0.5 shadow-[0_0_5px_rgba(249,115,22,0.3)]"><Flame size={10}/> {Number(userSettings.stats.streakDays)}連コンボ</span>}
               </div>
-              <span className="text-[8px] font-bold text-cyan-600 uppercase tracking-widest">DATA: {Number(userSettings.stats?.totalMemos || 0)}</span>
+              <span className="text-[8px] font-bold text-cyan-600 uppercase tracking-widest">DATA: {Number(memos.length)}</span>
             </div>
             <div className="w-full bg-slate-900 rounded-full h-1.5 overflow-hidden border border-slate-800">
               <div className="bg-gradient-to-r from-cyan-400 to-blue-500 h-1.5 rounded-full transition-all duration-1000 ease-out relative shadow-[0_0_10px_rgba(34,211,238,0.8)]" style={{ width: `${expPercentage}%` }}><div className="absolute inset-0 bg-white/30 w-full h-full animate-pulse"></div></div>
@@ -930,7 +1072,7 @@ export default function App() {
           )}
         </header>
 
-        {/* メイン画面群（List, Stats, Settings, Detail） */}
+        {/* メイン画面群（List, Stats, Settings） */}
         <main className="p-4 max-w-xl mx-auto relative z-10">
           {view === 'list' && (
             <div className="space-y-4">
@@ -1041,67 +1183,61 @@ export default function App() {
               <div className="text-center py-4 opacity-30"><Gamepad2 size={32} className="mx-auto text-cyan-600 mb-2"/><p className="text-[10px] font-black text-cyan-600 uppercase tracking-widest">ELECTRIC CLIPPER MASTER v3.0</p></div>
             </div>
           )}
-
-          {view === 'detail' && selectedMemo && (
-            <div className="fixed inset-0 bg-slate-950 z-50 overflow-y-auto pb-32 animate-in slide-in-from-right duration-300">
-              <header className={`${ColorMap[userSettings.genres[selectedMemo.genre]?.colorId || 'gray']?.bg || 'bg-slate-800'} text-slate-900 p-6 flex justify-between items-center sticky top-0 rounded-b-[2.5rem] shadow-[0_0_20px_rgba(0,0,0,0.8)] border-b border-white/20 relative overflow-hidden`}>
-                <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-white/20 to-transparent"></div>
-                <button onClick={() => setView('list')} className="relative z-10"><ChevronLeft size={28}/></button>
-                <h2 className="font-black italic text-[10px] tracking-widest uppercase relative z-10 opacity-70">DECRYPTED DATA</h2>
-                <button onClick={() => { 
-                  setEditingMemo(selectedMemo); 
-                  const safeMemo = {...selectedMemo};
-                  if (!safeMemo.images) safeMemo.images = [];
-                  if (safeMemo.markupImage && safeMemo.images.length === 0) safeMemo.images.push(safeMemo.markupImage);
-                  setFormData(safeMemo); 
-                  setView('edit'); 
-                }} className="relative z-10"><Edit3 size={24}/></button>
-              </header>
-              <div className="p-8 space-y-8 max-w-xl mx-auto">
-                <div className="space-y-4 relative">
-                  <div className="absolute -left-4 top-0 w-1 h-full bg-cyan-900/30 rounded-full"></div>
-                  <div className="flex gap-2 items-center mb-2">
-                    <span className={`px-3 py-1.5 rounded-lg text-[9px] font-black uppercase flex items-center gap-1.5 ${ColorMap[userSettings.genres[selectedMemo.genre]?.colorId || 'gray']?.light} ${ColorMap[userSettings.genres[selectedMemo.genre]?.colorId || 'gray']?.text} border shadow-inner`}><DynamicIcon name={userSettings.genres[selectedMemo.genre]?.icon} size={14}/> {String(selectedMemo.genre)}</span>
-                  </div>
-                  <h2 className="text-3xl font-black text-slate-100 leading-tight tracking-tighter drop-shadow-md">{String(selectedMemo.title)}</h2>
-                  <div className="flex gap-4 text-[10px] font-black text-slate-400 uppercase bg-slate-900 p-3 rounded-xl border border-slate-700 shadow-inner">
-                    <span className="flex items-center gap-1.5"><MapPin size={12} className="text-cyan-500"/> {String(selectedMemo.site)}</span><span className="flex items-center gap-1.5"><Calendar size={12} className="text-cyan-500"/> {String(selectedMemo.date)}</span>
-                  </div>
-                  {(selectedMemo.teacher || selectedMemo.needsReview) && (
-                    <div className="flex flex-wrap gap-2 text-[10px] font-bold mt-2">
-                      {selectedMemo.teacher && <span className="bg-slate-800 text-cyan-200 px-2.5 py-1.5 rounded-lg flex items-center gap-1.5 border border-slate-600 shadow-sm"><User size={12} className="text-cyan-500"/> 伝授: {String(selectedMemo.teacher)}</span>}
-                      {selectedMemo.needsReview && !selectedMemo.isReviewed && <span className="bg-red-950 text-red-400 px-2.5 py-1.5 rounded-lg flex items-center gap-1.5 border border-red-500/50 shadow-[0_0_8px_rgba(239,68,68,0.3)]"><Bell size={12}/> 要確認 ({String(selectedMemo.reviewDate) || '期限なし'})</span>}
-                      {selectedMemo.needsReview && selectedMemo.isReviewed && <span className="bg-green-950 text-green-400 px-2.5 py-1.5 rounded-lg flex items-center gap-1.5 border border-green-500/50 shadow-sm"><CheckSquare size={12}/> 確認完了</span>}
-                    </div>
-                  )}
-                  {selectedMemo.materials && selectedMemo.materials.length > 0 && (
-                    <div className="flex flex-wrap gap-2 pt-2">
-                      {selectedMemo.materials.map((mat, i) => {
-                        const tagConf = userSettings.tags[mat] || { colorId: 'gray', icon: 'Tag' }; const tColor = ColorMap[tagConf.colorId] || ColorMap.gray;
-                        return <span key={i} className={`${tColor.light} ${tColor.text} ${tColor.border} border px-2.5 py-1.5 rounded-lg text-[10px] font-bold flex items-center gap-1.5 shadow-sm`}><DynamicIcon name={tagConf.icon} size={12}/> {String(mat)}</span>
-                      })}
-                    </div>
-                  )}
-                </div>
-                {((selectedMemo.images && selectedMemo.images.length > 0) || selectedMemo.markupImage) && (
-                  <div className="space-y-3">
-                    <h3 className="text-xs font-black text-cyan-600 flex items-center gap-1 tracking-widest"><Camera size={14}/> VISUAL DATA</h3>
-                    <div className="flex flex-col gap-4">
-                      {selectedMemo.markupImage && (!selectedMemo.images || selectedMemo.images.length===0) && <div className="bg-slate-900 rounded-[2.5rem] overflow-hidden border-2 border-slate-700 shadow-[0_0_15px_rgba(0,0,0,0.8)]"><img src={selectedMemo.markupImage} className="w-full opacity-90" /></div>}
-                      {selectedMemo.images && selectedMemo.images.map((img, i) => <div key={i} className="bg-slate-900 rounded-[2.5rem] overflow-hidden border-2 border-slate-700 shadow-[0_0_15px_rgba(0,0,0,0.8)] relative"><img src={img} className="w-full h-auto object-cover opacity-90" /></div>)}
-                    </div>
-                  </div>
-                )}
-                <div className="bg-slate-900 p-8 rounded-[3rem] text-cyan-50 font-medium border border-cyan-900/50 leading-relaxed relative shadow-[0_0_20px_rgba(6,182,212,0.1)] whitespace-pre-wrap">
-                  <span className="absolute -top-3 left-10 bg-cyan-600 text-slate-900 px-4 py-1 rounded-full text-[10px] not-italic shadow-[0_0_8px_rgba(6,182,212,0.8)] tracking-widest font-black uppercase">Quest Log</span>
-                  {String(selectedMemo.content || '')}
-                </div>
-              </div>
-            </div>
-          )}
         </main>
 
-        {/* ★ 追加・編集フォーム画面（安全フィルター付き） */}
+        {/* ★ 独立・最前面化された 詳細表示画面（ヘッダーに隠れない） */}
+        {view === 'detail' && selectedMemo && (
+          <div className="fixed inset-0 bg-slate-950 z-[100] overflow-y-auto pb-32 animate-in slide-in-from-right duration-300">
+            <header className={`${ColorMap[userSettings.genres[selectedMemo.genre]?.colorId || 'gray']?.bg || 'bg-slate-800'} text-slate-900 p-6 flex justify-between items-center sticky top-0 rounded-b-[2.5rem] shadow-[0_0_20px_rgba(0,0,0,0.8)] border-b border-white/20 relative overflow-hidden z-20`}>
+              <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-white/20 to-transparent"></div>
+              <button onClick={() => setView('list')} className="relative z-10 p-2 bg-black/20 rounded-full text-white backdrop-blur-sm active:scale-90"><ChevronLeft size={28}/></button>
+              <h2 className="font-black italic text-[10px] tracking-widest uppercase relative z-10 opacity-80 text-white drop-shadow-md">DECRYPTED DATA</h2>
+              <button onClick={handleEditClick} className="relative z-10 p-2 bg-black/20 rounded-full text-white backdrop-blur-sm active:scale-90"><Edit3 size={24}/></button>
+            </header>
+            <div className="p-8 space-y-8 max-w-xl mx-auto relative z-10">
+              <div className="space-y-4 relative">
+                <div className="absolute -left-4 top-0 w-1 h-full bg-cyan-900/30 rounded-full"></div>
+                <div className="flex gap-2 items-center mb-2">
+                  <span className={`px-3 py-1.5 rounded-lg text-[9px] font-black uppercase flex items-center gap-1.5 ${ColorMap[userSettings.genres[selectedMemo.genre]?.colorId || 'gray']?.light} ${ColorMap[userSettings.genres[selectedMemo.genre]?.colorId || 'gray']?.text} border shadow-inner`}><DynamicIcon name={userSettings.genres[selectedMemo.genre]?.icon} size={14}/> {String(selectedMemo.genre)}</span>
+                </div>
+                <h2 className="text-3xl font-black text-slate-100 leading-tight tracking-tighter drop-shadow-md">{String(selectedMemo.title)}</h2>
+                <div className="flex gap-4 text-[10px] font-black text-slate-400 uppercase bg-slate-900 p-3 rounded-xl border border-slate-700 shadow-inner">
+                  <span className="flex items-center gap-1.5"><MapPin size={12} className="text-cyan-500"/> {String(selectedMemo.site)}</span><span className="flex items-center gap-1.5"><Calendar size={12} className="text-cyan-500"/> {String(selectedMemo.date)}</span>
+                </div>
+                {(selectedMemo.teacher || selectedMemo.needsReview) && (
+                  <div className="flex flex-wrap gap-2 text-[10px] font-bold mt-2">
+                    {selectedMemo.teacher && <span className="bg-slate-800 text-cyan-200 px-2.5 py-1.5 rounded-lg flex items-center gap-1.5 border border-slate-600 shadow-sm"><User size={12} className="text-cyan-500"/> 伝授: {String(selectedMemo.teacher)}</span>}
+                    {selectedMemo.needsReview && !selectedMemo.isReviewed && <span className="bg-red-950 text-red-400 px-2.5 py-1.5 rounded-lg flex items-center gap-1.5 border border-red-500/50 shadow-[0_0_8px_rgba(239,68,68,0.3)]"><Bell size={12}/> 要確認 ({String(selectedMemo.reviewDate) || '期限なし'})</span>}
+                    {selectedMemo.needsReview && selectedMemo.isReviewed && <span className="bg-green-950 text-green-400 px-2.5 py-1.5 rounded-lg flex items-center gap-1.5 border border-green-500/50 shadow-sm"><CheckSquare size={12}/> 確認完了</span>}
+                  </div>
+                )}
+                {selectedMemo.materials && selectedMemo.materials.length > 0 && (
+                  <div className="flex flex-wrap gap-2 pt-2">
+                    {selectedMemo.materials.map((mat, i) => {
+                      const tagConf = userSettings.tags[mat] || { colorId: 'gray', icon: 'Tag' }; const tColor = ColorMap[tagConf.colorId] || ColorMap.gray;
+                      return <span key={i} className={`${tColor.light} ${tColor.text} ${tColor.border} border px-2.5 py-1.5 rounded-lg text-[10px] font-bold flex items-center gap-1.5 shadow-sm`}><DynamicIcon name={tagConf.icon} size={12}/> {String(mat)}</span>
+                    })}
+                  </div>
+                )}
+              </div>
+              {((selectedMemo.images && selectedMemo.images.length > 0) || selectedMemo.markupImage) && (
+                <div className="space-y-3">
+                  <h3 className="text-xs font-black text-cyan-600 flex items-center gap-1 tracking-widest"><Camera size={14}/> VISUAL DATA</h3>
+                  <div className="flex flex-col gap-4">
+                    {selectedMemo.markupImage && (!selectedMemo.images || selectedMemo.images.length===0) && <div className="bg-slate-900 rounded-[2.5rem] overflow-hidden border-2 border-slate-700 shadow-[0_0_15px_rgba(0,0,0,0.8)]"><img src={selectedMemo.markupImage} className="w-full opacity-90" /></div>}
+                    {selectedMemo.images && selectedMemo.images.map((img, i) => <div key={i} className="bg-slate-900 rounded-[2.5rem] overflow-hidden border-2 border-slate-700 shadow-[0_0_15px_rgba(0,0,0,0.8)] relative"><img src={img} className="w-full h-auto object-cover opacity-90" /></div>)}
+                  </div>
+                </div>
+              )}
+              <div className="bg-slate-900 p-8 rounded-[3rem] text-cyan-50 font-medium border border-cyan-900/50 leading-relaxed relative shadow-[0_0_20px_rgba(6,182,212,0.1)] whitespace-pre-wrap">
+                <span className="absolute -top-3 left-10 bg-cyan-600 text-slate-900 px-4 py-1 rounded-full text-[10px] not-italic shadow-[0_0_8px_rgba(6,182,212,0.8)] tracking-widest font-black uppercase">Quest Log</span>
+                {String(selectedMemo.content || '')}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ★ 独立・最前面化された 追加・編集フォーム画面 */}
         {(view === 'add' || view === 'edit') && (
           <div className="fixed inset-0 bg-slate-950 z-[100] overflow-y-auto pb-32 animate-in slide-in-from-bottom-10">
             <div className="fixed inset-0 pointer-events-none z-0 opacity-10" style={{ backgroundImage: `linear-gradient(to right, #facc15 1px, transparent 1px), linear-gradient(to bottom, #facc15 1px, transparent 1px)`, backgroundSize: '40px 40px' }}></div>
@@ -1122,13 +1258,13 @@ export default function App() {
               )}
 
               <div className="space-y-4">
-                <input list="title-history" className="w-full text-2xl font-black bg-transparent border-b-2 border-slate-700 py-2 text-slate-100 focus:border-cyan-400 outline-none transition-colors placeholder:text-slate-600" placeholder="クエスト名（作業・タイトル）" value={formData.title} onChange={e => setFormData({...formData, title: e.target.value})} />
+                <input list="title-history" className="w-full text-2xl font-black bg-transparent border-b-2 border-slate-700 py-2 text-slate-100 focus:border-cyan-400 outline-none transition-colors placeholder:text-slate-600" placeholder="クエスト名（作業・タイトル）" value={formData.title || ''} onChange={e => setFormData({...formData, title: e.target.value})} />
                 <datalist id="title-history">{uniqueTitles.map(t => <option key={t} value={t} />)}</datalist>
 
                 <div className="grid grid-cols-2 gap-4">
-                  <input type="date" className="p-3 bg-slate-900 border border-slate-700 rounded-2xl font-bold outline-none text-sm text-cyan-50 shadow-inner focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500" value={formData.date} onChange={e => setFormData({...formData, date: e.target.value})} />
+                  <input type="date" className="p-3 bg-slate-900 border border-slate-700 rounded-2xl font-bold outline-none text-sm text-cyan-50 shadow-inner focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500" value={formData.date || ''} onChange={e => setFormData({...formData, date: e.target.value})} />
                   <div className="relative flex items-center">
-                    <select className="p-3 bg-slate-900 border border-slate-700 rounded-2xl font-bold outline-none text-sm text-cyan-50 shadow-inner w-full focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 appearance-none" value={formData.genre} onChange={e => setFormData({...formData, genre: e.target.value})}>
+                    <select className="p-3 bg-slate-900 border border-slate-700 rounded-2xl font-bold outline-none text-sm text-cyan-50 shadow-inner w-full focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 appearance-none" value={formData.genre || ''} onChange={e => setFormData({...formData, genre: e.target.value})}>
                       {groupedGenresForm.map(({ category, genres }) => (<optgroup key={category} label={`【${String(category)}】`}>{genres.map(g => <option key={g.key} value={g.key}>{String(g.key)}</option>)}</optgroup>))}
                     </select>
                     <ChevronDown size={14} className="absolute right-3 text-slate-500 pointer-events-none"/>
@@ -1154,7 +1290,7 @@ export default function App() {
 
                 <div className="relative shadow-inner rounded-2xl">
                   <Building className="absolute left-3 top-3.5 text-cyan-700" size={16}/>
-                  <input list="site-history" className="w-full p-3 pl-10 bg-slate-900 border border-slate-700 rounded-2xl font-bold outline-none text-sm text-cyan-50 focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500" placeholder="ダンジョン名（現場・案件）" value={formData.site} onChange={e => setFormData({...formData, site: e.target.value})} />
+                  <input list="site-history" className="w-full p-3 pl-10 bg-slate-900 border border-slate-700 rounded-2xl font-bold outline-none text-sm text-cyan-50 focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500" placeholder="ダンジョン名（現場・案件）" value={formData.site || ''} onChange={e => setFormData({...formData, site: e.target.value})} />
                   <datalist id="site-history">{uniqueSites.map(s => <option key={s} value={s} />)}</datalist>
                 </div>
               </div>
@@ -1204,12 +1340,14 @@ export default function App() {
                   {!formData.images || formData.images.length === 0 ? (
                     <div className="w-full flex-shrink-0 h-32 border-2 border-dashed border-slate-700 rounded-[2rem] flex flex-col items-center justify-center text-slate-500 font-bold text-xs bg-slate-950/50 shadow-inner"><ImageIcon size={24} className="mb-2 opacity-50"/> 現場の様子を記録しましょう</div>
                   ) : (
-                    formData.images.map((img, i) => (
-                      <div key={i} className="relative w-48 flex-shrink-0 snap-center group">
-                        <img src={img} className="w-full h-32 object-cover rounded-[1.5rem] border border-slate-700 shadow-lg cursor-pointer opacity-90 hover:opacity-100 transition-opacity" onClick={() => setMarkupModal({ isOpen: true, imgIndex: i, dataUrl: img })} />
-                        <button type="button" onClick={() => { const newImgs = [...formData.images]; newImgs.splice(i, 1); setFormData({...formData, images: newImgs}); }} className="absolute -top-2 -right-2 bg-red-500 text-slate-900 p-1.5 rounded-full shadow-[0_0_10px_rgba(239,68,68,0.8)]"><X size={14}/></button>
-                        <div className="absolute bottom-2 right-2 bg-cyan-900/80 text-cyan-100 p-1.5 rounded-full pointer-events-none border border-cyan-500"><Edit3 size={12}/></div>
-                      </div>
+                    Array.isArray(formData.images) && formData.images.map((img, i) => (
+                      typeof img === 'string' ? (
+                        <div key={i} className="relative w-48 flex-shrink-0 snap-center group">
+                          <img src={img} className="w-full h-32 object-cover rounded-[1.5rem] border border-slate-700 shadow-lg cursor-pointer opacity-90 hover:opacity-100 transition-opacity" onClick={() => setMarkupModal({ isOpen: true, imgIndex: i, dataUrl: img })} />
+                          <button type="button" onClick={() => { const newImgs = [...formData.images]; newImgs.splice(i, 1); setFormData({...formData, images: newImgs}); }} className="absolute -top-2 -right-2 bg-red-500 text-slate-900 p-1.5 rounded-full shadow-[0_0_10px_rgba(239,68,68,0.8)]"><X size={14}/></button>
+                          <div className="absolute bottom-2 right-2 bg-cyan-900/80 text-cyan-100 p-1.5 rounded-full pointer-events-none border border-cyan-500"><Edit3 size={12}/></div>
+                        </div>
+                      ) : null
                     ))
                   )}
                 </div>
@@ -1221,7 +1359,7 @@ export default function App() {
                     typeof p === 'string' ? <button key={idx} type="button" onClick={() => setFormData({...formData, content: formData.content + (formData.content?'\n':'') + p})} className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-cyan-100 rounded-xl text-[10px] border border-slate-600 font-black transition-colors shadow-inner">+ {String(p)}</button> : null
                   ))}
                 </div>
-                <textarea className="w-full h-40 pt-2 bg-transparent outline-none text-sm font-medium leading-relaxed resize-none text-cyan-50 placeholder:text-slate-600" placeholder="攻略のヒント、配線の色、次回への引き継ぎ事項などを記録..." value={formData.content} onChange={e => setFormData({...formData, content: e.target.value})} />
+                <textarea className="w-full h-40 pt-2 bg-transparent outline-none text-sm font-medium leading-relaxed resize-none text-cyan-50 placeholder:text-slate-600" placeholder="攻略のヒント、配線の色、次回への引き継ぎ事項などを記録..." value={formData.content || ''} onChange={e => setFormData({...formData, content: e.target.value})} />
               </div>
               
               {view === 'edit' && <button type="button" onClick={() => handleDelete(selectedMemo.id)} className="w-full py-5 text-red-500 font-black text-xs border-2 border-red-900/50 border-dashed rounded-[2.5rem] uppercase tracking-widest hover:bg-red-950 transition-all mt-8 shadow-inner">クエストを破棄する</button>}
@@ -1230,7 +1368,7 @@ export default function App() {
         )}
       </div>
 
-      {!markupModal.isOpen && view !== 'add' && view !== 'edit' && <NavBtn view={view} setView={setView} />}
+      {!markupModal.isOpen && view !== 'add' && view !== 'edit' && view !== 'detail' && <NavBtn view={view} setView={setView} />}
     </div>
   );
 }
