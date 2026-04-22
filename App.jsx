@@ -957,6 +957,51 @@ export default function App() {
     e.target.value = null; 
   };
 
+  // ★ Googleフォト等からの「コピー＆ペースト（貼り付け）」対応
+  useEffect(() => {
+    if (view !== 'add' && view !== 'edit') return;
+    
+    const handlePaste = async (e) => {
+      const items = e.clipboardData?.items;
+      if (!items) return;
+      
+      const imageFiles = [];
+      for (let i = 0; i < items.length; i++) {
+        if (items[i].type.indexOf('image') !== -1) {
+          imageFiles.push(items[i].getAsFile());
+        }
+      }
+      
+      if (imageFiles.length === 0) return;
+      
+      const processFile = (file) => {
+        return new Promise((resolve) => {
+          const reader = new FileReader();
+          reader.onload = (event) => {
+            const img = new Image();
+            img.onload = () => {
+              const canvas = document.createElement('canvas');
+              const MAX_WIDTH = 600; 
+              const scale = Math.min(MAX_WIDTH / img.width, 1);
+              canvas.width = img.width * scale; canvas.height = img.height * scale;
+              const ctx = canvas.getContext('2d');
+              ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+              resolve(canvas.toDataURL('image/jpeg', 0.4)); 
+            };
+            img.src = event.target.result;
+          };
+          reader.readAsDataURL(file);
+        });
+      };
+      
+      const newImageUrls = await Promise.all(imageFiles.map(processFile));
+      setFormData(prev => ({...prev, images: Array.isArray(prev.images) ? [...prev.images, ...newImageUrls] : [...newImageUrls]}));
+    };
+
+    window.addEventListener('paste', handlePaste);
+    return () => window.removeEventListener('paste', handlePaste);
+  }, [view]);
+
   const handleMoveItem = (type, key, direction) => {
     const items = userSettings[type]; 
     const arr = Object.entries(items).map(([k, v]) => ({ key: k, ...v })).sort((a, b) => a.order - b.order);
@@ -1363,10 +1408,10 @@ export default function App() {
               </div>
               
               <div className="space-y-3 bg-slate-900/80 backdrop-blur-sm p-5 rounded-[2.5rem] border border-slate-700 shadow-lg">
-                <div className="flex justify-between items-center text-[10px] font-black text-cyan-600 mb-2 tracking-widest"><span className="flex items-center gap-1"><Camera size={14}/> VISUAL EVIDENCE</span><label className="text-slate-900 bg-cyan-600 px-3 py-1.5 rounded-xl flex items-center gap-1 cursor-pointer active:scale-95 transition-all shadow-[0_0_10px_rgba(6,182,212,0.4)] hover:bg-cyan-500"><Upload size={14}/> 撮影 / 一括追加<input type="file" accept="image/*" multiple onChange={handleFileUpload} className="hidden" /></label></div>
+                <div className="flex justify-between items-center text-[10px] font-black text-cyan-600 mb-2 tracking-widest"><span className="flex items-center gap-1"><Camera size={14}/> VISUAL EVIDENCE</span><label className="text-slate-900 bg-cyan-600 px-3 py-1.5 rounded-xl flex items-center gap-1 cursor-pointer active:scale-95 transition-all shadow-[0_0_10px_rgba(6,182,212,0.4)] hover:bg-cyan-500"><Upload size={14}/> 撮影 / ファイル<input type="file" accept="image/*" multiple onChange={handleFileUpload} className="hidden" /></label></div>
                 <div className="flex gap-4 overflow-x-auto pb-4 snap-x">
                   {!formData.images || formData.images.length === 0 ? (
-                    <div className="w-full flex-shrink-0 h-32 border-2 border-dashed border-slate-700 rounded-[2rem] flex flex-col items-center justify-center text-slate-500 font-bold text-xs bg-slate-950/50 shadow-inner"><ImageIcon size={24} className="mb-2 opacity-50"/> 現場の様子を記録しましょう</div>
+                    <div className="w-full flex-shrink-0 h-32 border-2 border-dashed border-slate-700 rounded-[2rem] flex flex-col items-center justify-center text-slate-500 font-bold text-xs bg-slate-950/50 shadow-inner text-center px-4"><ImageIcon size={24} className="mb-2 opacity-50"/> <span>現場の様子を記録</span><span className="text-[9px] mt-1 opacity-70">Googleフォト等からコピーして<br/>「貼り付け(ペースト)」も可能です</span></div>
                   ) : (
                     Array.isArray(formData.images) && formData.images.map((img, i) => (
                       typeof img === 'string' ? (
