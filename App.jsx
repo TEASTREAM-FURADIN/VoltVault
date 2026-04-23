@@ -471,13 +471,7 @@ const MarkupModalCanvas = ({ markupModal, setMarkupModal, formData, setFormData 
   };
 
   const handleMove = (e) => {
-    if (dragRef.current) { 
-      e.preventDefault(); 
-      const p = getPos(e); 
-      dragRef.current.moved = true;
-      setTexts(texts.map(t => t.id === dragRef.current.id ? { ...t, x: p.x - dragRef.current.ox, y: p.y - dragRef.current.oy } : t)); 
-      return; 
-    }
+    if (dragRef.current) { e.preventDefault(); const p = getPos(e); setTexts(texts.map(t => t.id === dragRef.current.id ? { ...t, x: p.x - dragRef.current.ox, y: p.y - dragRef.current.oy } : t)); return; }
     if (!currentStroke.current || !canvasRef.current) return;
     e.preventDefault(); const p = getPos(e); const pts = currentStroke.current.points; const prev = pts[pts.length - 1]; pts.push(p);
     const cvs = canvasRef.current; const ctx = cvs.getContext('2d');
@@ -693,6 +687,7 @@ export default function App() {
   const [encounterMemo, setEncounterMemo] = useState(null);
   const [showTrophiesModal, setShowTrophiesModal] = useState(false); 
   const [markupModal, setMarkupModal] = useState({ isOpen: false, imgIndex: null, dataUrl: null });
+  const [showPasteModal, setShowPasteModal] = useState(false); // ★ 追加：ペースト用モーダル
 
   const uniqueSites = [...new Set(memos.map(m => String(m.site || "")).filter(Boolean))];
   const uniqueTitles = [...new Set(memos.map(m => String(m.title || "").replace(/\s+\d+$/, "")).filter(Boolean))];
@@ -793,8 +788,6 @@ export default function App() {
     if (view === 'add' && !formData.genre && Object.keys(userSettings.genres || {}).length > 0) setFormData(prev => ({ ...prev, genre: Object.keys(userSettings.genres)[0] }));
   }, [view, userSettings]);
 
-  const escapeRegExp = (string) => String(string).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-
   const handleSave = async () => {
     if (!formData.title || formData.title.trim() === '') {
       alert("クエスト名（タイトル）を入力してください！");
@@ -807,7 +800,7 @@ export default function App() {
 
     const payloadSize = JSON.stringify(formData).length;
     if (payloadSize > 900000) { 
-      alert(`データサイズ制限エラー（約${Math.round(payloadSize/1000)}KB）\n\nスマホの高画質カメラの影響で、1回の保存容量の限界を超えています。\n画像を減らすか、一度アプリを再読み込みしてください。`);
+      alert(`データが大きすぎます！（現在約${Math.round(payloadSize/1000)}KB）\n\nスマホの高画質カメラの影響で、1回の保存容量の限界を超えています。\n画像を減らすか、一度アプリを再読み込みしてください。`);
       return;
     }
 
@@ -872,21 +865,21 @@ export default function App() {
 
   const handleBossDefeat = async (siteName, memoCount) => {
     if (!window.confirm(`「${siteName}」の討伐（現場完了）を報告しますか？`)) return;
-    const stats = userSettings.stats || defaultSettings.stats;
-    const comps = stats.completedSites || [];
-    if (comps.includes(siteName)) return;
+    const currentStats = userSettings.stats || defaultSettings.stats;
+    const currentCompleted = currentStats.completedSites || [];
+    if (currentCompleted.includes(siteName)) return;
 
-    const bonus = memoCount * 50; 
-    setBossExp(bonus); setShowBossDefeat(true);
+    const bonusExp = memoCount * 50; 
+    setBossExp(bonusExp); setShowBossDefeat(true);
     
-    const newBonusExp = (stats.bonusExp || 0) + bonus;
-    const newExp = (memos.length * 25) + ((stats.streakDays || 0) * 10) + newBonusExp;
+    const newBonusExp = (currentStats.bonusExp || 0) + bonusExp;
+    const newExp = (memos.length * 25) + ((currentStats.streakDays || 0) * 10) + newBonusExp;
     const newLevel = Math.floor(newExp / 100) + 1;
 
-    await saveSettings({ ...userSettings, stats: { ...stats, exp: newExp, level: newLevel, bonusExp: newBonusExp, completedSites: [...comps, siteName] } });
+    await saveSettings({ ...userSettings, stats: { ...currentStats, exp: newExp, level: newLevel, bonusExp: newBonusExp, completedSites: [...currentCompleted, siteName] } });
     setTimeout(() => {
       setShowBossDefeat(false);
-      if (newLevel > (stats.level || 1)) { setLevelUpData({ level: newLevel, title: getTitle(newLevel) }); setTimeout(() => setLevelUpData(null), 4000); }
+      if (newLevel > (currentStats.level || 1)) { setLevelUpData({ level: newLevel, title: getTitle(newLevel) }); setTimeout(() => setLevelUpData(null), 4000); }
     }, 3000);
   };
 
@@ -957,50 +950,79 @@ export default function App() {
     e.target.value = null; 
   };
 
-  // ★ Googleフォト等からの「コピー＆ペースト（貼り付け）」対応
-  useEffect(() => {
-    if (view !== 'add' && view !== 'edit') return;
+  // ★ 確実なペースト処理を実行する関数（モーダル内のテキストエリアで発火）
+  const handleDirectPaste = async (e) => {
+    const items = e.clipboardData?.items;
+    if (!items) return;
     
-    const handlePaste = async (e) => {
-      const items = e.clipboardData?.items;
-      if (!items) return;
-      
-      const imageFiles = [];
-      for (let i = 0; i < items.length; i++) {
-        if (items[i].type.indexOf('image') !== -1) {
-          imageFiles.push(items[i].getAsFile());
-        }
+    const imageFiles = [];
+    for (let i = 0; i < items.length; i++) {
+      if (items[i].type.indexOf('image') !== -1) {
+        imageFiles.push(items[i].getAsFile());
       }
-      
-      if (imageFiles.length === 0) return;
-      
-      const processFile = (file) => {
-        return new Promise((resolve) => {
-          const reader = new FileReader();
-          reader.onload = (event) => {
-            const img = new Image();
-            img.onload = () => {
-              const canvas = document.createElement('canvas');
-              const MAX_WIDTH = 600; 
-              const scale = Math.min(MAX_WIDTH / img.width, 1);
-              canvas.width = img.width * scale; canvas.height = img.height * scale;
-              const ctx = canvas.getContext('2d');
-              ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-              resolve(canvas.toDataURL('image/jpeg', 0.4)); 
-            };
-            img.src = event.target.result;
+    }
+    
+    if (imageFiles.length === 0) {
+      alert("画像が貼り付けられませんでした。\nGoogleフォト等で画像が正しく「コピー」されているか確認してください。");
+      return;
+    }
+    
+    const processFile = (file) => {
+      return new Promise((resolve) => {
+        const reader = new FileReader();
+        reader.onload = (event) => {
+          const img = new Image();
+          img.onload = () => {
+            const canvas = document.createElement('canvas');
+            const MAX_WIDTH = 600; 
+            const scale = Math.min(MAX_WIDTH / img.width, 1);
+            canvas.width = img.width * scale; canvas.height = img.height * scale;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+            resolve(canvas.toDataURL('image/jpeg', 0.4)); 
           };
-          reader.readAsDataURL(file);
-        });
-      };
-      
-      const newImageUrls = await Promise.all(imageFiles.map(processFile));
-      setFormData(prev => ({...prev, images: Array.isArray(prev.images) ? [...prev.images, ...newImageUrls] : [...newImageUrls]}));
+          img.src = event.target.result;
+        };
+        reader.readAsDataURL(file);
+      });
     };
+    
+    const newImageUrls = await Promise.all(imageFiles.map(processFile));
+    setFormData(prev => ({...prev, images: Array.isArray(prev.images) ? [...prev.images, ...newImageUrls] : [...newImageUrls]}));
+    setShowPasteModal(false); // 成功したらモーダルを閉じる
+  };
 
-    window.addEventListener('paste', handlePaste);
-    return () => window.removeEventListener('paste', handlePaste);
-  }, [view]);
+  const handlePasteBtn = async () => {
+    try {
+      if (!navigator.clipboard || !navigator.clipboard.read) {
+        // ★ API非対応なら強制的にモーダルへ
+        setShowPasteModal(true);
+        return;
+      }
+      const cItems = await navigator.clipboard.read(); 
+      const files = [];
+      for (const item of cItems) { 
+        for (const type of item.types.filter(t => t.startsWith('image/'))) { 
+          files.push(await item.getType(type)); 
+        } 
+      }
+      if (!files.length) return alert("クリップボードに画像がありません。\nGoogleフォトで「コピー」できているか確認してください。");
+      const p = (blob) => new Promise((res) => {
+        const r = new FileReader(); r.onload = (ev) => {
+          const img = new Image(); img.onload = () => {
+            const cvs = document.createElement('canvas'); const s = Math.min(600 / img.width, 1);
+            cvs.width = img.width * s; cvs.height = img.height * s;
+            const ctx = cvs.getContext('2d'); ctx.drawImage(img, 0, 0, cvs.width, cvs.height); res(cvs.toDataURL('image/jpeg', 0.4)); 
+          }; img.src = ev.target.result;
+        }; r.readAsDataURL(blob);
+      });
+      const newImgs = await Promise.all(files.map(p));
+      setFormData(pr => ({...pr, images: Array.isArray(pr.images) ? [...pr.images, ...newImgs] : [...newImgs]}));
+    } catch (e) {
+      // ★ 権限エラーやセキュリティブロックの場合も確実にモーダルへ
+      setShowPasteModal(true);
+    }
+  };
 
   const handleMoveItem = (type, key, direction) => {
     const items = userSettings[type]; 
@@ -1051,6 +1073,31 @@ export default function App() {
         <LevelUpModal levelUpData={levelUpData} />
         <TrophiesModal showTrophiesModal={showTrophiesModal} setShowTrophiesModal={setShowTrophiesModal} memos={memos} userSettings={userSettings} />
         {markupModal.isOpen && <MarkupModalCanvas markupModal={markupModal} setMarkupModal={setMarkupModal} formData={formData} setFormData={setFormData} />}
+
+        {/* ★ ペースト（貼り付け）用モーダル */}
+        {showPasteModal && (
+          <div className="fixed inset-0 z-[250] flex items-center justify-center bg-slate-950/90 backdrop-blur-md p-4 animate-in zoom-in duration-200">
+            <div className="bg-slate-900 border border-slate-700 rounded-[2rem] p-6 w-full max-w-sm shadow-[0_0_30px_rgba(6,182,212,0.3)]">
+              <div className="flex justify-between items-center mb-4">
+                <h3 className="font-black text-cyan-400 flex items-center gap-2"><ClipboardList size={18}/> 画像を貼り付け</h3>
+                <button onClick={() => setShowPasteModal(false)} className="text-slate-500 hover:text-cyan-400 active:scale-90"><X size={24}/></button>
+              </div>
+              <p className="text-xs font-bold text-slate-300 mb-4 leading-relaxed">
+                お使いのブラウザの制限により、ボタンから直接画像を読み込めませんでした。<br/><br/>
+                お手数ですが、下の入力欄を<strong className="text-yellow-400">長押し</strong>して<strong className="text-yellow-400">「ペースト（貼り付け）」</strong>を選択してください。
+              </p>
+              <textarea 
+                autoFocus
+                className="w-full h-32 bg-slate-800 border-2 border-dashed border-cyan-500/50 rounded-xl p-4 text-cyan-50 text-sm focus:border-cyan-400 outline-none resize-none font-bold placeholder-slate-500 shadow-inner"
+                placeholder="👇 ここを長押しして「ペースト」"
+                value=""
+                onChange={() => {}}
+                onPaste={handleDirectPaste}
+              />
+              <button onClick={() => setShowPasteModal(false)} className="w-full mt-4 bg-slate-800 text-slate-400 py-3 rounded-xl font-bold active:scale-95 transition-transform">キャンセル</button>
+            </div>
+          </div>
+        )}
 
         {showBossDefeat && (
           <div className="fixed inset-0 z-[200] flex items-center justify-center bg-red-950/90 overflow-hidden backdrop-blur-sm">
@@ -1408,10 +1455,15 @@ export default function App() {
               </div>
               
               <div className="space-y-3 bg-slate-900/80 backdrop-blur-sm p-5 rounded-[2.5rem] border border-slate-700 shadow-lg">
-                <div className="flex justify-between items-center text-[10px] font-black text-cyan-600 mb-2 tracking-widest"><span className="flex items-center gap-1"><Camera size={14}/> VISUAL EVIDENCE</span><label className="text-slate-900 bg-cyan-600 px-3 py-1.5 rounded-xl flex items-center gap-1 cursor-pointer active:scale-95 transition-all shadow-[0_0_10px_rgba(6,182,212,0.4)] hover:bg-cyan-500"><Upload size={14}/> 撮影 / ファイル<input type="file" accept="image/*" multiple onChange={handleFileUpload} className="hidden" /></label></div>
+                <div className="flex justify-between items-center text-[10px] font-black text-cyan-600 mb-2 tracking-widest"><span className="flex items-center gap-1"><Camera size={14}/> VISUAL EVIDENCE</span>
+                  <div className="flex gap-2">
+                    <button type="button" onClick={handlePasteBtn} className="text-slate-900 bg-yellow-500 px-3 py-1.5 rounded-xl flex items-center gap-1 shadow-md active:scale-95 font-bold text-xs"><ClipboardList size={14}/> 貼付</button>
+                    <label className="text-slate-900 bg-cyan-600 px-3 py-1.5 rounded-xl flex items-center gap-1 cursor-pointer active:scale-95 shadow-md hover:bg-cyan-500 font-bold text-xs"><Upload size={14}/> ファイル<input type="file" accept="image/*" multiple onChange={handleFileUpload} className="hidden" /></label>
+                  </div>
+                </div>
                 <div className="flex gap-4 overflow-x-auto pb-4 snap-x">
                   {!formData.images || formData.images.length === 0 ? (
-                    <div className="w-full flex-shrink-0 h-32 border-2 border-dashed border-slate-700 rounded-[2rem] flex flex-col items-center justify-center text-slate-500 font-bold text-xs bg-slate-950/50 shadow-inner text-center px-4"><ImageIcon size={24} className="mb-2 opacity-50"/> <span>現場の様子を記録</span><span className="text-[9px] mt-1 opacity-70">Googleフォト等からコピーして<br/>「貼り付け(ペースト)」も可能です</span></div>
+                    <div className="w-full flex-shrink-0 h-32 border-2 border-dashed border-slate-700 rounded-[2rem] flex flex-col items-center justify-center text-slate-500 font-bold text-xs bg-slate-950/50 shadow-inner text-center px-4"><ImageIcon size={24} className="mb-2 opacity-50"/> <span>現場の様子を記録</span><span className="text-[9px] mt-1 opacity-70">Googleフォト等からコピーして<br/>「貼付」ボタンで追加できます</span></div>
                   ) : (
                     Array.isArray(formData.images) && formData.images.map((img, i) => (
                       typeof img === 'string' ? (
