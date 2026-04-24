@@ -153,9 +153,9 @@ const getTrophies = (memos, userSettings) => [
   { id: 3, reqText: '20件記録', name: '現場の鬼', icon: Flame, color: 'orange', isUnlocked: memos.length >= 20 },
   { id: 4, reqText: '50件記録', name: '無双の親方', icon: Crown, color: 'yellow', isUnlocked: memos.length >= 50 },
   { id: 5, reqText: '100件記録', name: '伝説の電設王', icon: Zap, color: 'cyan', isUnlocked: memos.length >= 100 },
-  { id: 6, reqText: '3日連続', name: '継続の力', icon: Clock, color: 'purple', isUnlocked: (userSettings.stats?.streakDays || 0) >= 3 },
-  { id: 7, reqText: '趣味5件', name: '文武両道', icon: Dumbbell, color: 'pink', isUnlocked: memos.filter(m => userSettings.genres[m.genre]?.group === '趣味').length >= 5 },
-  { id: 8, reqText: '現場討伐', name: 'ボスハンター', icon: Target, color: 'red', isUnlocked: (userSettings.stats?.completedSites?.length || 0) >= 1 }
+  { id: 6, reqText: '3日連続', name: '継続の力', icon: Clock, color: 'purple', isUnlocked: (userSettings?.stats?.streakDays || 0) >= 3 },
+  { id: 7, reqText: '趣味5件', name: '文武両道', icon: Dumbbell, color: 'pink', isUnlocked: memos.filter(m => userSettings?.genres?.[m.genre]?.group === '趣味').length >= 5 },
+  { id: 8, reqText: '現場討伐', name: 'ボスハンター', icon: Target, color: 'red', isUnlocked: (userSettings?.stats?.completedSites?.length || 0) >= 1 }
 ];
 
 const TrophiesModal = ({ showTrophiesModal, setShowTrophiesModal, memos, userSettings }) => {
@@ -193,7 +193,7 @@ const TrophiesModal = ({ showTrophiesModal, setShowTrophiesModal, memos, userSet
 
 const RadarChart = ({ memos, userSettings }) => {
   const data = MainCategories.map(cat => ({
-    name: cat, count: memos.filter(m => (userSettings.genres[m.genre]?.group || 'その他') === cat).length 
+    name: cat, count: memos.filter(m => (userSettings?.genres?.[m.genre]?.group || 'その他') === cat).length 
   }));
   const maxVal = Math.max(...data.map(d => d.count), 5);
   const centerX = 150, centerY = 150, radius = 90; 
@@ -528,7 +528,7 @@ const MarkupModalCanvas = ({ markupModal, setMarkupModal, formData, setFormData 
           ctx.beginPath();
           if (s.points.length === 1) {
             ctx.fillStyle = s.type === 'eraser' ? 'rgba(0,0,0,1)' : s.color;
-            ctx.arc(s.points[0].x * cvs.width, s.points[0].y * cvs.height, (s.width * cvs.width) / 2, 0, Math.PI * 2);
+            ctx.arc(s.points[0].x * cvs.width, s.points[0].y * cvs.height, w / 2, 0, Math.PI * 2);
             ctx.fill();
           } else {
             ctx.moveTo(s.points[0].x * cvs.width, s.points[0].y * cvs.height);
@@ -628,6 +628,42 @@ const MarkupModalCanvas = ({ markupModal, setMarkupModal, formData, setFormData 
   );
 };
 
+const MemoCard = ({ memo, userSettings, onClick }) => {
+  const gConf = userSettings?.genres?.[memo.genre] || { colorId: 'gray', icon: 'Info' };
+  const c = ColorMap[gConf.colorId] || ColorMap.gray;
+  return (
+    <div onClick={onClick} className="bg-slate-900/80 backdrop-blur-sm p-4 rounded-3xl border border-slate-700 relative overflow-hidden cursor-pointer active:scale-[0.98] hover:border-cyan-500/50 transition-all shadow-lg">
+      <div className={`absolute top-0 left-0 w-1.5 h-full ${c.bg} shadow-[0_0_10px_currentColor]`} />
+      <div className="flex gap-4">
+        <div className="flex-1 min-w-0">
+          <div className="flex justify-between items-start mb-1.5 font-black italic text-slate-500 text-[9px] uppercase pl-1 tracking-widest">
+            <div className="flex items-center gap-1.5">
+              <span className="text-cyan-700">{memo.date}</span>
+              {memo.needsReview && !memo.isReviewed && <span className="bg-red-950/80 text-red-400 px-1.5 py-0.5 rounded text-[8px] border border-red-500/50 flex items-center not-italic gap-0.5 shadow-md"><Bell size={8}/>要確認</span>}
+              {memo.needsReview && memo.isReviewed && <span className="bg-green-950/80 text-green-400 px-1.5 py-0.5 rounded text-[8px] border border-green-500/50 flex items-center not-italic gap-0.5"><CheckSquare size={8}/>確認済</span>}
+            </div>
+          </div>
+          <h3 className="font-black text-slate-100 text-base leading-tight mb-2 pl-2 truncate">{memo.title}</h3>
+          <div className="flex gap-2 text-cyan-600 pl-2 mb-2">
+            {memo.teacher && <span className="flex items-center gap-0.5 text-[9px] font-bold"><User size={10}/>{memo.teacher}</span>}
+            {memo.materials?.length > 0 && <span className="flex items-center gap-0.5 text-[9px] font-bold"><Tags size={10} className="text-orange-400" />{memo.materials.length}</span>}
+          </div>
+          <div className="flex items-center justify-between text-[9px] font-black pt-2 border-t border-slate-800 pl-1">
+            <span className="flex items-center gap-1 bg-slate-950 px-2.5 py-1 rounded-md text-slate-400 border border-slate-800 truncate max-w-[120px]"><MapPin size={10} className="text-cyan-500 shrink-0"/> <span className="truncate">{memo.site}</span></span>
+            <span className={`px-2.5 py-1 rounded-md flex items-center gap-1 ${c.light} ${c.text} border ${c.border} uppercase shrink-0`}><DynamicIcon name={gConf.icon} size={10}/> {memo.genre}</span>
+          </div>
+        </div>
+        {((memo.images?.length > 0) || memo.markupImage) && (
+          <div className="w-20 h-20 shrink-0 rounded-2xl overflow-hidden border-2 border-slate-700 shadow-md relative">
+            <img src={memo.markupImage || memo.images[0]} alt="thumb" className="w-full h-full object-cover opacity-80" />
+            {memo.images?.length > 1 && <div className="absolute bottom-1 right-1 bg-slate-900/80 text-cyan-400 text-[8px] font-black px-1.5 py-0.5 rounded-md backdrop-blur-sm">+{memo.images.length - (memo.markupImage ? 0 : 1)}</div>}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
 // --- App 本体 ---
 export default function App() {
   const [user, setUser] = useState(null);
@@ -653,7 +689,7 @@ export default function App() {
   const [encounterMemo, setEncounterMemo] = useState(null);
   const [showTrophiesModal, setShowTrophiesModal] = useState(false); 
   const [markupModal, setMarkupModal] = useState({ isOpen: false, imgIndex: null, dataUrl: null });
-  const [showPasteModal, setShowPasteModal] = useState(false); // ★ 追加：ペースト用モーダル
+  const [showPasteModal, setShowPasteModal] = useState(false); 
 
   const uniqueSites = [...new Set(memos.map(m => String(m.site || "")).filter(Boolean))];
   const uniqueTitles = [...new Set(memos.map(m => String(m.title || "").replace(/\s+\d+$/, "")).filter(Boolean))];
@@ -680,11 +716,13 @@ export default function App() {
         const sortedData = snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => (b.date || "").localeCompare(a.date || ""));
         setMemos(sortedData);
         setIsSyncing(false);
-        if (sortedData.length > 0 && !sessionStorage.getItem('encounteredToday')) {
-          const pending = sortedData.filter(m => m.needsReview && !m.isReviewed);
-          if (pending.length > 0 && Math.random() < 0.4) setEncounterMemo(pending[Math.floor(Math.random() * pending.length)]);
-          sessionStorage.setItem('encounteredToday', 'true');
-        }
+        try {
+          if (sortedData.length > 0 && !sessionStorage.getItem('encounteredToday')) {
+            const pending = sortedData.filter(m => m.needsReview && !m.isReviewed);
+            if (pending.length > 0 && Math.random() < 0.4) setEncounterMemo(pending[Math.floor(Math.random() * pending.length)]);
+            sessionStorage.setItem('encounteredToday', 'true');
+          }
+        } catch(e) {}
       },
       () => { setError("SYNC FAILED."); setIsSyncing(false); }
     );
@@ -719,54 +757,46 @@ export default function App() {
   const [newTagColor, setNewTagColor] = useState('gray');
   const [newTagIcon, setNewTagIcon] = useState('Tags');
 
-  // ★ 絶対にクラッシュさせない強力なデータ修復・検疫システム
   const loadDraft = () => {
-    const draft = localStorage.getItem('voltVaultDraft');
-    if (draft) {
-      try {
+    try {
+      const draft = localStorage.getItem('voltVaultDraft');
+      if (draft) {
         const p = JSON.parse(draft);
         if (p && typeof p === 'object') {
-          // ★ 過去のバグで「React要素」や不正なデータが混入していても、絶対に純粋な文字列や配列に強制変換する
           const safeString = (val) => typeof val === 'string' ? val : '';
           const safeArray = (val) => Array.isArray(val) ? val.map(safeString).filter(Boolean) : [];
           setFormData({ 
-            title: safeString(p.title), 
-            site: safeString(p.site), 
-            genre: safeString(p.genre), 
-            materials: safeArray(p.materials), 
-            content: safeString(p.content), 
-            date: safeString(p.date) || initialForm.date, 
-            images: safeArray(p.images),
-            teacher: safeString(p.teacher), 
-            needsReview: Boolean(p.needsReview), 
-            reviewDate: safeString(p.reviewDate), 
-            isReviewed: Boolean(p.isReviewed)
+            title: safeString(p.title), site: safeString(p.site), genre: safeString(p.genre), 
+            materials: safeArray(p.materials), content: safeString(p.content), 
+            date: safeString(p.date) || initialForm.date, images: safeArray(p.images),
+            teacher: safeString(p.teacher), needsReview: Boolean(p.needsReview), reviewDate: safeString(p.reviewDate), isReviewed: Boolean(p.isReviewed)
           });
         } else { setFormData(initialForm); }
-      } catch(e) { setFormData(initialForm); }
-    } else { setFormData(initialForm); }
+      } else { setFormData(initialForm); }
+    } catch (e) { setFormData(initialForm); }
   };
 
-  const sortedGenres = Object.entries(userSettings.genres || {}).map(([k, v]) => ({ key: k, ...v })).sort((a, b) => (a.order || 0) - (b.order || 0));
+  const sortedGenres = Object.entries(userSettings?.genres || {}).map(([k, v]) => ({ key: k, ...v })).sort((a, b) => (a.order || 0) - (b.order || 0));
   const groupedGenresForm = MainCategories.map(cat => ({ category: cat, genres: sortedGenres.filter(g => g.group === cat) })).filter(g => g.genres.length > 0);
-  const sortedTags = Object.entries(userSettings.tags || {}).map(([k, v]) => ({ key: k, ...v })).sort((a, b) => (a.order || 0) - (b.order || 0));
+  const sortedTags = Object.entries(userSettings?.tags || {}).map(([k, v]) => ({ key: k, ...v })).sort((a, b) => (a.order || 0) - (b.order || 0));
   const groupedTagsForm = MainCategories.map(cat => ({ category: cat, tags: sortedTags.filter(t => t.group === cat) })).filter(t => t.tags && t.tags.length > 0);
 
   useEffect(() => {
     if (view === 'add') {
-      const timeoutId = setTimeout(() => localStorage.setItem('voltVaultDraft', JSON.stringify(formData)), 500);
+      const timeoutId = setTimeout(() => {
+        try { localStorage.setItem('voltVaultDraft', JSON.stringify(formData)) } catch(e){}
+      }, 500);
       return () => clearTimeout(timeoutId);
     }
   }, [formData, view]);
 
   useEffect(() => {
-    if (view === 'add' && !formData.genre && Object.keys(userSettings.genres || {}).length > 0) setFormData(prev => ({ ...prev, genre: Object.keys(userSettings.genres)[0] }));
+    if (view === 'add' && !formData.genre && Object.keys(userSettings?.genres || {}).length > 0) setFormData(prev => ({ ...prev, genre: Object.keys(userSettings.genres)[0] }));
   }, [view, userSettings]);
 
-  // ★ 経験値・レベルの計算（消したメモも連動する動的計算）
   const totalMemos = memos.length;
-  const streakDays = userSettings.stats?.streakDays || 0;
-  const bonusExp = userSettings.stats?.bonusExp || 0;
+  const streakDays = userSettings?.stats?.streakDays || 0;
+  const bonusExp = userSettings?.stats?.bonusExp || 0;
   const currentExp = (totalMemos * 25) + (streakDays * 10) + bonusExp;
   const currentLevel = Math.floor(currentExp / 100) + 1;
   const expPercentage = currentExp % 100;
@@ -856,7 +886,7 @@ export default function App() {
         if (newLevel > currentLevel) { setLevelUpData({ level: newLevel, title: getTitle(newLevel) }); setTimeout(() => setLevelUpData(null), 4000); }
 
         await saveSettings({ ...userSettings, stats: { ...stats, exp: newExp, level: newLevel, totalMemos: newTotalMemos, clipperDurability: Math.max(0, (stats.clipperDurability ?? 100) - 5), lastMemoDate: todayStr, streakDays: newStreak } });
-        localStorage.removeItem('voltVaultDraft');
+        try { localStorage.removeItem('voltVaultDraft'); } catch(e){}
       }
 
       setView('list'); setFormData(initialForm); setShowAdvanced(false); setShowNewGenre(false); setShowNewTag(false);
@@ -901,7 +931,7 @@ export default function App() {
     const safeMemo = {
       title: String(selectedMemo.title || ''),
       site: String(selectedMemo.site || ''),
-      genre: String(selectedMemo.genre || (Object.keys(userSettings.genres || {})[0]) || ''),
+      genre: String(selectedMemo.genre || (Object.keys(userSettings?.genres || {})[0]) || ''),
       content: String(selectedMemo.content || ''),
       date: String(selectedMemo.date || new Date().toISOString().split('T')[0]),
       materials: Array.isArray(selectedMemo.materials) ? selectedMemo.materials.filter(Boolean).map(String) : [],
@@ -1065,6 +1095,38 @@ export default function App() {
       <div className="fixed inset-0 pointer-events-none z-0 bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-transparent via-slate-950/80 to-slate-950"></div>
 
       <div className="relative z-10">
+        <LevelUpModal levelUpData={levelUpData} />
+        <TrophiesModal showTrophiesModal={showTrophiesModal} setShowTrophiesModal={setShowTrophiesModal} memos={memos} userSettings={userSettings} />
+        {markupModal.isOpen && <MarkupModalCanvas markupModal={markupModal} setMarkupModal={setMarkupModal} formData={formData} setFormData={setFormData} />}
+
+        {showBossDefeat && (
+          <div className="fixed inset-0 z-[200] flex items-center justify-center bg-red-950/90 overflow-hidden backdrop-blur-sm">
+            <div className="absolute inset-0 bg-red-500 animate-ping mix-blend-overlay opacity-20"></div>
+            <div className="text-center animate-in zoom-in duration-500">
+              <Zap size={120} className="text-yellow-400 mx-auto animate-pulse drop-shadow-[0_0_30px_rgba(250,204,21,1)]" fill="currentColor"/>
+              <h1 className="text-5xl font-black text-white mt-4 italic tracking-tighter drop-shadow-[0_0_15px_rgba(239,68,68,1)]">現場討伐完了!!</h1>
+              <p className="text-yellow-400 font-black mt-4 text-2xl drop-shadow-md">BONUS EXP +{bossExp}</p>
+            </div>
+          </div>
+        )}
+
+        {encounterMemo && (
+          <div className="fixed inset-0 z-[150] flex items-center justify-center bg-slate-950/80 p-4 backdrop-blur-sm animate-in fade-in">
+            <div className="bg-slate-900 border-2 border-red-500 rounded-3xl p-6 w-full max-w-sm shadow-[0_0_30px_rgba(239,68,68,0.5)]">
+              <h3 className="text-red-400 font-black text-xl mb-2 animate-pulse flex items-center gap-2"><AlertCircle /> WARNING!</h3>
+              <p className="text-slate-300 text-sm font-bold mb-4">野生の「未確認メモ」が飛び出してきた！</p>
+              <div className="bg-slate-950 p-4 rounded-xl border border-slate-800 mb-6 shadow-inner">
+                <p className="text-cyan-400 font-black text-lg truncate">{String(encounterMemo.title)}</p>
+                <p className="text-slate-500 text-xs mt-1 truncate">📍 {String(encounterMemo.site)}</p>
+              </div>
+              <div className="flex gap-2">
+                <button onClick={() => setEncounterMemo(null)} className="flex-1 bg-slate-800 text-slate-400 py-3 rounded-xl font-bold active:scale-95 transition-transform">逃げる</button>
+                <button onClick={() => { setSelectedMemo(encounterMemo); setView('detail'); setEncounterMemo(null); }} className="flex-1 bg-red-600 text-white py-3 rounded-xl font-black shadow-[0_0_15px_rgba(239,68,68,0.5)] active:scale-95 transition-transform">立ち向かう</button>
+              </div>
+            </div>
+          </div>
+        )}
+        
         <header className="bg-slate-900 border-b border-cyan-500/30 text-white px-5 py-4 rounded-b-3xl shadow-[0_0_20px_rgba(6,182,212,0.15)] sticky top-0 z-20 overflow-hidden relative">
           <div className="absolute top-0 right-0 opacity-5 pointer-events-none"><Zap size={150} className="-mt-10 -mr-10 rotate-12 text-cyan-400" /></div>
           <div className="flex justify-between items-center mb-3 relative z-10">
@@ -1130,6 +1192,7 @@ export default function App() {
           )}
         </header>
 
+        {/* メイン画面群（List, Stats, Settings） */}
         <main className="p-4 max-w-xl mx-auto relative z-10">
           {view === 'list' && (
             <div className="space-y-4">
