@@ -140,6 +140,7 @@ const LevelUpModal = ({ levelUpData }) => {
         <Zap size={64} className="text-yellow-400 mb-4 animate-pulse drop-shadow-[0_0_15px_rgba(234,179,8,0.8)] relative z-10" fill="currentColor" />
         <h2 className="text-3xl font-black text-cyan-400 mb-2 drop-shadow-[0_0_8px_rgba(34,211,238,0.8)] tracking-widest relative z-10">SYSTEM UPGRADE</h2>
         <p className="text-5xl font-black text-yellow-400 mb-4 drop-shadow-[0_0_15px_rgba(234,179,8,0.8)] relative z-10">Lv.{String(levelUpData.level)}</p>
+        <p className="text-sm font-bold text-slate-400 relative z-10">新規ライセンスをアンロック</p>
         <p className="text-xl font-black text-slate-900 mt-3 bg-yellow-400 px-5 py-2.5 rounded-xl shadow-[0_0_15px_rgba(234,179,8,0.6)] relative z-10">{levelUpData.title}</p>
       </div>
     </div>
@@ -485,6 +486,7 @@ const MarkupModalCanvas = ({ markupModal, setMarkupModal, formData, setFormData 
     if (e && e.target && e.target.releasePointerCapture) e.target.releasePointerCapture(e.pointerId);
   };
 
+  // ★ 復元された取り消し・やり直し機能
   const handleUndo = () => {
     if (strokes.length === 0) return;
     const lastStroke = strokes[strokes.length - 1];
@@ -526,7 +528,7 @@ const MarkupModalCanvas = ({ markupModal, setMarkupModal, formData, setFormData 
           ctx.beginPath();
           if (s.points.length === 1) {
             ctx.fillStyle = s.type === 'eraser' ? 'rgba(0,0,0,1)' : s.color;
-            ctx.arc(s.points[0].x * cvs.width, s.points[0].y * cvs.height, w / 2, 0, Math.PI * 2);
+            ctx.arc(s.points[0].x * cvs.width, s.points[0].y * cvs.height, (s.width * cvs.width) / 2, 0, Math.PI * 2);
             ctx.fill();
           } else {
             ctx.moveTo(s.points[0].x * cvs.width, s.points[0].y * cvs.height);
@@ -626,42 +628,6 @@ const MarkupModalCanvas = ({ markupModal, setMarkupModal, formData, setFormData 
   );
 };
 
-const MemoCard = ({ memo, userSettings, onClick }) => {
-  const gConf = userSettings.genres[memo.genre] || { colorId: 'gray', icon: 'Info' };
-  const c = ColorMap[gConf.colorId] || ColorMap.gray;
-  return (
-    <div onClick={onClick} className="bg-slate-900/80 backdrop-blur-sm p-4 rounded-3xl border border-slate-700 relative overflow-hidden cursor-pointer active:scale-[0.98] hover:border-cyan-500/50 transition-all shadow-lg">
-      <div className={`absolute top-0 left-0 w-1.5 h-full ${c.bg} shadow-[0_0_10px_currentColor]`} />
-      <div className="flex gap-4">
-        <div className="flex-1 min-w-0">
-          <div className="flex justify-between items-start mb-1.5 font-black italic text-slate-500 text-[9px] uppercase pl-1 tracking-widest">
-            <div className="flex items-center gap-1.5">
-              <span className="text-cyan-700">{memo.date}</span>
-              {memo.needsReview && !memo.isReviewed && <span className="bg-red-950/80 text-red-400 px-1.5 py-0.5 rounded text-[8px] border border-red-500/50 flex items-center not-italic gap-0.5 shadow-md"><Bell size={8}/>要確認</span>}
-              {memo.needsReview && memo.isReviewed && <span className="bg-green-950/80 text-green-400 px-1.5 py-0.5 rounded text-[8px] border border-green-500/50 flex items-center not-italic gap-0.5"><CheckSquare size={8}/>確認済</span>}
-            </div>
-          </div>
-          <h3 className="font-black text-slate-100 text-base leading-tight mb-2 pl-2 truncate">{memo.title}</h3>
-          <div className="flex gap-2 text-cyan-600 pl-2 mb-2">
-            {memo.teacher && <span className="flex items-center gap-0.5 text-[9px] font-bold"><User size={10}/>{memo.teacher}</span>}
-            {memo.materials?.length > 0 && <span className="flex items-center gap-0.5 text-[9px] font-bold"><Tags size={10} className="text-orange-400" />{memo.materials.length}</span>}
-          </div>
-          <div className="flex items-center justify-between text-[9px] font-black pt-2 border-t border-slate-800 pl-1">
-            <span className="flex items-center gap-1 bg-slate-950 px-2.5 py-1 rounded-md text-slate-400 border border-slate-800 truncate max-w-[120px]"><MapPin size={10} className="text-cyan-500 shrink-0"/> <span className="truncate">{memo.site}</span></span>
-            <span className={`px-2.5 py-1 rounded-md flex items-center gap-1 ${c.light} ${c.text} border ${c.border} uppercase shrink-0`}><DynamicIcon name={gConf.icon} size={10}/> {memo.genre}</span>
-          </div>
-        </div>
-        {((memo.images?.length > 0) || memo.markupImage) && (
-          <div className="w-20 h-20 shrink-0 rounded-2xl overflow-hidden border-2 border-slate-700 shadow-md relative">
-            <img src={memo.markupImage || memo.images[0]} alt="thumb" className="w-full h-full object-cover opacity-80" />
-            {memo.images?.length > 1 && <div className="absolute bottom-1 right-1 bg-slate-900/80 text-cyan-400 text-[8px] font-black px-1.5 py-0.5 rounded-md backdrop-blur-sm">+{memo.images.length - (memo.markupImage ? 0 : 1)}</div>}
-          </div>
-        )}
-      </div>
-    </div>
-  );
-};
-
 // --- App 本体 ---
 export default function App() {
   const [user, setUser] = useState(null);
@@ -753,19 +719,28 @@ export default function App() {
   const [newTagColor, setNewTagColor] = useState('gray');
   const [newTagIcon, setNewTagIcon] = useState('Tags');
 
+  // ★ 絶対にクラッシュさせない強力なデータ修復・検疫システム
   const loadDraft = () => {
     const draft = localStorage.getItem('voltVaultDraft');
     if (draft) {
       try {
         const p = JSON.parse(draft);
         if (p && typeof p === 'object') {
+          // ★ 過去のバグで「React要素」や不正なデータが混入していても、絶対に純粋な文字列や配列に強制変換する
           const safeString = (val) => typeof val === 'string' ? val : '';
           const safeArray = (val) => Array.isArray(val) ? val.map(safeString).filter(Boolean) : [];
           setFormData({ 
-            title: safeString(p.title), site: safeString(p.site), genre: safeString(p.genre), 
-            materials: safeArray(p.materials), content: safeString(p.content), 
-            date: safeString(p.date) || initialForm.date, images: safeArray(p.images),
-            teacher: safeString(p.teacher), needsReview: Boolean(p.needsReview), reviewDate: safeString(p.reviewDate), isReviewed: Boolean(p.isReviewed)
+            title: safeString(p.title), 
+            site: safeString(p.site), 
+            genre: safeString(p.genre), 
+            materials: safeArray(p.materials), 
+            content: safeString(p.content), 
+            date: safeString(p.date) || initialForm.date, 
+            images: safeArray(p.images),
+            teacher: safeString(p.teacher), 
+            needsReview: Boolean(p.needsReview), 
+            reviewDate: safeString(p.reviewDate), 
+            isReviewed: Boolean(p.isReviewed)
           });
         } else { setFormData(initialForm); }
       } catch(e) { setFormData(initialForm); }
@@ -787,6 +762,36 @@ export default function App() {
   useEffect(() => {
     if (view === 'add' && !formData.genre && Object.keys(userSettings.genres || {}).length > 0) setFormData(prev => ({ ...prev, genre: Object.keys(userSettings.genres)[0] }));
   }, [view, userSettings]);
+
+  // ★ 経験値・レベルの計算（消したメモも連動する動的計算）
+  const totalMemos = memos.length;
+  const streakDays = userSettings.stats?.streakDays || 0;
+  const bonusExp = userSettings.stats?.bonusExp || 0;
+  const currentExp = (totalMemos * 25) + (streakDays * 10) + bonusExp;
+  const currentLevel = Math.floor(currentExp / 100) + 1;
+  const expPercentage = currentExp % 100;
+  const pendingReviews = memos.filter(m => m.needsReview && !m.isReviewed);
+
+  const getWeaponStyle = (level) => {
+    if (level >= 50) return { bg: 'bg-cyan-900', text: 'text-cyan-300', border: 'border-cyan-400', shadow: 'shadow-[0_0_20px_rgba(34,211,238,0.8)]' };
+    if (level >= 20) return { bg: 'bg-yellow-900', text: 'text-yellow-400', border: 'border-yellow-500', shadow: 'shadow-[0_0_15px_rgba(250,204,21,0.5)]' };
+    if (level >= 10) return { bg: 'bg-orange-950', text: 'text-orange-400', border: 'border-orange-500', shadow: 'shadow-[0_0_10px_rgba(251,146,60,0.4)]' };
+    return { bg: 'bg-slate-800', text: 'text-slate-400', border: 'border-slate-600', shadow: 'shadow-md' };
+  };
+  const weaponStyle = getWeaponStyle(currentLevel);
+
+  const filteredMemos = memos.filter(m => {
+    const matchSearch = String(m.title || "").includes(searchTerm) || String(m.site || "").includes(searchTerm) || (m.materials || []).some(mat => String(mat).includes(searchTerm)) || String(m.teacher || "").includes(searchTerm);
+    return matchSearch && (dateRange.start ? (m.date || "") >= dateRange.start : true) && (dateRange.end ? (m.date || "") <= dateRange.end : true) && (filterPending ? (m.needsReview && !m.isReviewed) : true);
+  }).sort((a, b) => sortOrder === 'newest' ? ((b.date || "").localeCompare(a.date || "") || (parseInt(String(b.id).split('_')[1]) || 0) - (parseInt(String(a.id).split('_')[1]) || 0)) : ((a.date || "").localeCompare(b.date || "") || (parseInt(String(a.id).split('_')[1]) || 0) - (parseInt(String(b.id).split('_')[1]) || 0)));
+
+  const groupedMemos = filteredMemos.reduce((acc, memo) => {
+    if (listMode === 'all') return acc;
+    if (listMode === 'site') { const k = String(memo.site || 'NO SITE DATA'); acc[k] = acc[k] || []; acc[k].push(memo); }
+    else if (listMode === 'genre') { const k = String(memo.genre || 'UNCLASSIFIED'); acc[k] = acc[k] || []; acc[k].push(memo); }
+    else if (listMode === 'material') { (memo.materials?.length ? memo.materials : ['NO TAGS']).forEach(mat => { const k = String(mat); acc[k] = acc[k] || []; acc[k].push(memo); }); }
+    return acc;
+  }, {});
 
   const handleSave = async () => {
     if (!formData.title || formData.title.trim() === '') {
@@ -820,10 +825,18 @@ export default function App() {
       }
 
       const memoToSave = {
-        title: finalTitle, id: id, site: String(formData.site || ''), genre: String(formData.genre || ''), content: String(formData.content || ''),
-        date: String(formData.date || ''), materials: Array.isArray(formData.materials) ? formData.materials.map(String) : [],
-        images: Array.isArray(formData.images) ? formData.images.map(String) : [], teacher: String(formData.teacher || ''),
-        needsReview: Boolean(formData.needsReview), reviewDate: String(formData.reviewDate || ''), isReviewed: Boolean(formData.isReviewed)
+        title: finalTitle,
+        id: id,
+        site: String(formData.site || ''),
+        genre: String(formData.genre || ''),
+        content: String(formData.content || ''),
+        date: String(formData.date || ''),
+        materials: Array.isArray(formData.materials) ? formData.materials.map(String) : [],
+        images: Array.isArray(formData.images) ? formData.images.map(String) : [],
+        teacher: String(formData.teacher || ''),
+        needsReview: Boolean(formData.needsReview),
+        reviewDate: String(formData.reviewDate || ''),
+        isReviewed: Boolean(formData.isReviewed)
       };
 
       await setDoc(doc(db, 'artifacts', currentAppId, 'public', 'data', 'memos', id), memoToSave, { merge: true });
@@ -836,11 +849,11 @@ export default function App() {
           newStreak = stats.lastMemoDate === new Date(Date.now() - 86400000).toISOString().split('T')[0] ? newStreak + 1 : 1;
         }
 
-        const newTotalMemos = memos.length + 1;
-        const newExp = (newTotalMemos * 25) + (newStreak * 10) + (stats.bonusExp || 0);
+        const newTotalMemos = totalMemos + 1;
+        const newExp = (newTotalMemos * 25) + (newStreak * 10) + bonusExp;
         const newLevel = Math.floor(newExp / 100) + 1;
         
-        if (newLevel > (stats.level || 1)) { setLevelUpData({ level: newLevel, title: getTitle(newLevel) }); setTimeout(() => setLevelUpData(null), 4000); }
+        if (newLevel > currentLevel) { setLevelUpData({ level: newLevel, title: getTitle(newLevel) }); setTimeout(() => setLevelUpData(null), 4000); }
 
         await saveSettings({ ...userSettings, stats: { ...stats, exp: newExp, level: newLevel, totalMemos: newTotalMemos, clipperDurability: Math.max(0, (stats.clipperDurability ?? 100) - 5), lastMemoDate: todayStr, streakDays: newStreak } });
         localStorage.removeItem('voltVaultDraft');
@@ -869,59 +882,41 @@ export default function App() {
     const currentCompleted = currentStats.completedSites || [];
     if (currentCompleted.includes(siteName)) return;
 
-    const bonusExp = memoCount * 50; 
-    setBossExp(bonusExp); setShowBossDefeat(true);
+    const bonus = memoCount * 50; 
+    setBossExp(bonus); setShowBossDefeat(true);
     
-    const newBonusExp = (currentStats.bonusExp || 0) + bonusExp;
-    const newExp = (memos.length * 25) + ((currentStats.streakDays || 0) * 10) + newBonusExp;
+    const newBonusExp = (currentStats.bonusExp || 0) + bonus;
+    const newExp = (totalMemos * 25) + (streakDays * 10) + newBonusExp;
     const newLevel = Math.floor(newExp / 100) + 1;
 
     await saveSettings({ ...userSettings, stats: { ...currentStats, exp: newExp, level: newLevel, bonusExp: newBonusExp, completedSites: [...currentCompleted, siteName] } });
     setTimeout(() => {
       setShowBossDefeat(false);
-      if (newLevel > (currentStats.level || 1)) { setLevelUpData({ level: newLevel, title: getTitle(newLevel) }); setTimeout(() => setLevelUpData(null), 4000); }
+      if (newLevel > currentLevel) { setLevelUpData({ level: newLevel, title: getTitle(newLevel) }); setTimeout(() => setLevelUpData(null), 4000); }
     }, 3000);
   };
 
   const handleEditClick = () => { 
     setEditingMemo(selectedMemo); 
     const safeMemo = {
-      title: String(selectedMemo.title || ''), site: String(selectedMemo.site || ''), genre: String(selectedMemo.genre || (Object.keys(userSettings.genres || {})[0]) || ''),
-      content: String(selectedMemo.content || ''), date: String(selectedMemo.date || new Date().toISOString().split('T')[0]),
+      title: String(selectedMemo.title || ''),
+      site: String(selectedMemo.site || ''),
+      genre: String(selectedMemo.genre || (Object.keys(userSettings.genres || {})[0]) || ''),
+      content: String(selectedMemo.content || ''),
+      date: String(selectedMemo.date || new Date().toISOString().split('T')[0]),
       materials: Array.isArray(selectedMemo.materials) ? selectedMemo.materials.filter(Boolean).map(String) : [],
       images: Array.isArray(selectedMemo.images) ? selectedMemo.images.filter(Boolean).map(String) : [],
-      teacher: String(selectedMemo.teacher || ''), needsReview: Boolean(selectedMemo.needsReview), reviewDate: String(selectedMemo.reviewDate || ''), isReviewed: Boolean(selectedMemo.isReviewed)
+      teacher: String(selectedMemo.teacher || ''),
+      needsReview: Boolean(selectedMemo.needsReview),
+      reviewDate: String(selectedMemo.reviewDate || ''),
+      isReviewed: Boolean(selectedMemo.isReviewed)
     };
-    if (selectedMemo.markupImage && safeMemo.images.length === 0) safeMemo.images.push(String(selectedMemo.markupImage));
+    if (selectedMemo.markupImage && safeMemo.images.length === 0) {
+      safeMemo.images.push(String(selectedMemo.markupImage));
+    }
     setFormData(safeMemo); 
     setView('edit'); 
   };
-
-  const filteredMemos = memos.filter(m => {
-    const matchSearch = String(m.title || "").includes(searchTerm) || String(m.site || "").includes(searchTerm) || (m.materials || []).some(mat => String(mat).includes(searchTerm)) || String(m.teacher || "").includes(searchTerm);
-    return matchSearch && (dateRange.start ? (m.date || "") >= dateRange.start : true) && (dateRange.end ? (m.date || "") <= dateRange.end : true) && (filterPending ? (m.needsReview && !m.isReviewed) : true);
-  }).sort((a, b) => sortOrder === 'newest' ? ((b.date || "").localeCompare(a.date || "") || (parseInt(String(b.id).split('_')[1]) || 0) - (parseInt(String(a.id).split('_')[1]) || 0)) : ((a.date || "").localeCompare(b.date || "") || (parseInt(String(a.id).split('_')[1]) || 0) - (parseInt(String(b.id).split('_')[1]) || 0)));
-
-  const groupedMemos = filteredMemos.reduce((acc, memo) => {
-    if (listMode === 'all') return acc;
-    if (listMode === 'site') { const k = String(memo.site || 'NO SITE DATA'); acc[k] = acc[k] || []; acc[k].push(memo); }
-    else if (listMode === 'genre') { const k = String(memo.genre || 'UNCLASSIFIED'); acc[k] = acc[k] || []; acc[k].push(memo); }
-    else if (listMode === 'material') { (memo.materials?.length ? memo.materials : ['NO TAGS']).forEach(mat => { const k = String(mat); acc[k] = acc[k] || []; acc[k].push(memo); }); }
-    return acc;
-  }, {});
-
-  const currentExp = (memos.length * 25) + ((userSettings.stats?.streakDays || 0) * 10) + (userSettings.stats?.bonusExp || 0);
-  const currentLevel = Math.floor(currentExp / 100) + 1;
-  const expPercentage = currentExp % 100;
-  const pendingReviews = memos.filter(m => m.needsReview && !m.isReviewed);
-
-  const getWeaponStyle = (level) => {
-    if (level >= 50) return { bg: 'bg-cyan-900', text: 'text-cyan-300', border: 'border-cyan-400', shadow: 'shadow-[0_0_20px_rgba(34,211,238,0.8)]' };
-    if (level >= 20) return { bg: 'bg-yellow-900', text: 'text-yellow-400', border: 'border-yellow-500', shadow: 'shadow-[0_0_15px_rgba(250,204,21,0.5)]' };
-    if (level >= 10) return { bg: 'bg-orange-950', text: 'text-orange-400', border: 'border-orange-500', shadow: 'shadow-[0_0_10px_rgba(251,146,60,0.4)]' };
-    return { bg: 'bg-slate-800', text: 'text-slate-400', border: 'border-slate-600', shadow: 'shadow-md' };
-  };
-  const weaponStyle = getWeaponStyle(currentLevel);
 
   const handleFileUpload = async (e) => {
     const files = Array.from(e.target.files);
@@ -950,7 +945,6 @@ export default function App() {
     e.target.value = null; 
   };
 
-  // ★ 確実なペースト処理を実行する関数（モーダル内のテキストエリアで発火）
   const handleDirectPaste = async (e) => {
     const items = e.clipboardData?.items;
     if (!items) return;
@@ -989,24 +983,26 @@ export default function App() {
     
     const newImageUrls = await Promise.all(imageFiles.map(processFile));
     setFormData(prev => ({...prev, images: Array.isArray(prev.images) ? [...prev.images, ...newImageUrls] : [...newImageUrls]}));
-    setShowPasteModal(false); // 成功したらモーダルを閉じる
+    setShowPasteModal(false);
   };
 
   const handlePasteBtn = async () => {
     try {
       if (!navigator.clipboard || !navigator.clipboard.read) {
-        // ★ API非対応なら強制的にモーダルへ
         setShowPasteModal(true);
         return;
       }
       const cItems = await navigator.clipboard.read(); 
       const files = [];
       for (const item of cItems) { 
-        for (const type of item.types.filter(t => t.startsWith('image/'))) { 
+        for (const type of Array.from(item.types).filter(t => typeof t === 'string' && t.startsWith('image/'))) { 
           files.push(await item.getType(type)); 
         } 
       }
-      if (!files.length) return alert("クリップボードに画像がありません。\nGoogleフォトで「コピー」できているか確認してください。");
+      if (!files.length) {
+        setShowPasteModal(true);
+        return;
+      }
       const p = (blob) => new Promise((res) => {
         const r = new FileReader(); r.onload = (ev) => {
           const img = new Image(); img.onload = () => {
@@ -1019,7 +1015,6 @@ export default function App() {
       const newImgs = await Promise.all(files.map(p));
       setFormData(pr => ({...pr, images: Array.isArray(pr.images) ? [...pr.images, ...newImgs] : [...newImgs]}));
     } catch (e) {
-      // ★ 権限エラーやセキュリティブロックの場合も確実にモーダルへ
       setShowPasteModal(true);
     }
   };
@@ -1070,63 +1065,6 @@ export default function App() {
       <div className="fixed inset-0 pointer-events-none z-0 bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-transparent via-slate-950/80 to-slate-950"></div>
 
       <div className="relative z-10">
-        <LevelUpModal levelUpData={levelUpData} />
-        <TrophiesModal showTrophiesModal={showTrophiesModal} setShowTrophiesModal={setShowTrophiesModal} memos={memos} userSettings={userSettings} />
-        {markupModal.isOpen && <MarkupModalCanvas markupModal={markupModal} setMarkupModal={setMarkupModal} formData={formData} setFormData={setFormData} />}
-
-        {/* ★ ペースト（貼り付け）用モーダル */}
-        {showPasteModal && (
-          <div className="fixed inset-0 z-[250] flex items-center justify-center bg-slate-950/90 backdrop-blur-md p-4 animate-in zoom-in duration-200">
-            <div className="bg-slate-900 border border-slate-700 rounded-[2rem] p-6 w-full max-w-sm shadow-[0_0_30px_rgba(6,182,212,0.3)]">
-              <div className="flex justify-between items-center mb-4">
-                <h3 className="font-black text-cyan-400 flex items-center gap-2"><ClipboardList size={18}/> 画像を貼り付け</h3>
-                <button onClick={() => setShowPasteModal(false)} className="text-slate-500 hover:text-cyan-400 active:scale-90"><X size={24}/></button>
-              </div>
-              <p className="text-xs font-bold text-slate-300 mb-4 leading-relaxed">
-                お使いのブラウザの制限により、ボタンから直接画像を読み込めませんでした。<br/><br/>
-                お手数ですが、下の入力欄を<strong className="text-yellow-400">長押し</strong>して<strong className="text-yellow-400">「ペースト（貼り付け）」</strong>を選択してください。
-              </p>
-              <textarea 
-                autoFocus
-                className="w-full h-32 bg-slate-800 border-2 border-dashed border-cyan-500/50 rounded-xl p-4 text-cyan-50 text-sm focus:border-cyan-400 outline-none resize-none font-bold placeholder-slate-500 shadow-inner"
-                placeholder="👇 ここを長押しして「ペースト」"
-                value=""
-                onChange={() => {}}
-                onPaste={handleDirectPaste}
-              />
-              <button onClick={() => setShowPasteModal(false)} className="w-full mt-4 bg-slate-800 text-slate-400 py-3 rounded-xl font-bold active:scale-95 transition-transform">キャンセル</button>
-            </div>
-          </div>
-        )}
-
-        {showBossDefeat && (
-          <div className="fixed inset-0 z-[200] flex items-center justify-center bg-red-950/90 overflow-hidden backdrop-blur-sm">
-            <div className="absolute inset-0 bg-red-500 animate-ping mix-blend-overlay opacity-20"></div>
-            <div className="text-center animate-in zoom-in duration-500">
-              <Zap size={120} className="text-yellow-400 mx-auto animate-pulse drop-shadow-[0_0_30px_rgba(250,204,21,1)]" fill="currentColor"/>
-              <h1 className="text-5xl font-black text-white mt-4 italic tracking-tighter drop-shadow-[0_0_15px_rgba(239,68,68,1)]">現場討伐完了!!</h1>
-              <p className="text-yellow-400 font-black mt-4 text-2xl drop-shadow-md">BONUS EXP +{bossExp}</p>
-            </div>
-          </div>
-        )}
-
-        {encounterMemo && (
-          <div className="fixed inset-0 z-[150] flex items-center justify-center bg-slate-950/80 p-4 backdrop-blur-sm animate-in fade-in">
-            <div className="bg-slate-900 border-2 border-red-500 rounded-3xl p-6 w-full max-w-sm shadow-[0_0_30px_rgba(239,68,68,0.5)]">
-              <h3 className="text-red-400 font-black text-xl mb-2 animate-pulse flex items-center gap-2"><AlertCircle /> WARNING!</h3>
-              <p className="text-slate-300 text-sm font-bold mb-4">野生の「未確認メモ」が飛び出してきた！</p>
-              <div className="bg-slate-950 p-4 rounded-xl border border-slate-800 mb-6 shadow-inner">
-                <p className="text-cyan-400 font-black text-lg truncate">{String(encounterMemo.title)}</p>
-                <p className="text-slate-500 text-xs mt-1 truncate">📍 {String(encounterMemo.site)}</p>
-              </div>
-              <div className="flex gap-2">
-                <button onClick={() => setEncounterMemo(null)} className="flex-1 bg-slate-800 text-slate-400 py-3 rounded-xl font-bold active:scale-95 transition-transform">逃げる</button>
-                <button onClick={() => { setSelectedMemo(encounterMemo); setView('detail'); setEncounterMemo(null); }} className="flex-1 bg-red-600 text-white py-3 rounded-xl font-black shadow-[0_0_15px_rgba(239,68,68,0.5)] active:scale-95 transition-transform">立ち向かう</button>
-              </div>
-            </div>
-          </div>
-        )}
-        
         <header className="bg-slate-900 border-b border-cyan-500/30 text-white px-5 py-4 rounded-b-3xl shadow-[0_0_20px_rgba(6,182,212,0.15)] sticky top-0 z-20 overflow-hidden relative">
           <div className="absolute top-0 right-0 opacity-5 pointer-events-none"><Zap size={150} className="-mt-10 -mr-10 rotate-12 text-cyan-400" /></div>
           <div className="flex justify-between items-center mb-3 relative z-10">
@@ -1158,7 +1096,7 @@ export default function App() {
                 <span className="text-[10px] font-bold text-cyan-50 tracking-wide truncate max-w-[120px]">{String(getTitle(currentLevel))}</span>
                 {(userSettings.stats?.streakDays || 0) > 0 && <span className="bg-orange-500/20 border border-orange-500 text-orange-400 text-[9px] font-black px-1.5 py-0.5 rounded flex items-center gap-0.5 shadow-[0_0_5px_rgba(249,115,22,0.3)]"><Flame size={10}/> {Number(userSettings.stats.streakDays)}連コンボ</span>}
               </div>
-              <span className="text-[8px] font-bold text-cyan-600 uppercase tracking-widest">DATA: {Number(memos.length)}</span>
+              <span className="text-[8px] font-bold text-cyan-600 uppercase tracking-widest">DATA: {Number(totalMemos)}</span>
             </div>
             <div className="w-full bg-slate-900 rounded-full h-1.5 overflow-hidden border border-slate-800">
               <div className="bg-gradient-to-r from-cyan-400 to-blue-500 h-1.5 rounded-full transition-all duration-1000 ease-out relative shadow-[0_0_10px_rgba(34,211,238,0.8)]" style={{ width: `${expPercentage}%` }}><div className="absolute inset-0 bg-white/30 w-full h-full animate-pulse"></div></div>
@@ -1192,7 +1130,6 @@ export default function App() {
           )}
         </header>
 
-        {/* メイン画面群（List, Stats, Settings） */}
         <main className="p-4 max-w-xl mx-auto relative z-10">
           {view === 'list' && (
             <div className="space-y-4">
@@ -1265,7 +1202,7 @@ export default function App() {
                 <h3 className="text-center text-xs font-black text-slate-400 tracking-widest mb-6">SKILL ANALYSIS</h3>
                 <RadarChart memos={memos} userSettings={userSettings} />
                 <div className="grid grid-cols-2 gap-4 mt-6">
-                  <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800 shadow-inner flex flex-col items-center"><p className="text-[10px] font-black text-cyan-700 mb-1">TOTAL LOGS</p><p className="text-3xl font-black text-cyan-400 drop-shadow-[0_0_5px_rgba(34,211,238,0.5)]">{Number(memos.length)}</p></div>
+                  <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800 shadow-inner flex flex-col items-center"><p className="text-[10px] font-black text-cyan-700 mb-1">TOTAL LOGS</p><p className="text-3xl font-black text-cyan-400 drop-shadow-[0_0_5px_rgba(34,211,238,0.5)]">{Number(totalMemos)}</p></div>
                   <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800 shadow-inner flex flex-col items-center"><p className="text-[10px] font-black text-yellow-600 mb-1">CURRENT LEVEL</p><p className="text-3xl font-black text-yellow-400 drop-shadow-[0_0_5px_rgba(250,204,21,0.5)]">{Number(currentLevel)}</p></div>
                 </div>
               </div>
@@ -1305,194 +1242,222 @@ export default function App() {
           )}
         </main>
 
-        {/* ★ 独立・最前面化された 詳細表示画面（ヘッダーに隠れない） */}
-        {view === 'detail' && selectedMemo && (
-          <div className="fixed inset-0 bg-slate-950 z-[100] overflow-y-auto pb-32 animate-in slide-in-from-right duration-300">
-            <header className={`${ColorMap[userSettings.genres[selectedMemo.genre]?.colorId || 'gray']?.bg || 'bg-slate-800'} text-slate-900 p-6 flex justify-between items-center sticky top-0 rounded-b-[2.5rem] shadow-[0_0_20px_rgba(0,0,0,0.8)] border-b border-white/20 relative overflow-hidden z-20`}>
-              <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-white/20 to-transparent"></div>
-              <button onClick={() => setView('list')} className="relative z-10 p-2 bg-black/20 rounded-full text-white backdrop-blur-sm active:scale-90"><ChevronLeft size={28}/></button>
-              <h2 className="font-black italic text-[10px] tracking-widest uppercase relative z-10 opacity-80 text-white drop-shadow-md">DECRYPTED DATA</h2>
-              <button onClick={handleEditClick} className="relative z-10 p-2 bg-black/20 rounded-full text-white backdrop-blur-sm active:scale-90"><Edit3 size={24}/></button>
-            </header>
-            <div className="p-8 space-y-8 max-w-xl mx-auto relative z-10">
-              <div className="space-y-4 relative">
-                <div className="absolute -left-4 top-0 w-1 h-full bg-cyan-900/30 rounded-full"></div>
-                <div className="flex gap-2 items-center mb-2">
-                  <span className={`px-3 py-1.5 rounded-lg text-[9px] font-black uppercase flex items-center gap-1.5 ${ColorMap[userSettings.genres[selectedMemo.genre]?.colorId || 'gray']?.light} ${ColorMap[userSettings.genres[selectedMemo.genre]?.colorId || 'gray']?.text} border shadow-inner`}><DynamicIcon name={userSettings.genres[selectedMemo.genre]?.icon} size={14}/> {String(selectedMemo.genre)}</span>
+        {/* ★ フルスクリーンオーバーレイのコンテキストを完全に独立 */}
+        <div className="relative z-[200]">
+          {/* ★ ペースト用モーダル */}
+          {showPasteModal && (
+            <div className="fixed inset-0 flex items-center justify-center bg-slate-950/90 backdrop-blur-md p-4 animate-in zoom-in duration-200">
+              <div className="bg-slate-900 border border-slate-700 rounded-[2rem] p-6 w-full max-w-sm shadow-[0_0_30px_rgba(6,182,212,0.3)]">
+                <div className="flex justify-between items-center mb-4">
+                  <h3 className="font-black text-cyan-400 flex items-center gap-2"><ClipboardList size={18}/> 画像を貼り付け</h3>
+                  <button onClick={() => setShowPasteModal(false)} className="text-slate-500 hover:text-cyan-400 active:scale-90"><X size={24}/></button>
                 </div>
-                <h2 className="text-3xl font-black text-slate-100 leading-tight tracking-tighter drop-shadow-md">{String(selectedMemo.title)}</h2>
-                <div className="flex gap-4 text-[10px] font-black text-slate-400 uppercase bg-slate-900 p-3 rounded-xl border border-slate-700 shadow-inner">
-                  <span className="flex items-center gap-1.5"><MapPin size={12} className="text-cyan-500"/> {String(selectedMemo.site)}</span><span className="flex items-center gap-1.5"><Calendar size={12} className="text-cyan-500"/> {String(selectedMemo.date)}</span>
-                </div>
-                {(selectedMemo.teacher || selectedMemo.needsReview) && (
-                  <div className="flex flex-wrap gap-2 text-[10px] font-bold mt-2">
-                    {selectedMemo.teacher && <span className="bg-slate-800 text-cyan-200 px-2.5 py-1.5 rounded-lg flex items-center gap-1.5 border border-slate-600 shadow-sm"><User size={12} className="text-cyan-500"/> 伝授: {String(selectedMemo.teacher)}</span>}
-                    {selectedMemo.needsReview && !selectedMemo.isReviewed && <span className="bg-red-950 text-red-400 px-2.5 py-1.5 rounded-lg flex items-center gap-1.5 border border-red-500/50 shadow-[0_0_8px_rgba(239,68,68,0.3)]"><Bell size={12}/> 要確認 ({String(selectedMemo.reviewDate) || '期限なし'})</span>}
-                    {selectedMemo.needsReview && selectedMemo.isReviewed && <span className="bg-green-950 text-green-400 px-2.5 py-1.5 rounded-lg flex items-center gap-1.5 border border-green-500/50 shadow-sm"><CheckSquare size={12}/> 確認完了</span>}
-                  </div>
-                )}
-                {selectedMemo.materials && selectedMemo.materials.length > 0 && (
-                  <div className="flex flex-wrap gap-2 pt-2">
-                    {selectedMemo.materials.map((mat, i) => {
-                      const tagConf = userSettings.tags[mat] || { colorId: 'gray', icon: 'Tag' }; const tColor = ColorMap[tagConf.colorId] || ColorMap.gray;
-                      return <span key={i} className={`${tColor.light} ${tColor.text} ${tColor.border} border px-2.5 py-1.5 rounded-lg text-[10px] font-bold flex items-center gap-1.5 shadow-sm`}><DynamicIcon name={tagConf.icon} size={12}/> {String(mat)}</span>
-                    })}
-                  </div>
-                )}
-              </div>
-              {((selectedMemo.images && selectedMemo.images.length > 0) || selectedMemo.markupImage) && (
-                <div className="space-y-3">
-                  <h3 className="text-xs font-black text-cyan-600 flex items-center gap-1 tracking-widest"><Camera size={14}/> VISUAL DATA</h3>
-                  <div className="flex flex-col gap-4">
-                    {selectedMemo.markupImage && (!selectedMemo.images || selectedMemo.images.length===0) && <div className="bg-slate-900 rounded-[2.5rem] overflow-hidden border-2 border-slate-700 shadow-[0_0_15px_rgba(0,0,0,0.8)]"><img src={selectedMemo.markupImage} className="w-full opacity-90" /></div>}
-                    {selectedMemo.images && selectedMemo.images.map((img, i) => <div key={i} className="bg-slate-900 rounded-[2.5rem] overflow-hidden border-2 border-slate-700 shadow-[0_0_15px_rgba(0,0,0,0.8)] relative"><img src={img} className="w-full h-auto object-cover opacity-90" /></div>)}
-                  </div>
-                </div>
-              )}
-              <div className="bg-slate-900 p-8 rounded-[3rem] text-cyan-50 font-medium border border-cyan-900/50 leading-relaxed relative shadow-[0_0_20px_rgba(6,182,212,0.1)] whitespace-pre-wrap">
-                <span className="absolute -top-3 left-10 bg-cyan-600 text-slate-900 px-4 py-1 rounded-full text-[10px] not-italic shadow-[0_0_8px_rgba(6,182,212,0.8)] tracking-widest font-black uppercase">Quest Log</span>
-                {String(selectedMemo.content || '')}
+                <p className="text-xs font-bold text-slate-300 mb-4 leading-relaxed">
+                  下の入力欄を<strong className="text-yellow-400">長押し</strong>して<strong className="text-yellow-400">「ペースト（貼り付け）」</strong>を選択してください。
+                  <br/><br/>
+                  <span className="text-[10px] text-slate-400">※Googleフォトでコピーした画像が貼れない場合、隣の<strong className="text-cyan-400">「ファイル」ボタン</strong>からスマホのメニュー経由で選択してください。</span>
+                </p>
+                <textarea 
+                  autoFocus
+                  className="w-full h-32 bg-slate-800 border-2 border-dashed border-cyan-500/50 rounded-xl p-4 text-cyan-50 text-sm focus:border-cyan-400 outline-none resize-none font-bold placeholder-slate-500 shadow-inner"
+                  placeholder="👇 ここを長押しして「ペースト」"
+                  value=""
+                  onChange={() => {}}
+                  onPaste={handleDirectPaste}
+                />
+                <button onClick={() => setShowPasteModal(false)} className="w-full mt-4 bg-slate-800 text-slate-400 py-3 rounded-xl font-bold active:scale-95 transition-transform">キャンセル</button>
               </div>
             </div>
-          </div>
-        )}
+          )}
 
-        {/* ★ 独立・最前面化された 追加・編集フォーム画面 */}
-        {(view === 'add' || view === 'edit') && (
-          <div className="fixed inset-0 bg-slate-950 z-[100] overflow-y-auto pb-32 animate-in slide-in-from-bottom-10">
-            <div className="fixed inset-0 pointer-events-none z-0 opacity-10" style={{ backgroundImage: `linear-gradient(to right, #facc15 1px, transparent 1px), linear-gradient(to bottom, #facc15 1px, transparent 1px)`, backgroundSize: '40px 40px' }}></div>
-            <header className="bg-slate-900/90 backdrop-blur-md border-b border-yellow-500/30 p-5 flex justify-between items-center sticky top-0 shadow-[0_0_20px_rgba(234,179,8,0.15)] z-20">
-              <button onClick={() => setView('list')} className="text-slate-400 hover:text-yellow-400 active:scale-90 transition-all"><X size={24}/></button>
-              <h2 className="font-black text-yellow-400 tracking-tighter italic flex items-center gap-2 drop-shadow-[0_0_5px_rgba(234,179,8,0.8)]"><ClipperIcon size={18} strokeWidth={2.5}/> RECORD NEW DATA...</h2>
-              <button onClick={handleSave} className="relative group overflow-hidden bg-slate-800 text-cyan-400 px-5 py-2.5 rounded-full font-black text-[10px] uppercase shadow-[0_0_15px_rgba(34,211,238,0.3)] border border-cyan-500/50 disabled:opacity-50 active:scale-95 transition-all">
-                <span className="relative z-10 flex items-center gap-1.5"><ClipperIcon size={14}/> ログを刻印</span>
-                <div className="absolute inset-0 bg-gradient-to-r from-cyan-600 to-blue-600 opacity-0 group-hover:opacity-20 transition-opacity"></div>
-              </button>
-            </header>
-            
-            <div className="p-6 space-y-7 max-w-xl mx-auto relative z-10">
-              {view === 'add' && (formData.title || formData.content || formData.images?.length > 0) && (
-                <div className="flex justify-end mb-[-1rem]">
-                  <button onClick={() => { if (window.confirm('入力内容をすべてリセットしますか？')) { setFormData(initialForm); localStorage.removeItem('voltVaultDraft'); } }} className="text-[10px] text-red-400 font-bold border border-red-500/50 px-2.5 py-1.5 rounded-md bg-red-950/50 shadow-sm active:scale-95"><Trash2 size={12} className="inline mr-1"/>一時保存をクリア</button>
-                </div>
-              )}
-
-              <div className="space-y-4">
-                <input list="title-history" className="w-full text-2xl font-black bg-transparent border-b-2 border-slate-700 py-2 text-slate-100 focus:border-cyan-400 outline-none transition-colors placeholder:text-slate-600" placeholder="クエスト名（作業・タイトル）" value={formData.title || ''} onChange={e => setFormData({...formData, title: e.target.value})} />
-                <datalist id="title-history">{uniqueTitles.map(t => <option key={t} value={t} />)}</datalist>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <input type="date" className="p-3 bg-slate-900 border border-slate-700 rounded-2xl font-bold outline-none text-sm text-cyan-50 shadow-inner focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500" value={formData.date || ''} onChange={e => setFormData({...formData, date: e.target.value})} />
-                  <div className="relative flex items-center">
-                    <select className="p-3 bg-slate-900 border border-slate-700 rounded-2xl font-bold outline-none text-sm text-cyan-50 shadow-inner w-full focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 appearance-none" value={formData.genre || ''} onChange={e => setFormData({...formData, genre: e.target.value})}>
-                      {groupedGenresForm.map(({ category, genres }) => (<optgroup key={category} label={`【${String(category)}】`}>{genres.map(g => <option key={g.key} value={g.key}>{String(g.key)}</option>)}</optgroup>))}
-                    </select>
-                    <ChevronDown size={14} className="absolute right-3 text-slate-500 pointer-events-none"/>
-                    <button type="button" onClick={() => setShowNewGenre(!showNewGenre)} className="absolute -top-2 -right-2 bg-slate-800 text-cyan-400 rounded-full p-1.5 shadow-[0_0_8px_rgba(34,211,238,0.5)] border border-cyan-500/50 hover:bg-slate-700 active:scale-95 transition-all"><Plus size={14}/></button>
+          {/* ★ 独立・最前面化された 詳細表示画面 */}
+          {view === 'detail' && selectedMemo && (
+            <div className="fixed inset-0 bg-slate-950 overflow-y-auto pb-32 animate-in slide-in-from-right duration-300">
+              <header className={`${ColorMap[userSettings.genres[selectedMemo.genre]?.colorId || 'gray']?.bg || 'bg-slate-800'} text-slate-900 p-6 flex justify-between items-center sticky top-0 rounded-b-[2.5rem] shadow-[0_0_20px_rgba(0,0,0,0.8)] border-b border-white/20 relative overflow-hidden z-20`}>
+                <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-white/20 to-transparent"></div>
+                <button onClick={() => setView('list')} className="relative z-10 p-2 bg-black/20 rounded-full text-white backdrop-blur-sm active:scale-90"><ChevronLeft size={28}/></button>
+                <h2 className="font-black italic text-[10px] tracking-widest uppercase relative z-10 opacity-80 text-white drop-shadow-md">DECRYPTED DATA</h2>
+                <button onClick={handleEditClick} className="relative z-10 p-2 bg-black/20 rounded-full text-white backdrop-blur-sm active:scale-90"><Edit3 size={24}/></button>
+              </header>
+              <div className="p-8 space-y-8 max-w-xl mx-auto relative z-10">
+                <div className="space-y-4 relative">
+                  <div className="absolute -left-4 top-0 w-1 h-full bg-cyan-900/30 rounded-full"></div>
+                  <div className="flex gap-2 items-center mb-2">
+                    <span className={`px-3 py-1.5 rounded-lg text-[9px] font-black uppercase flex items-center gap-1.5 ${ColorMap[userSettings.genres[selectedMemo.genre]?.colorId || 'gray']?.light} ${ColorMap[userSettings.genres[selectedMemo.genre]?.colorId || 'gray']?.text} border shadow-inner`}><DynamicIcon name={userSettings.genres[selectedMemo.genre]?.icon} size={14}/> {String(selectedMemo.genre)}</span>
                   </div>
-                </div>
-
-                {showNewGenre && (
-                  <div className="bg-cyan-950/30 p-3 rounded-2xl border border-cyan-900 flex flex-col gap-2 animate-in fade-in slide-in-from-top-2 shadow-inner">
-                    <div className="flex gap-2">
-                      <select value={newGenreGroup} onChange={e=>setNewGenreGroup(e.target.value)} className="bg-slate-900 border border-slate-700 p-2 rounded-xl text-[10px] sm:text-xs font-bold text-slate-200 outline-none focus:border-cyan-500 shrink-0 w-24">
-                        {MainCategories.map(c => <option key={c} value={c}>{String(c)}</option>)}
-                      </select>
-                      <input type="text" placeholder="新ジャンル名" value={newGenreName} onChange={e=>setNewGenreName(e.target.value)} className="w-full bg-slate-900 border border-slate-700 p-2 rounded-xl text-xs font-bold text-cyan-50 outline-none focus:border-cyan-500 min-w-0" />
-                    </div>
-                    <div className="flex gap-2 items-center">
-                      <ColorSelector value={newGenreColor} onChange={setNewGenreColor} />
-                      <IconSelector value={newGenreIcon} onChange={setNewGenreIcon} />
-                      <button type="button" onClick={() => { if(newGenreName.trim()) { handleAddItem('genres', newGenreName.trim(), newGenreColor, newGenreIcon, newGenreGroup); setFormData({...formData, genre: newGenreName.trim()}); setNewGenreName(''); setNewGenreColor('blue'); setNewGenreIcon('Info'); setShowNewGenre(false); } }} className="bg-cyan-600 text-slate-900 px-4 py-2.5 rounded-xl text-xs font-black shadow-[0_0_10px_rgba(6,182,212,0.5)] active:scale-95 shrink-0">追加</button>
-                    </div>
+                  <h2 className="text-3xl font-black text-slate-100 leading-tight tracking-tighter drop-shadow-md">{String(selectedMemo.title)}</h2>
+                  <div className="flex gap-4 text-[10px] font-black text-slate-400 uppercase bg-slate-900 p-3 rounded-xl border border-slate-700 shadow-inner">
+                    <span className="flex items-center gap-1.5"><MapPin size={12} className="text-cyan-500"/> {String(selectedMemo.site)}</span><span className="flex items-center gap-1.5"><Calendar size={12} className="text-cyan-500"/> {String(selectedMemo.date)}</span>
                   </div>
-                )}
-
-                <div className="relative shadow-inner rounded-2xl">
-                  <Building className="absolute left-3 top-3.5 text-cyan-700" size={16}/>
-                  <input list="site-history" className="w-full p-3 pl-10 bg-slate-900 border border-slate-700 rounded-2xl font-bold outline-none text-sm text-cyan-50 focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500" placeholder="ダンジョン名（現場・案件）" value={formData.site || ''} onChange={e => setFormData({...formData, site: e.target.value})} />
-                  <datalist id="site-history">{uniqueSites.map(s => <option key={s} value={s} />)}</datalist>
-                </div>
-              </div>
-
-              <div className="space-y-3 bg-slate-900/80 backdrop-blur-sm p-4 rounded-[2rem] border border-slate-700 shadow-lg">
-                <button type="button" onClick={() => setShowAdvanced(!showAdvanced)} className="w-full flex justify-between items-center text-xs font-black text-cyan-600 py-1"><span className="flex items-center gap-1.5 tracking-widest"><Info size={14}/> ADVANCED SETTINGS</span>{showAdvanced ? <ChevronUp size={16}/> : <ChevronDown size={16}/>}</button>
-                {showAdvanced && (
-                  <div className="space-y-4 pt-3 border-t border-slate-800 animate-in fade-in slide-in-from-top-2">
-                    <div className="relative shadow-inner rounded-2xl"><User className="absolute left-3 top-3.5 text-cyan-700" size={16}/><input className="w-full p-3 pl-10 bg-slate-950 border border-slate-800 rounded-2xl font-bold outline-none text-sm text-cyan-50 focus:border-cyan-500 transition-colors" placeholder="教えてくれた人（師匠・先輩など）" value={formData.teacher || ''} onChange={e => setFormData({...formData, teacher: e.target.value})} /></div>
-                    <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800 space-y-4 shadow-inner">
-                      <label className="flex items-center gap-3 cursor-pointer group"><div className={`w-5 h-5 rounded-md flex items-center justify-center border transition-all ${formData.needsReview ? 'bg-cyan-600 border-cyan-500 shadow-[0_0_10px_rgba(6,182,212,0.5)]' : 'bg-slate-800 border-slate-600 group-hover:border-cyan-500'}`}>{formData.needsReview && <Check size={14} className="text-slate-900" strokeWidth={4}/>}</div><input type="checkbox" checked={formData.needsReview || false} onChange={e => setFormData({...formData, needsReview: e.target.checked})} className="hidden" /><span className="text-xs font-black text-slate-300 group-hover:text-cyan-100 transition-colors">後で確認・復習が必要</span></label>
-                      {formData.needsReview && (
-                        <div className="pl-8 space-y-4 animate-in fade-in">
-                          <div className="flex items-center gap-2"><Bell size={14} className="text-orange-500 shrink-0 drop-shadow-[0_0_5px_rgba(249,115,22,0.8)]"/><input type="date" className="p-2 bg-slate-900 border border-slate-700 rounded-xl font-bold outline-none text-xs text-cyan-50 shadow-inner w-full focus:border-orange-500 focus:ring-1 focus:ring-orange-500" value={formData.reviewDate || ''} onChange={e => setFormData({...formData, reviewDate: e.target.value})} /><span className="text-[10px] text-slate-500 font-bold shrink-0">にお知らせ</span></div>
-                          <label className="flex items-center gap-3 cursor-pointer group"><div className={`w-5 h-5 rounded-md flex items-center justify-center border transition-all ${formData.isReviewed ? 'bg-green-500 border-green-400 shadow-[0_0_10px_rgba(34,197,94,0.5)]' : 'bg-slate-800 border-slate-600 group-hover:border-green-500'}`}>{formData.isReviewed && <Check size={14} className="text-slate-900" strokeWidth={4}/>}</div><input type="checkbox" checked={formData.isReviewed || false} onChange={e => setFormData({...formData, isReviewed: e.target.checked})} className="hidden" /><span className="text-xs font-black text-slate-300 group-hover:text-green-100 transition-colors">確認完了（クリア！）</span></label>
-                        </div>
-                      )}
+                  {(selectedMemo.teacher || selectedMemo.needsReview) && (
+                    <div className="flex flex-wrap gap-2 text-[10px] font-bold mt-2">
+                      {selectedMemo.teacher && <span className="bg-slate-800 text-cyan-200 px-2.5 py-1.5 rounded-lg flex items-center gap-1.5 border border-slate-600 shadow-sm"><User size={12} className="text-cyan-500"/> 伝授: {String(selectedMemo.teacher)}</span>}
+                      {selectedMemo.needsReview && !selectedMemo.isReviewed && <span className="bg-red-950 text-red-400 px-2.5 py-1.5 rounded-lg flex items-center gap-1.5 border border-red-500/50 shadow-[0_0_8px_rgba(239,68,68,0.3)]"><Bell size={12}/> 要確認 ({String(selectedMemo.reviewDate) || '期限なし'})</span>}
+                      {selectedMemo.needsReview && selectedMemo.isReviewed && <span className="bg-green-950 text-green-400 px-2.5 py-1.5 rounded-lg flex items-center gap-1.5 border border-green-500/50 shadow-sm"><CheckSquare size={12}/> 確認完了</span>}
                     </div>
-                  </div>
-                )}
-              </div>
-
-              <div className="space-y-3">
-                <div className="flex justify-between items-end">
-                  <p className="text-[10px] font-black text-cyan-600 flex items-center gap-1 tracking-widest"><Tags size={12}/> COMPONENTS & TAGS</p>
-                  <button type="button" onClick={() => setShowNewTag(!showNewTag)} className="text-[10px] font-bold text-cyan-400 bg-slate-800 px-2.5 py-1.5 rounded-lg flex items-center gap-1 border border-cyan-900 shadow-[0_0_8px_rgba(6,182,212,0.2)] active:scale-95 transition-all"><Plus size={12}/>新規タグ作成</button>
-                </div>
-                {showNewTag && (
-                  <div className="bg-cyan-950/30 p-3 rounded-2xl border border-cyan-900 flex flex-col gap-2 animate-in fade-in slide-in-from-top-2 shadow-inner">
-                    <div className="flex gap-2">
-                      <select value={newTagGroup} onChange={e=>setNewTagGroup(e.target.value)} className="bg-slate-900 border border-slate-700 p-2 rounded-xl text-[10px] sm:text-xs font-bold text-slate-200 outline-none focus:border-cyan-500 shrink-0 w-24">{MainCategories.map(c => <option key={c} value={c}>{String(c)}</option>)}</select>
-                      <input type="text" placeholder="新タグ名" value={newTagName} onChange={e=>setNewTagName(e.target.value)} className="w-full bg-slate-900 border border-slate-700 p-2 rounded-xl text-xs font-bold text-cyan-50 outline-none focus:border-cyan-500 min-w-0" />
+                  )}
+                  {selectedMemo.materials && selectedMemo.materials.length > 0 && (
+                    <div className="flex flex-wrap gap-2 pt-2">
+                      {selectedMemo.materials.map((mat, i) => {
+                        const tagConf = userSettings.tags[mat] || { colorId: 'gray', icon: 'Tag' }; const tColor = ColorMap[tagConf.colorId] || ColorMap.gray;
+                        return <span key={i} className={`${tColor.light} ${tColor.text} ${tColor.border} border px-2.5 py-1.5 rounded-lg text-[10px] font-bold flex items-center gap-1.5 shadow-sm`}><DynamicIcon name={tagConf.icon} size={12}/> {String(mat)}</span>
+                      })}
                     </div>
-                    <div className="flex gap-2 items-center">
-                      <ColorSelector value={newTagColor} onChange={setNewTagColor} />
-                      <IconSelector value={newTagIcon} onChange={setNewTagIcon} />
-                      <button type="button" onClick={() => { if(newTagName.trim()) { handleAddItem('tags', newTagName.trim(), newTagColor, newTagIcon, newTagGroup); const mats = formData.materials || []; if (!mats.includes(newTagName.trim())) { setFormData({...formData, materials: [...mats, newTagName.trim()]}); } setNewTagName(''); setNewTagColor('gray'); setNewTagIcon('Tags'); setShowNewTag(false); } }} className="bg-cyan-600 text-slate-900 px-4 py-2.5 rounded-xl text-xs font-black shadow-[0_0_10px_rgba(6,182,212,0.5)] active:scale-95 shrink-0">追加</button>
-                    </div>
-                  </div>
-                )}
-                <div className="flex flex-col gap-2">{groupedTagsForm.map(({ category, tags }) => <TagAccordion key={category} groupName={`【${String(category)}】`} tags={tags} formData={formData} setFormData={setFormData} />)}</div>
-              </div>
-              
-              <div className="space-y-3 bg-slate-900/80 backdrop-blur-sm p-5 rounded-[2.5rem] border border-slate-700 shadow-lg">
-                <div className="flex justify-between items-center text-[10px] font-black text-cyan-600 mb-2 tracking-widest"><span className="flex items-center gap-1"><Camera size={14}/> VISUAL EVIDENCE</span>
-                  <div className="flex gap-2">
-                    <button type="button" onClick={handlePasteBtn} className="text-slate-900 bg-yellow-500 px-3 py-1.5 rounded-xl flex items-center gap-1 shadow-md active:scale-95 font-bold text-xs"><ClipboardList size={14}/> 貼付</button>
-                    <label className="text-slate-900 bg-cyan-600 px-3 py-1.5 rounded-xl flex items-center gap-1 cursor-pointer active:scale-95 shadow-md hover:bg-cyan-500 font-bold text-xs"><Upload size={14}/> ファイル<input type="file" accept="image/*" multiple onChange={handleFileUpload} className="hidden" /></label>
-                  </div>
-                </div>
-                <div className="flex gap-4 overflow-x-auto pb-4 snap-x">
-                  {!formData.images || formData.images.length === 0 ? (
-                    <div className="w-full flex-shrink-0 h-32 border-2 border-dashed border-slate-700 rounded-[2rem] flex flex-col items-center justify-center text-slate-500 font-bold text-xs bg-slate-950/50 shadow-inner text-center px-4"><ImageIcon size={24} className="mb-2 opacity-50"/> <span>現場の様子を記録</span><span className="text-[9px] mt-1 opacity-70">Googleフォト等からコピーして<br/>「貼付」ボタンで追加できます</span></div>
-                  ) : (
-                    Array.isArray(formData.images) && formData.images.map((img, i) => (
-                      typeof img === 'string' ? (
-                        <div key={i} className="relative w-48 flex-shrink-0 snap-center group">
-                          <img src={img} className="w-full h-32 object-cover rounded-[1.5rem] border border-slate-700 shadow-lg cursor-pointer opacity-90 hover:opacity-100 transition-opacity" onClick={() => setMarkupModal({ isOpen: true, imgIndex: i, dataUrl: img })} />
-                          <button type="button" onClick={() => { const newImgs = [...formData.images]; newImgs.splice(i, 1); setFormData({...formData, images: newImgs}); }} className="absolute -top-2 -right-2 bg-red-500 text-slate-900 p-1.5 rounded-full shadow-[0_0_10px_rgba(239,68,68,0.8)]"><X size={14}/></button>
-                          <div className="absolute bottom-2 right-2 bg-cyan-900/80 text-cyan-100 p-1.5 rounded-full pointer-events-none border border-cyan-500"><Edit3 size={12}/></div>
-                        </div>
-                      ) : null
-                    ))
                   )}
                 </div>
-              </div>
-              
-              <div className="space-y-3 bg-slate-900/80 backdrop-blur-sm p-5 rounded-[2.5rem] border border-slate-700 shadow-lg">
-                <div className="flex flex-wrap gap-2 pb-2 border-b border-slate-800">
-                  {Array.isArray(userSettings.quickPhrases) && userSettings.quickPhrases.map((p, idx) => (
-                    typeof p === 'string' ? <button key={idx} type="button" onClick={() => setFormData({...formData, content: formData.content + (formData.content?'\n':'') + p})} className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-cyan-100 rounded-xl text-[10px] border border-slate-600 font-black transition-colors shadow-inner">+ {String(p)}</button> : null
-                  ))}
+                {((selectedMemo.images && selectedMemo.images.length > 0) || selectedMemo.markupImage) && (
+                  <div className="space-y-3">
+                    <h3 className="text-xs font-black text-cyan-600 flex items-center gap-1 tracking-widest"><Camera size={14}/> VISUAL DATA</h3>
+                    <div className="flex flex-col gap-4">
+                      {selectedMemo.markupImage && (!selectedMemo.images || selectedMemo.images.length===0) && <div className="bg-slate-900 rounded-[2.5rem] overflow-hidden border-2 border-slate-700 shadow-[0_0_15px_rgba(0,0,0,0.8)]"><img src={selectedMemo.markupImage} className="w-full opacity-90" /></div>}
+                      {selectedMemo.images && selectedMemo.images.map((img, i) => <div key={i} className="bg-slate-900 rounded-[2.5rem] overflow-hidden border-2 border-slate-700 shadow-[0_0_15px_rgba(0,0,0,0.8)] relative"><img src={img} className="w-full h-auto object-cover opacity-90" /></div>)}
+                    </div>
+                  </div>
+                )}
+                <div className="bg-slate-900 p-8 rounded-[3rem] text-cyan-50 font-medium border border-cyan-900/50 leading-relaxed relative shadow-[0_0_20px_rgba(6,182,212,0.1)] whitespace-pre-wrap">
+                  <span className="absolute -top-3 left-10 bg-cyan-600 text-slate-900 px-4 py-1 rounded-full text-[10px] not-italic shadow-[0_0_8px_rgba(6,182,212,0.8)] tracking-widest font-black uppercase">Quest Log</span>
+                  {String(selectedMemo.content || '')}
                 </div>
-                <textarea className="w-full h-40 pt-2 bg-transparent outline-none text-sm font-medium leading-relaxed resize-none text-cyan-50 placeholder:text-slate-600" placeholder="攻略のヒント、配線の色、次回への引き継ぎ事項などを記録..." value={formData.content || ''} onChange={e => setFormData({...formData, content: e.target.value})} />
               </div>
-              
-              {view === 'edit' && <button type="button" onClick={() => handleDelete(selectedMemo.id)} className="w-full py-5 text-red-500 font-black text-xs border-2 border-red-900/50 border-dashed rounded-[2.5rem] uppercase tracking-widest hover:bg-red-950 transition-all mt-8 shadow-inner">クエストを破棄する</button>}
             </div>
-          </div>
-        )}
-      </div>
+          )}
 
+          {/* ★ 独立・最前面化された 追加・編集フォーム画面 */}
+          {(view === 'add' || view === 'edit') && (
+            <div className="fixed inset-0 bg-slate-950 overflow-y-auto pb-32 animate-in slide-in-from-bottom-10">
+              <div className="fixed inset-0 pointer-events-none opacity-10" style={{ backgroundImage: `linear-gradient(to right, #facc15 1px, transparent 1px), linear-gradient(to bottom, #facc15 1px, transparent 1px)`, backgroundSize: '40px 40px' }}></div>
+              <header className="bg-slate-900/90 backdrop-blur-md border-b border-yellow-500/30 p-5 flex justify-between items-center sticky top-0 shadow-[0_0_20px_rgba(234,179,8,0.15)] z-20">
+                <button onClick={() => setView('list')} className="text-slate-400 hover:text-yellow-400 active:scale-90 transition-all"><X size={24}/></button>
+                <h2 className="font-black text-yellow-400 tracking-tighter italic flex items-center gap-2 drop-shadow-[0_0_5px_rgba(234,179,8,0.8)]"><ClipperIcon size={18} strokeWidth={2.5}/> RECORD NEW DATA...</h2>
+                <button onClick={handleSave} className="relative group overflow-hidden bg-slate-800 text-cyan-400 px-5 py-2.5 rounded-full font-black text-[10px] uppercase shadow-[0_0_15px_rgba(34,211,238,0.3)] border border-cyan-500/50 disabled:opacity-50 active:scale-95 transition-all">
+                  <span className="relative z-10 flex items-center gap-1.5"><ClipperIcon size={14}/> ログを刻印</span>
+                  <div className="absolute inset-0 bg-gradient-to-r from-cyan-600 to-blue-600 opacity-0 group-hover:opacity-20 transition-opacity"></div>
+                </button>
+              </header>
+              
+              <div className="p-6 space-y-7 max-w-xl mx-auto relative z-10">
+                {view === 'add' && (formData.title || formData.content || formData.images?.length > 0) && (
+                  <div className="flex justify-end mb-[-1rem]">
+                    <button onClick={() => { if (window.confirm('入力内容をすべてリセットしますか？')) { setFormData(initialForm); localStorage.removeItem('voltVaultDraft'); } }} className="text-[10px] text-red-400 font-bold border border-red-500/50 px-2.5 py-1.5 rounded-md bg-red-950/50 shadow-sm active:scale-95"><Trash2 size={12} className="inline mr-1"/>一時保存をクリア</button>
+                  </div>
+                )}
+
+                <div className="space-y-4">
+                  <input list="title-history" className="w-full text-2xl font-black bg-transparent border-b-2 border-slate-700 py-2 text-slate-100 focus:border-cyan-400 outline-none transition-colors placeholder:text-slate-600" placeholder="クエスト名（作業・タイトル）" value={formData.title || ''} onChange={e => setFormData({...formData, title: e.target.value})} />
+                  <datalist id="title-history">{uniqueTitles.map(t => <option key={t} value={t} />)}</datalist>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <input type="date" className="p-3 bg-slate-900 border border-slate-700 rounded-2xl font-bold outline-none text-sm text-cyan-50 shadow-inner focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500" value={formData.date || ''} onChange={e => setFormData({...formData, date: e.target.value})} />
+                    <div className="relative flex items-center">
+                      <select className="p-3 bg-slate-900 border border-slate-700 rounded-2xl font-bold outline-none text-sm text-cyan-50 shadow-inner w-full focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 appearance-none" value={formData.genre || ''} onChange={e => setFormData({...formData, genre: e.target.value})}>
+                        {groupedGenresForm.map(({ category, genres }) => (<optgroup key={category} label={`【${String(category)}】`}>{genres.map(g => <option key={g.key} value={g.key}>{String(g.key)}</option>)}</optgroup>))}
+                      </select>
+                      <ChevronDown size={14} className="absolute right-3 text-slate-500 pointer-events-none"/>
+                      <button type="button" onClick={() => setShowNewGenre(!showNewGenre)} className="absolute -top-2 -right-2 bg-slate-800 text-cyan-400 rounded-full p-1.5 shadow-[0_0_8px_rgba(34,211,238,0.5)] border border-cyan-500/50 hover:bg-slate-700 active:scale-95 transition-all"><Plus size={14}/></button>
+                    </div>
+                  </div>
+
+                  {showNewGenre && (
+                    <div className="bg-cyan-950/30 p-3 rounded-2xl border border-cyan-900 flex flex-col gap-2 animate-in fade-in slide-in-from-top-2 shadow-inner">
+                      <div className="flex gap-2">
+                        <select value={newGenreGroup} onChange={e=>setNewGenreGroup(e.target.value)} className="bg-slate-900 border border-slate-700 p-2 rounded-xl text-[10px] sm:text-xs font-bold text-slate-200 outline-none focus:border-cyan-500 shrink-0 w-24">
+                          {MainCategories.map(c => <option key={c} value={c}>{String(c)}</option>)}
+                        </select>
+                        <input type="text" placeholder="新ジャンル名" value={newGenreName} onChange={e=>setNewGenreName(e.target.value)} className="w-full bg-slate-900 border border-slate-700 p-2 rounded-xl text-xs font-bold text-cyan-50 outline-none focus:border-cyan-500 min-w-0" />
+                      </div>
+                      <div className="flex gap-2 items-center">
+                        <ColorSelector value={newGenreColor} onChange={setNewGenreColor} />
+                        <IconSelector value={newGenreIcon} onChange={setNewGenreIcon} />
+                        <button type="button" onClick={() => { if(newGenreName.trim()) { handleAddItem('genres', newGenreName.trim(), newGenreColor, newGenreIcon, newGenreGroup); setFormData({...formData, genre: newGenreName.trim()}); setNewGenreName(''); setNewGenreColor('blue'); setNewGenreIcon('Info'); setShowNewGenre(false); } }} className="bg-cyan-600 text-slate-900 px-4 py-2.5 rounded-xl text-xs font-black shadow-[0_0_10px_rgba(6,182,212,0.5)] active:scale-95 shrink-0">追加</button>
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="relative shadow-inner rounded-2xl">
+                    <Building className="absolute left-3 top-3.5 text-cyan-700" size={16}/>
+                    <input list="site-history" className="w-full p-3 pl-10 bg-slate-900 border border-slate-700 rounded-2xl font-bold outline-none text-sm text-cyan-50 focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500" placeholder="ダンジョン名（現場・案件）" value={formData.site || ''} onChange={e => setFormData({...formData, site: e.target.value})} />
+                    <datalist id="site-history">{uniqueSites.map(s => <option key={s} value={s} />)}</datalist>
+                  </div>
+                </div>
+
+                <div className="space-y-3 bg-slate-900/80 backdrop-blur-sm p-4 rounded-[2rem] border border-slate-700 shadow-lg">
+                  <button type="button" onClick={() => setShowAdvanced(!showAdvanced)} className="w-full flex justify-between items-center text-xs font-black text-cyan-600 py-1"><span className="flex items-center gap-1.5 tracking-widest"><Info size={14}/> ADVANCED SETTINGS</span>{showAdvanced ? <ChevronUp size={16}/> : <ChevronDown size={16}/>}</button>
+                  {showAdvanced && (
+                    <div className="space-y-4 pt-3 border-t border-slate-800 animate-in fade-in slide-in-from-top-2">
+                      <div className="relative shadow-inner rounded-2xl"><User className="absolute left-3 top-3.5 text-cyan-700" size={16}/><input className="w-full p-3 pl-10 bg-slate-950 border border-slate-800 rounded-2xl font-bold outline-none text-sm text-cyan-50 focus:border-cyan-500 transition-colors" placeholder="教えてくれた人（師匠・先輩など）" value={formData.teacher || ''} onChange={e => setFormData({...formData, teacher: e.target.value})} /></div>
+                      <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800 space-y-4 shadow-inner">
+                        <label className="flex items-center gap-3 cursor-pointer group"><div className={`w-5 h-5 rounded-md flex items-center justify-center border transition-all ${formData.needsReview ? 'bg-cyan-600 border-cyan-500 shadow-[0_0_10px_rgba(6,182,212,0.5)]' : 'bg-slate-800 border-slate-600 group-hover:border-cyan-500'}`}>{formData.needsReview && <Check size={14} className="text-slate-900" strokeWidth={4}/>}</div><input type="checkbox" checked={formData.needsReview || false} onChange={e => setFormData({...formData, needsReview: e.target.checked})} className="hidden" /><span className="text-xs font-black text-slate-300 group-hover:text-cyan-100 transition-colors">後で確認・復習が必要</span></label>
+                        {formData.needsReview && (
+                          <div className="pl-8 space-y-4 animate-in fade-in">
+                            <div className="flex items-center gap-2"><Bell size={14} className="text-orange-500 shrink-0 drop-shadow-[0_0_5px_rgba(249,115,22,0.8)]"/><input type="date" className="p-2 bg-slate-900 border border-slate-700 rounded-xl font-bold outline-none text-xs text-cyan-50 shadow-inner w-full focus:border-orange-500 focus:ring-1 focus:ring-orange-500" value={formData.reviewDate || ''} onChange={e => setFormData({...formData, reviewDate: e.target.value})} /><span className="text-[10px] text-slate-500 font-bold shrink-0">にお知らせ</span></div>
+                            <label className="flex items-center gap-3 cursor-pointer group"><div className={`w-5 h-5 rounded-md flex items-center justify-center border transition-all ${formData.isReviewed ? 'bg-green-500 border-green-400 shadow-[0_0_10px_rgba(34,197,94,0.5)]' : 'bg-slate-800 border-slate-600 group-hover:border-green-500'}`}>{formData.isReviewed && <Check size={14} className="text-slate-900" strokeWidth={4}/>}</div><input type="checkbox" checked={formData.isReviewed || false} onChange={e => setFormData({...formData, isReviewed: e.target.checked})} className="hidden" /><span className="text-xs font-black text-slate-300 group-hover:text-green-100 transition-colors">確認完了（クリア！）</span></label>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                <div className="space-y-3">
+                  <div className="flex justify-between items-end">
+                    <p className="text-[10px] font-black text-cyan-600 flex items-center gap-1 tracking-widest"><Tags size={12}/> COMPONENTS & TAGS</p>
+                    <button type="button" onClick={() => setShowNewTag(!showNewTag)} className="text-[10px] font-bold text-cyan-400 bg-slate-800 px-2.5 py-1.5 rounded-lg flex items-center gap-1 border border-cyan-900 shadow-[0_0_8px_rgba(6,182,212,0.2)] active:scale-95 transition-all"><Plus size={12}/>新規タグ作成</button>
+                  </div>
+                  {showNewTag && (
+                    <div className="bg-cyan-950/30 p-3 rounded-2xl border border-cyan-900 flex flex-col gap-2 animate-in fade-in slide-in-from-top-2 shadow-inner">
+                      <div className="flex gap-2">
+                        <select value={newTagGroup} onChange={e=>setNewTagGroup(e.target.value)} className="bg-slate-900 border border-slate-700 p-2 rounded-xl text-[10px] sm:text-xs font-bold text-slate-200 outline-none focus:border-cyan-500 shrink-0 w-24">{MainCategories.map(c => <option key={c} value={c}>{String(c)}</option>)}</select>
+                        <input type="text" placeholder="新タグ名" value={newTagName} onChange={e=>setNewTagName(e.target.value)} className="w-full bg-slate-900 border border-slate-700 p-2 rounded-xl text-xs font-bold text-cyan-50 outline-none focus:border-cyan-500 min-w-0" />
+                      </div>
+                      <div className="flex gap-2 items-center">
+                        <ColorSelector value={newTagColor} onChange={setNewTagColor} />
+                        <IconSelector value={newTagIcon} onChange={setNewTagIcon} />
+                        <button type="button" onClick={() => { if(newTagName.trim()) { handleAddItem('tags', newTagName.trim(), newTagColor, newTagIcon, newTagGroup); const mats = formData.materials || []; if (!mats.includes(newTagName.trim())) { setFormData({...formData, materials: [...mats, newTagName.trim()]}); } setNewTagName(''); setNewTagColor('gray'); setNewTagIcon('Tags'); setShowNewTag(false); } }} className="bg-cyan-600 text-slate-900 px-4 py-2.5 rounded-xl text-xs font-black shadow-[0_0_10px_rgba(6,182,212,0.5)] active:scale-95 shrink-0">追加</button>
+                      </div>
+                    </div>
+                  )}
+                  <div className="flex flex-col gap-2">{groupedTagsForm.map(({ category, tags }) => <TagAccordion key={category} groupName={`【${String(category)}】`} tags={tags} formData={formData} setFormData={setFormData} />)}</div>
+                </div>
+                
+                <div className="space-y-3 bg-slate-900/80 backdrop-blur-sm p-5 rounded-[2.5rem] border border-slate-700 shadow-lg">
+                  <div className="flex justify-between items-center text-[10px] font-black text-cyan-600 mb-2 tracking-widest"><span className="flex items-center gap-1"><Camera size={14}/> VISUAL EVIDENCE</span>
+                    <div className="flex gap-2">
+                      <button type="button" onClick={handlePasteBtn} className="text-slate-900 bg-yellow-500 px-3 py-1.5 rounded-xl flex items-center gap-1 shadow-md active:scale-95 font-bold text-xs"><ClipboardList size={14}/> 貼付</button>
+                      <label className="text-slate-900 bg-cyan-600 px-3 py-1.5 rounded-xl flex items-center gap-1 cursor-pointer active:scale-95 shadow-md hover:bg-cyan-500 font-bold text-xs"><Upload size={14}/> ファイル<input type="file" accept="image/*" multiple onChange={handleFileUpload} className="hidden" /></label>
+                    </div>
+                  </div>
+                  <div className="flex gap-4 overflow-x-auto pb-4 snap-x">
+                    {!formData.images || formData.images.length === 0 ? (
+                      <div className="w-full flex-shrink-0 h-32 border-2 border-dashed border-slate-700 rounded-[2rem] flex flex-col items-center justify-center text-slate-500 font-bold text-xs bg-slate-950/50 shadow-inner text-center px-4"><ImageIcon size={24} className="mb-2 opacity-50"/> <span>現場の様子を記録</span><span className="text-[9px] mt-1 opacity-70">Googleフォト等からコピーして<br/>「貼付」ボタンで追加できます</span></div>
+                    ) : (
+                      Array.isArray(formData.images) && formData.images.map((img, i) => (
+                        typeof img === 'string' ? (
+                          <div key={i} className="relative w-48 flex-shrink-0 snap-center group">
+                            <img src={img} className="w-full h-32 object-cover rounded-[1.5rem] border border-slate-700 shadow-lg cursor-pointer opacity-90 hover:opacity-100 transition-opacity" onClick={() => setMarkupModal({ isOpen: true, imgIndex: i, dataUrl: img })} />
+                            <button type="button" onClick={() => { const newImgs = [...formData.images]; newImgs.splice(i, 1); setFormData({...formData, images: newImgs}); }} className="absolute -top-2 -right-2 bg-red-500 text-slate-900 p-1.5 rounded-full shadow-[0_0_10px_rgba(239,68,68,0.8)]"><X size={14}/></button>
+                            <div className="absolute bottom-2 right-2 bg-cyan-900/80 text-cyan-100 p-1.5 rounded-full pointer-events-none border border-cyan-500"><Edit3 size={12}/></div>
+                          </div>
+                        ) : null
+                      ))
+                    )}
+                  </div>
+                </div>
+                
+                <div className="space-y-3 bg-slate-900/80 backdrop-blur-sm p-5 rounded-[2.5rem] border border-slate-700 shadow-lg">
+                  <div className="flex flex-wrap gap-2 pb-2 border-b border-slate-800">
+                    {Array.isArray(userSettings.quickPhrases) && userSettings.quickPhrases.map((p, idx) => (
+                      typeof p === 'string' ? <button key={idx} type="button" onClick={() => setFormData({...formData, content: formData.content + (formData.content?'\n':'') + p})} className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-cyan-100 rounded-xl text-[10px] border border-slate-600 font-black transition-colors shadow-inner">+ {String(p)}</button> : null
+                    ))}
+                  </div>
+                  <textarea className="w-full h-40 pt-2 bg-transparent outline-none text-sm font-medium leading-relaxed resize-none text-cyan-50 placeholder:text-slate-600" placeholder="攻略のヒント、配線の色、次回への引き継ぎ事項などを記録..." value={formData.content || ''} onChange={e => setFormData({...formData, content: e.target.value})} />
+                </div>
+                
+                {view === 'edit' && <button type="button" onClick={() => handleDelete(selectedMemo.id)} className="w-full py-5 text-red-500 font-black text-xs border-2 border-red-900/50 border-dashed rounded-[2.5rem] uppercase tracking-widest hover:bg-red-950 transition-all mt-8 shadow-inner">クエストを破棄する</button>}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
       {!markupModal.isOpen && view !== 'add' && view !== 'edit' && view !== 'detail' && <NavBtn view={view} setView={setView} />}
     </div>
   );
