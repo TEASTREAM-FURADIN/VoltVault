@@ -486,7 +486,6 @@ const MarkupModalCanvas = ({ markupModal, setMarkupModal, formData, setFormData 
     if (e && e.target && e.target.releasePointerCapture) e.target.releasePointerCapture(e.pointerId);
   };
 
-  // ★ 復元された取り消し・やり直し機能
   const handleUndo = () => {
     if (strokes.length === 0) return;
     const lastStroke = strokes[strokes.length - 1];
@@ -528,7 +527,7 @@ const MarkupModalCanvas = ({ markupModal, setMarkupModal, formData, setFormData 
           ctx.beginPath();
           if (s.points.length === 1) {
             ctx.fillStyle = s.type === 'eraser' ? 'rgba(0,0,0,1)' : s.color;
-            ctx.arc(s.points[0].x * cvs.width, s.points[0].y * cvs.height, w / 2, 0, Math.PI * 2);
+            ctx.arc(s.points[0].x * cvs.width, s.points[0].y * cvs.height, (s.width * cvs.width) / 2, 0, Math.PI * 2);
             ctx.fill();
           } else {
             ctx.moveTo(s.points[0].x * cvs.width, s.points[0].y * cvs.height);
@@ -1192,7 +1191,6 @@ export default function App() {
           )}
         </header>
 
-        {/* メイン画面群（List, Stats, Settings） */}
         <main className="p-4 max-w-xl mx-auto relative z-10">
           {view === 'list' && (
             <div className="space-y-4">
@@ -1315,14 +1313,22 @@ export default function App() {
                   <h3 className="font-black text-cyan-400 flex items-center gap-2"><ClipboardList size={18}/> 画像を貼り付け</h3>
                   <button onClick={() => setShowPasteModal(false)} className="text-slate-500 hover:text-cyan-400 active:scale-90"><X size={24}/></button>
                 </div>
-                <p className="text-xs font-bold text-slate-300 mb-4 leading-relaxed">
-                  下の入力欄を<strong className="text-yellow-400">長押し</strong>して<strong className="text-yellow-400">「ペースト（貼り付け）」</strong>を選択してください。
-                  <br/><br/>
-                  <span className="text-[10px] text-slate-400">※Googleフォトでコピーした画像が貼れない場合、隣の<strong className="text-cyan-400">「ファイル」ボタン</strong>からスマホのメニュー経由で選択してください。</span>
-                </p>
+                <div className="text-xs font-bold text-slate-300 mb-4 leading-relaxed space-y-2">
+                  <p>下の入力欄を<strong className="text-yellow-400">長押し</strong>して<strong className="text-yellow-400">「ペースト（貼り付け）」</strong>を選択してください。</p>
+                  <div className="bg-red-950/50 border border-red-500/50 p-3 rounded-xl text-red-200 shadow-inner">
+                    <p className="text-red-400 font-black mb-1 flex items-center gap-1"><AlertCircle size={14}/> Googleフォトをお使いの場合</p>
+                    <p className="text-[10px]">
+                      スマホの制限で、直接ペーストできない場合があります。<br/><br/>
+                      【確実な手順】<br/>
+                      1. Googleフォトで<strong className="text-white">「デバイスに保存」</strong><br/>
+                      2. 隣の<strong className="text-white">「ファイル」</strong>ボタンから選択<br/>
+                      お手数ですが、この方法が確実です！
+                    </p>
+                  </div>
+                </div>
                 <textarea 
                   autoFocus
-                  className="w-full h-32 bg-slate-800 border-2 border-dashed border-cyan-500/50 rounded-xl p-4 text-cyan-50 text-sm focus:border-cyan-400 outline-none resize-none font-bold placeholder-slate-500 shadow-inner"
+                  className="w-full h-24 bg-slate-800 border-2 border-dashed border-cyan-500/50 rounded-xl p-4 text-cyan-50 text-sm focus:border-cyan-400 outline-none resize-none font-bold placeholder-slate-500 shadow-inner"
                   placeholder="👇 ここを長押しして「ペースト」"
                   value=""
                   onChange={() => {}}
