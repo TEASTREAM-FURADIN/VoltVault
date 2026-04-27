@@ -405,6 +405,97 @@ const TextEditor = ({ t, texts, setTexts, setEditingTextId, zoom, dimensions }) 
   );
 };
 
+// ★ 新追加：本気で画像を拡大・パン操作できる専用ビューア
+const ImageViewer = ({ src, onClose }) => {
+  const [scale, setScale] = useState(1);
+  const [position, setPosition] = useState({ x: 0, y: 0 });
+  const isDragging = useRef(false);
+  const dragStart = useRef({ x: 0, y: 0 });
+  const lastTouchDist = useRef(null);
+  const lastTap = useRef(0);
+
+  const handlePointerDown = (e) => {
+    isDragging.current = true;
+    dragStart.current = { x: e.clientX - position.x, y: e.clientY - position.y };
+    if (e.target.setPointerCapture) e.target.setPointerCapture(e.pointerId);
+  };
+
+  const handlePointerMove = (e) => {
+    if (!isDragging.current) return;
+    setPosition({ x: e.clientX - dragStart.current.x, y: e.clientY - dragStart.current.y });
+  };
+
+  const handlePointerUp = (e) => {
+    isDragging.current = false;
+    if (e.target.releasePointerCapture) e.target.releasePointerCapture(e.pointerId);
+  };
+
+  const handleTouchStart = (e) => {
+    if (e.touches.length === 2) {
+      const dist = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
+      lastTouchDist.current = dist;
+    }
+  };
+
+  const handleTouchMove = (e) => {
+    if (e.touches.length === 2 && lastTouchDist.current) {
+      e.preventDefault();
+      const dist = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
+      const delta = dist - lastTouchDist.current;
+      setScale(s => Math.max(1, Math.min(s + delta * 0.02, 10))); // ★ 最大10倍までズーム可能！
+      lastTouchDist.current = dist;
+    }
+  };
+
+  const handleTouchEnd = (e) => {
+    lastTouchDist.current = null;
+    if (e.touches.length === 0) {
+      const now = Date.now();
+      if (now - lastTap.current < 300) {
+        if (scale > 1) {
+          setScale(1);
+          setPosition({ x: 0, y: 0 });
+        } else {
+          setScale(3); // ★ ダブルタップで一気に3倍ズーム！
+        }
+      }
+      lastTap.current = now;
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-[300] bg-black/95 flex items-center justify-center overflow-hidden touch-none"
+         onWheel={(e) => setScale(s => Math.max(1, Math.min(s - e.deltaY * 0.01, 10)))}>
+      
+      <button onClick={onClose} className="absolute top-6 right-6 z-50 bg-slate-800/80 p-3 rounded-full text-white shadow-lg active:scale-90 transition-all border border-slate-600">
+        <X size={28} />
+      </button>
+
+      {/* ズームコントローラー */}
+      <div className="absolute bottom-10 flex gap-4 z-50 bg-slate-800/80 p-2 rounded-full shadow-[0_0_20px_rgba(0,0,0,0.5)] items-center border border-slate-700">
+        <button onClick={() => setScale(s => Math.max(1, s - 0.5))} className="p-3 text-cyan-400 hover:text-cyan-300 active:scale-90 transition-all"><ZoomOut size={24} /></button>
+        <span className="text-white font-black flex items-center justify-center w-16 text-lg">{Math.round(scale * 100)}%</span>
+        <button onClick={() => setScale(s => Math.min(10, s + 0.5))} className="p-3 text-cyan-400 hover:text-cyan-300 active:scale-90 transition-all"><ZoomIn size={24} /></button>
+      </div>
+
+      <img 
+        src={src} 
+        style={{ transform: `translate(${position.x}px, ${position.y}px) scale(${scale})`, transition: isDragging.current ? 'none' : 'transform 0.1s ease-out' }}
+        className="max-w-none max-h-none w-full h-full object-contain cursor-move touch-none"
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={handlePointerUp}
+        onPointerLeave={handlePointerUp}
+        onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
+        onTouchEnd={handleTouchEnd}
+        draggable={false}
+      />
+    </div>
+  );
+};
+
+
 const MarkupModalCanvas = ({ markupModal, setMarkupModal, formData, setFormData }) => {
   const canvasRef = useRef(null); const [mode, setMode] = useState('draw'); const [zoom, setZoom] = useState(1);
   const [dimensions, setDimensions] = useState(null); const [texts, setTexts] = useState([]); 
@@ -417,7 +508,12 @@ const MarkupModalCanvas = ({ markupModal, setMarkupModal, formData, setFormData 
   useEffect(() => {
     if (!markupModal.dataUrl || typeof markupModal.dataUrl !== 'string') return;
     const img = new Image();
-    img.crossOrigin = "Anonymous"; // ★ 追加：CORSエラーによる保存失敗を防ぐ
+    
+    // ★ 修正：ローカルのアップロード画像（data:image）にはcrossOriginをつけない（CORSエラー防止）
+    if (markupModal.dataUrl.startsWith('http')) {
+      img.crossOrigin = "Anonymous"; 
+    }
+    
     img.onload = () => {
       const scale = Math.min((window.innerWidth - 32) / img.width, (window.innerHeight * 0.55) / img.height, 1);
       setDimensions({ dispW: img.width * scale, dispH: img.height * scale, origW: img.width, origH: img.height, img });
@@ -454,9 +550,8 @@ const MarkupModalCanvas = ({ markupModal, setMarkupModal, formData, setFormData 
 
   const getPos = (e) => {
     const r = canvasRef.current.getBoundingClientRect();
-    const cx = e.touches && e.touches.length > 0 ? e.touches[0].clientX : (e.changedTouches && e.changedTouches.length > 0 ? e.changedTouches[0].clientX : e.clientX);
-    const cy = e.touches && e.touches.length > 0 ? e.touches[0].clientY : (e.changedTouches && e.changedTouches.length > 0 ? e.changedTouches[0].clientY : e.clientY);
-    return { x: (cx - r.left) / r.width, y: (cy - r.top) / r.height };
+    // ★ 修正：PointerEventに完全対応し、確実に座標を取得
+    return { x: (e.clientX - r.left) / r.width, y: (e.clientY - r.top) / r.height };
   };
 
   const handleStart = (e) => {
@@ -472,7 +567,7 @@ const MarkupModalCanvas = ({ markupModal, setMarkupModal, formData, setFormData 
   };
 
   const handleMove = (e) => {
-    if (dragRef.current) { e.preventDefault(); const p = getPos(e); setTexts(texts.map(t => t.id === dragRef.current.id ? { ...t, x: p.x - dragRef.current.ox, y: p.y - dragRef.current.oy } : t)); return; }
+    if (dragRef.current) { e.preventDefault(); const p = getPos(e); dragRef.current.moved = true; setTexts(texts.map(t => t.id === dragRef.current.id ? { ...t, x: p.x - dragRef.current.ox, y: p.y - dragRef.current.oy } : t)); return; }
     if (!currentStroke.current || !canvasRef.current) return;
     e.preventDefault(); const p = getPos(e); const pts = currentStroke.current.points; const prev = pts[pts.length - 1]; pts.push(p);
     const cvs = canvasRef.current; const ctx = cvs.getContext('2d');
@@ -508,15 +603,16 @@ const MarkupModalCanvas = ({ markupModal, setMarkupModal, formData, setFormData 
 
   const handleSaveImage = () => {
     try {
+      if (!dimensions || !dimensions.img) throw new Error("画像がまだ読み込まれていません");
+      
       const cvs = document.createElement('canvas');
-      const MAX_SAVE_SIZE = 800; // ★ 画質と軽さのベストバランス
+      const MAX_SAVE_SIZE = 1024; // ★ 超高解像度化（1024px）
       const scale = Math.min(MAX_SAVE_SIZE / dimensions.origW, MAX_SAVE_SIZE / dimensions.origH, 1);
       cvs.width = dimensions.origW * scale; cvs.height = dimensions.origH * scale;
       const ctx = cvs.getContext('2d'); 
       
       ctx.fillStyle = '#ffffff';
       ctx.fillRect(0, 0, cvs.width, cvs.height);
-      
       ctx.drawImage(dimensions.img, 0, 0, cvs.width, cvs.height);
       
       strokes.forEach(s => {
@@ -546,9 +642,8 @@ const MarkupModalCanvas = ({ markupModal, setMarkupModal, formData, setFormData 
         ctx.fillStyle = t.color; lines.forEach((l, i) => ctx.fillText(l, tx + pad, ty + pad + (i * fSize * 1.2)));
       });
       
-      const newDataUrl = cvs.toDataURL('image/jpeg', 0.6); 
+      const newDataUrl = cvs.toDataURL('image/jpeg', 0.7); // ★ 高画質化（70%）
       
-      // ★ 確実に最新の状態を参照して上書きする（保存が反映されない問題の完全修正）
       setFormData(prev => {
         const newImages = Array.isArray(prev.images) ? [...prev.images] : [];
         newImages[markupModal.imgIndex] = newDataUrl;
@@ -693,6 +788,9 @@ export default function App() {
   const [showTrophiesModal, setShowTrophiesModal] = useState(false); 
   const [markupModal, setMarkupModal] = useState({ isOpen: false, imgIndex: null, dataUrl: null });
   const [showPasteModal, setShowPasteModal] = useState(false); 
+  
+  // ★ 追加：全画面画像ビューア用の状態
+  const [viewerImage, setViewerImage] = useState(null);
 
   const uniqueSites = [...new Set(memos.map(m => String(m.site || "")).filter(Boolean))];
   const uniqueTitles = [...new Set(memos.map(m => String(m.title || "").replace(/\s+\d+$/, "")).filter(Boolean))];
@@ -813,7 +911,6 @@ export default function App() {
   };
   const weaponStyle = getWeaponStyle(currentLevel);
 
-  // ★ 復元した filteredMemos 変数
   const filteredMemos = memos.filter(m => {
     const matchSearch = String(m.title || "").includes(searchTerm) || String(m.site || "").includes(searchTerm) || (m.materials || []).some(mat => String(mat).includes(searchTerm)) || String(m.teacher || "").includes(searchTerm);
     return matchSearch && (dateRange.start ? (m.date || "") >= dateRange.start : true) && (dateRange.end ? (m.date || "") <= dateRange.end : true) && (filterPending ? (m.needsReview && !m.isReviewed) : true);
@@ -962,12 +1059,12 @@ export default function App() {
           const img = new Image();
           img.onload = () => {
             const canvas = document.createElement('canvas');
-            const MAX_WIDTH = 600; 
+            const MAX_WIDTH = 1024; 
             const scale = Math.min(MAX_WIDTH / img.width, 1);
             canvas.width = img.width * scale; canvas.height = img.height * scale;
             const ctx = canvas.getContext('2d');
             ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-            resolve(canvas.toDataURL('image/jpeg', 0.4)); 
+            resolve(canvas.toDataURL('image/jpeg', 0.7)); 
           };
           img.src = event.target.result;
         };
@@ -1002,12 +1099,12 @@ export default function App() {
           const img = new Image();
           img.onload = () => {
             const canvas = document.createElement('canvas');
-            const MAX_WIDTH = 600; 
+            const MAX_WIDTH = 1024; 
             const scale = Math.min(MAX_WIDTH / img.width, 1);
             canvas.width = img.width * scale; canvas.height = img.height * scale;
             const ctx = canvas.getContext('2d');
             ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-            resolve(canvas.toDataURL('image/jpeg', 0.4)); 
+            resolve(canvas.toDataURL('image/jpeg', 0.7)); 
           };
           img.src = event.target.result;
         };
@@ -1040,9 +1137,9 @@ export default function App() {
       const p = (blob) => new Promise((res) => {
         const r = new FileReader(); r.onload = (ev) => {
           const img = new Image(); img.onload = () => {
-            const cvs = document.createElement('canvas'); const s = Math.min(600 / img.width, 1);
+            const cvs = document.createElement('canvas'); const s = Math.min(1024 / img.width, 1);
             cvs.width = img.width * s; cvs.height = img.height * s;
-            const ctx = cvs.getContext('2d'); ctx.drawImage(img, 0, 0, cvs.width, cvs.height); res(cvs.toDataURL('image/jpeg', 0.4)); 
+            const ctx = cvs.getContext('2d'); ctx.drawImage(img, 0, 0, cvs.width, cvs.height); res(cvs.toDataURL('image/jpeg', 0.7)); 
           }; img.src = ev.target.result;
         }; r.readAsDataURL(blob);
       });
@@ -1102,40 +1199,6 @@ export default function App() {
         <LevelUpModal levelUpData={levelUpData} />
         <TrophiesModal showTrophiesModal={showTrophiesModal} setShowTrophiesModal={setShowTrophiesModal} memos={memos} userSettings={userSettings} />
         {markupModal.isOpen && <MarkupModalCanvas markupModal={markupModal} setMarkupModal={setMarkupModal} formData={formData} setFormData={setFormData} />}
-
-        {/* ★ ペースト用モーダル */}
-        {showPasteModal && (
-          <div className="fixed inset-0 z-[250] flex items-center justify-center bg-slate-950/90 backdrop-blur-md p-4 animate-in zoom-in duration-200">
-            <div className="bg-slate-900 border border-slate-700 rounded-[2rem] p-6 w-full max-w-sm shadow-[0_0_30px_rgba(6,182,212,0.3)]">
-              <div className="flex justify-between items-center mb-4">
-                <h3 className="font-black text-cyan-400 flex items-center gap-2"><ClipboardList size={18}/> 画像を貼り付け</h3>
-                <button onClick={() => setShowPasteModal(false)} className="text-slate-500 hover:text-cyan-400 active:scale-90"><X size={24}/></button>
-              </div>
-              <div className="text-xs font-bold text-slate-300 mb-4 leading-relaxed space-y-2">
-                <p>下の入力欄を<strong className="text-yellow-400">長押し</strong>して<strong className="text-yellow-400">「ペースト（貼り付け）」</strong>を選択してください。</p>
-                <div className="bg-red-950/50 border border-red-500/50 p-3 rounded-xl text-red-200 shadow-inner">
-                  <p className="text-red-400 font-black mb-1 flex items-center gap-1"><AlertCircle size={14}/> Googleフォトをお使いの場合</p>
-                  <p className="text-[10px]">
-                    スマホの制限で、直接ペーストできない場合があります。<br/><br/>
-                    【確実な手順】<br/>
-                    1. Googleフォトで<strong className="text-white">「デバイスに保存」</strong><br/>
-                    2. 隣の<strong className="text-white">「ファイル」</strong>ボタンから選択<br/>
-                    お手数ですが、この方法が確実です！
-                  </p>
-                </div>
-              </div>
-              <textarea 
-                autoFocus
-                className="w-full h-24 bg-slate-800 border-2 border-dashed border-cyan-500/50 rounded-xl p-4 text-cyan-50 text-sm focus:border-cyan-400 outline-none resize-none font-bold placeholder-slate-500 shadow-inner"
-                placeholder="👇 ここを長押しして「ペースト」"
-                value=""
-                onChange={() => {}}
-                onPaste={handleDirectPaste}
-              />
-              <button onClick={() => setShowPasteModal(false)} className="w-full mt-4 bg-slate-800 text-slate-400 py-3 rounded-xl font-bold active:scale-95 transition-transform">キャンセル</button>
-            </div>
-          </div>
-        )}
 
         {showBossDefeat && (
           <div className="fixed inset-0 z-[200] flex items-center justify-center bg-red-950/90 overflow-hidden backdrop-blur-sm">
@@ -1342,192 +1405,256 @@ export default function App() {
           )}
         </main>
 
-        {/* ★ 独立・最前面化された 詳細表示画面 */}
-        {view === 'detail' && selectedMemo && (
-          <div className="fixed inset-0 bg-slate-950 overflow-y-auto pb-32 animate-in slide-in-from-right duration-300 z-[120]">
-            <header className={`${ColorMap[userSettings.genres[selectedMemo.genre]?.colorId || 'gray']?.bg || 'bg-slate-800'} text-slate-900 p-6 flex justify-between items-center sticky top-0 rounded-b-[2.5rem] shadow-[0_0_20px_rgba(0,0,0,0.8)] border-b border-white/20 relative overflow-hidden z-20`}>
-              <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-white/20 to-transparent"></div>
-              <button onClick={() => setView('list')} className="relative z-10 p-2 bg-black/20 rounded-full text-white backdrop-blur-sm active:scale-90"><ChevronLeft size={28}/></button>
-              <h2 className="font-black italic text-[10px] tracking-widest uppercase relative z-10 opacity-80 text-white drop-shadow-md">DECRYPTED DATA</h2>
-              <button onClick={handleEditClick} className="relative z-10 p-2 bg-black/20 rounded-full text-white backdrop-blur-sm active:scale-90"><Edit3 size={24}/></button>
-            </header>
-            <div className="p-8 space-y-8 max-w-xl mx-auto relative z-10">
-              <div className="space-y-4 relative">
-                <div className="absolute -left-4 top-0 w-1 h-full bg-cyan-900/30 rounded-full"></div>
-                <div className="flex gap-2 items-center mb-2">
-                  <span className={`px-3 py-1.5 rounded-lg text-[9px] font-black uppercase flex items-center gap-1.5 ${ColorMap[userSettings.genres[selectedMemo.genre]?.colorId || 'gray']?.light} ${ColorMap[userSettings.genres[selectedMemo.genre]?.colorId || 'gray']?.text} border shadow-inner`}><DynamicIcon name={userSettings.genres[selectedMemo.genre]?.icon} size={14}/> {String(selectedMemo.genre)}</span>
+        {/* ★ フルスクリーンオーバーレイのコンテキストを完全に独立 */}
+        <div className="relative z-[200]">
+          
+          {/* ★ 新追加：本気で画像を拡大・パン操作できる専用ビューア */}
+          {viewerImage && (
+            <ImageViewer src={viewerImage} onClose={() => setViewerImage(null)} />
+          )}
+
+          {/* ★ ペースト用モーダル */}
+          {showPasteModal && (
+            <div className="fixed inset-0 flex items-center justify-center bg-slate-950/90 backdrop-blur-md p-4 animate-in zoom-in duration-200">
+              <div className="bg-slate-900 border border-slate-700 rounded-[2rem] p-6 w-full max-w-sm shadow-[0_0_30px_rgba(6,182,212,0.3)]">
+                <div className="flex justify-between items-center mb-4">
+                  <h3 className="font-black text-cyan-400 flex items-center gap-2"><ClipboardList size={18}/> 画像を貼り付け</h3>
+                  <button onClick={() => setShowPasteModal(false)} className="text-slate-500 hover:text-cyan-400 active:scale-90"><X size={24}/></button>
                 </div>
-                <h2 className="text-3xl font-black text-slate-100 leading-tight tracking-tighter drop-shadow-md">{String(selectedMemo.title)}</h2>
-                <div className="flex gap-4 text-[10px] font-black text-slate-400 uppercase bg-slate-900 p-3 rounded-xl border border-slate-700 shadow-inner">
-                  <span className="flex items-center gap-1.5"><MapPin size={12} className="text-cyan-500"/> {String(selectedMemo.site)}</span><span className="flex items-center gap-1.5"><Calendar size={12} className="text-cyan-500"/> {String(selectedMemo.date)}</span>
-                </div>
-                {(selectedMemo.teacher || selectedMemo.needsReview) && (
-                  <div className="flex flex-wrap gap-2 text-[10px] font-bold mt-2">
-                    {selectedMemo.teacher && <span className="bg-slate-800 text-cyan-200 px-2.5 py-1.5 rounded-lg flex items-center gap-1.5 border border-slate-600 shadow-sm"><User size={12} className="text-cyan-500"/> 伝授: {String(selectedMemo.teacher)}</span>}
-                    {selectedMemo.needsReview && !selectedMemo.isReviewed && <span className="bg-red-950 text-red-400 px-2.5 py-1.5 rounded-lg flex items-center gap-1.5 border border-red-500/50 shadow-[0_0_8px_rgba(239,68,68,0.3)]"><Bell size={12}/> 要確認 ({String(selectedMemo.reviewDate) || '期限なし'})</span>}
-                    {selectedMemo.needsReview && selectedMemo.isReviewed && <span className="bg-green-950 text-green-400 px-2.5 py-1.5 rounded-lg flex items-center gap-1.5 border border-green-500/50 shadow-sm"><CheckSquare size={12}/> 確認完了</span>}
-                  </div>
-                )}
-                {selectedMemo.materials && selectedMemo.materials.length > 0 && (
-                  <div className="flex flex-wrap gap-2 pt-2">
-                    {selectedMemo.materials.map((mat, i) => {
-                      const tagConf = userSettings.tags[mat] || { colorId: 'gray', icon: 'Tag' }; const tColor = ColorMap[tagConf.colorId] || ColorMap.gray;
-                      return <span key={i} className={`${tColor.light} ${tColor.text} ${tColor.border} border px-2.5 py-1.5 rounded-lg text-[10px] font-bold flex items-center gap-1.5 shadow-sm`}><DynamicIcon name={tagConf.icon} size={12}/> {String(mat)}</span>
-                    })}
-                  </div>
-                )}
-              </div>
-              {((selectedMemo.images && selectedMemo.images.length > 0) || selectedMemo.markupImage) && (
-                <div className="space-y-3">
-                  <h3 className="text-xs font-black text-cyan-600 flex items-center gap-1 tracking-widest"><Camera size={14}/> VISUAL DATA</h3>
-                  <div className="flex flex-col gap-4">
-                    {selectedMemo.markupImage && (!selectedMemo.images || selectedMemo.images.length===0) && <div className="bg-slate-900 rounded-[2.5rem] overflow-hidden border-2 border-slate-700 shadow-[0_0_15px_rgba(0,0,0,0.8)]"><img src={selectedMemo.markupImage} className="w-full opacity-90" /></div>}
-                    {selectedMemo.images && selectedMemo.images.map((img, i) => <div key={i} className="bg-slate-900 rounded-[2.5rem] overflow-hidden border-2 border-slate-700 shadow-[0_0_15px_rgba(0,0,0,0.8)] relative"><img src={img} className="w-full h-auto object-cover opacity-90" /></div>)}
+                <div className="text-xs font-bold text-slate-300 mb-4 leading-relaxed space-y-2">
+                  <p>下の入力欄を<strong className="text-yellow-400">長押し</strong>して<strong className="text-yellow-400">「ペースト（貼り付け）」</strong>を選択してください。</p>
+                  <div className="bg-red-950/50 border border-red-500/50 p-3 rounded-xl text-red-200 shadow-inner">
+                    <p className="text-red-400 font-black mb-1 flex items-center gap-1"><AlertCircle size={14}/> Googleフォトをお使いの場合</p>
+                    <p className="text-[10px]">
+                      スマホの制限で、直接ペーストできない場合があります。<br/><br/>
+                      【確実な手順】<br/>
+                      1. Googleフォトで<strong className="text-white">「デバイスに保存」</strong><br/>
+                      2. 隣の<strong className="text-white">「ファイル」</strong>ボタンから選択<br/>
+                      お手数ですが、この方法が確実です！
+                    </p>
                   </div>
                 </div>
-              )}
-              <div className="bg-slate-900 p-8 rounded-[3rem] text-cyan-50 font-medium border border-cyan-900/50 leading-relaxed relative shadow-[0_0_20px_rgba(6,182,212,0.1)] whitespace-pre-wrap">
-                <span className="absolute -top-3 left-10 bg-cyan-600 text-slate-900 px-4 py-1 rounded-full text-[10px] not-italic shadow-[0_0_8px_rgba(6,182,212,0.8)] tracking-widest font-black uppercase">Quest Log</span>
-                {String(selectedMemo.content || '')}
+                <textarea 
+                  autoFocus
+                  className="w-full h-24 bg-slate-800 border-2 border-dashed border-cyan-500/50 rounded-xl p-4 text-cyan-50 text-sm focus:border-cyan-400 outline-none resize-none font-bold placeholder-slate-500 shadow-inner"
+                  placeholder="👇 ここを長押しして「ペースト」"
+                  value=""
+                  onChange={() => {}}
+                  onPaste={handleDirectPaste}
+                />
+                <button onClick={() => setShowPasteModal(false)} className="w-full mt-4 bg-slate-800 text-slate-400 py-3 rounded-xl font-bold active:scale-95 transition-transform">キャンセル</button>
               </div>
             </div>
-          </div>
-        )}
+          )}
 
-        {/* ★ 独立・最前面化された 追加・編集フォーム画面 */}
-        {(view === 'add' || view === 'edit') && (
-          <div className="fixed inset-0 bg-slate-950 overflow-y-auto pb-32 animate-in slide-in-from-bottom-10 z-[120]">
-            <div className="fixed inset-0 pointer-events-none opacity-10" style={{ backgroundImage: `linear-gradient(to right, #facc15 1px, transparent 1px), linear-gradient(to bottom, #facc15 1px, transparent 1px)`, backgroundSize: '40px 40px' }}></div>
-            <header className="bg-slate-900/90 backdrop-blur-md border-b border-yellow-500/30 p-5 flex justify-between items-center sticky top-0 shadow-[0_0_20px_rgba(234,179,8,0.15)] z-20">
-              <button onClick={() => setView('list')} className="text-slate-400 hover:text-yellow-400 active:scale-90 transition-all"><X size={24}/></button>
-              <h2 className="font-black text-yellow-400 tracking-tighter italic flex items-center gap-2 drop-shadow-[0_0_5px_rgba(234,179,8,0.8)]"><ClipperIcon size={18} strokeWidth={2.5}/> RECORD NEW DATA...</h2>
-              <button onClick={handleSave} className="relative group overflow-hidden bg-slate-800 text-cyan-400 px-5 py-2.5 rounded-full font-black text-[10px] uppercase shadow-[0_0_15px_rgba(34,211,238,0.3)] border border-cyan-500/50 disabled:opacity-50 active:scale-95 transition-all">
-                <span className="relative z-10 flex items-center gap-1.5"><ClipperIcon size={14}/> ログを刻印</span>
-                <div className="absolute inset-0 bg-gradient-to-r from-cyan-600 to-blue-600 opacity-0 group-hover:opacity-20 transition-opacity"></div>
-              </button>
-            </header>
-            
-            <div className="p-6 space-y-7 max-w-xl mx-auto relative z-10">
-              {view === 'add' && (formData.title || formData.content || formData.images?.length > 0) && (
-                <div className="flex justify-end mb-[-1rem]">
-                  <button onClick={() => { if (window.confirm('入力内容をすべてリセットしますか？')) { setFormData(initialForm); localStorage.removeItem('voltVaultDraft'); } }} className="text-[10px] text-red-400 font-bold border border-red-500/50 px-2.5 py-1.5 rounded-md bg-red-950/50 shadow-sm active:scale-95"><Trash2 size={12} className="inline mr-1"/>一時保存をクリア</button>
-                </div>
-              )}
-
-              <div className="space-y-4">
-                <input list="title-history" className="w-full text-2xl font-black bg-transparent border-b-2 border-slate-700 py-2 text-slate-100 focus:border-cyan-400 outline-none transition-colors placeholder:text-slate-600" placeholder="クエスト名（作業・タイトル）" value={formData.title || ''} onChange={e => setFormData({...formData, title: e.target.value})} />
-                <datalist id="title-history">{uniqueTitles.map(t => <option key={t} value={t} />)}</datalist>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <input type="date" className="p-3 bg-slate-900 border border-slate-700 rounded-2xl font-bold outline-none text-sm text-cyan-50 shadow-inner focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500" value={formData.date || ''} onChange={e => setFormData({...formData, date: e.target.value})} />
-                  <div className="relative flex items-center">
-                    <select className="p-3 bg-slate-900 border border-slate-700 rounded-2xl font-bold outline-none text-sm text-cyan-50 shadow-inner w-full focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 appearance-none" value={formData.genre || ''} onChange={e => setFormData({...formData, genre: e.target.value})}>
-                      {groupedGenresForm.map(({ category, genres }) => (<optgroup key={category} label={`【${String(category)}】`}>{genres.map(g => <option key={g.key} value={g.key}>{String(g.key)}</option>)}</optgroup>))}
-                    </select>
-                    <ChevronDown size={14} className="absolute right-3 text-slate-500 pointer-events-none"/>
-                    <button type="button" onClick={() => setShowNewGenre(!showNewGenre)} className="absolute -top-2 -right-2 bg-slate-800 text-cyan-400 rounded-full p-1.5 shadow-[0_0_8px_rgba(34,211,238,0.5)] border border-cyan-500/50 hover:bg-slate-700 active:scale-95 transition-all"><Plus size={14}/></button>
+          {/* ★ 独立・最前面化された 詳細表示画面 */}
+          {view === 'detail' && selectedMemo && (
+            <div className="fixed inset-0 bg-slate-950 overflow-y-auto pb-32 animate-in slide-in-from-right duration-300 z-[120]">
+              <header className={`${ColorMap[userSettings.genres[selectedMemo.genre]?.colorId || 'gray']?.bg || 'bg-slate-800'} text-slate-900 p-6 flex justify-between items-center sticky top-0 rounded-b-[2.5rem] shadow-[0_0_20px_rgba(0,0,0,0.8)] border-b border-white/20 relative overflow-hidden z-20`}>
+                <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-white/20 to-transparent"></div>
+                <button onClick={() => setView('list')} className="relative z-10 p-2 bg-black/20 rounded-full text-white backdrop-blur-sm active:scale-90"><ChevronLeft size={28}/></button>
+                <h2 className="font-black italic text-[10px] tracking-widest uppercase relative z-10 opacity-80 text-white drop-shadow-md">DECRYPTED DATA</h2>
+                <button onClick={handleEditClick} className="relative z-10 p-2 bg-black/20 rounded-full text-white backdrop-blur-sm active:scale-90"><Edit3 size={24}/></button>
+              </header>
+              <div className="p-8 space-y-8 max-w-xl mx-auto relative z-10">
+                <div className="space-y-4 relative">
+                  <div className="absolute -left-4 top-0 w-1 h-full bg-cyan-900/30 rounded-full"></div>
+                  <div className="flex gap-2 items-center mb-2">
+                    <span className={`px-3 py-1.5 rounded-lg text-[9px] font-black uppercase flex items-center gap-1.5 ${ColorMap[userSettings.genres[selectedMemo.genre]?.colorId || 'gray']?.light} ${ColorMap[userSettings.genres[selectedMemo.genre]?.colorId || 'gray']?.text} border shadow-inner`}><DynamicIcon name={userSettings.genres[selectedMemo.genre]?.icon} size={14}/> {String(selectedMemo.genre)}</span>
                   </div>
-                </div>
-
-                {showNewGenre && (
-                  <div className="bg-cyan-950/30 p-3 rounded-2xl border border-cyan-900 flex flex-col gap-2 animate-in fade-in slide-in-from-top-2 shadow-inner">
-                    <div className="flex gap-2">
-                      <select value={newGenreGroup} onChange={e=>setNewGenreGroup(e.target.value)} className="bg-slate-900 border border-slate-700 p-2 rounded-xl text-[10px] sm:text-xs font-bold text-slate-200 outline-none focus:border-cyan-500 shrink-0 w-24">
-                        {MainCategories.map(c => <option key={c} value={c}>{String(c)}</option>)}
-                      </select>
-                      <input type="text" placeholder="新ジャンル名" value={newGenreName} onChange={e=>setNewGenreName(e.target.value)} className="w-full bg-slate-900 border border-slate-700 p-2 rounded-xl text-xs font-bold text-cyan-50 outline-none focus:border-cyan-500 min-w-0" />
-                    </div>
-                    <div className="flex gap-2 items-center">
-                      <ColorSelector value={newGenreColor} onChange={setNewGenreColor} />
-                      <IconSelector value={newGenreIcon} onChange={setNewGenreIcon} />
-                      <button type="button" onClick={() => { if(newGenreName.trim()) { handleAddItem('genres', newGenreName.trim(), newGenreColor, newGenreIcon, newGenreGroup); setFormData({...formData, genre: newGenreName.trim()}); setNewGenreName(''); setNewGenreColor('blue'); setNewGenreIcon('Info'); setShowNewGenre(false); } }} className="bg-cyan-600 text-slate-900 px-4 py-2.5 rounded-xl text-xs font-black shadow-[0_0_10px_rgba(6,182,212,0.5)] active:scale-95 shrink-0">追加</button>
-                    </div>
+                  <h2 className="text-3xl font-black text-slate-100 leading-tight tracking-tighter drop-shadow-md">{String(selectedMemo.title)}</h2>
+                  <div className="flex gap-4 text-[10px] font-black text-slate-400 uppercase bg-slate-900 p-3 rounded-xl border border-slate-700 shadow-inner">
+                    <span className="flex items-center gap-1.5"><MapPin size={12} className="text-cyan-500"/> {String(selectedMemo.site)}</span><span className="flex items-center gap-1.5"><Calendar size={12} className="text-cyan-500"/> {String(selectedMemo.date)}</span>
                   </div>
-                )}
-
-                <div className="relative shadow-inner rounded-2xl">
-                  <Building className="absolute left-3 top-3.5 text-cyan-700" size={16}/>
-                  <input list="site-history" className="w-full p-3 pl-10 bg-slate-900 border border-slate-700 rounded-2xl font-bold outline-none text-sm text-cyan-50 focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500" placeholder="ダンジョン名（現場・案件）" value={formData.site || ''} onChange={e => setFormData({...formData, site: e.target.value})} />
-                  <datalist id="site-history">{uniqueSites.map(s => <option key={s} value={s} />)}</datalist>
-                </div>
-              </div>
-
-              <div className="space-y-3 bg-slate-900/80 backdrop-blur-sm p-4 rounded-[2rem] border border-slate-700 shadow-lg">
-                <button type="button" onClick={() => setShowAdvanced(!showAdvanced)} className="w-full flex justify-between items-center text-xs font-black text-cyan-600 py-1"><span className="flex items-center gap-1.5 tracking-widest"><Info size={14}/> ADVANCED SETTINGS</span>{showAdvanced ? <ChevronUp size={16}/> : <ChevronDown size={16}/>}</button>
-                {showAdvanced && (
-                  <div className="space-y-4 pt-3 border-t border-slate-800 animate-in fade-in slide-in-from-top-2">
-                    <div className="relative shadow-inner rounded-2xl"><User className="absolute left-3 top-3.5 text-cyan-700" size={16}/><input className="w-full p-3 pl-10 bg-slate-950 border border-slate-800 rounded-2xl font-bold outline-none text-sm text-cyan-50 focus:border-cyan-500 transition-colors" placeholder="教えてくれた人（師匠・先輩など）" value={formData.teacher || ''} onChange={e => setFormData({...formData, teacher: e.target.value})} /></div>
-                    <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800 space-y-4 shadow-inner">
-                      <label className="flex items-center gap-3 cursor-pointer group"><div className={`w-5 h-5 rounded-md flex items-center justify-center border transition-all ${formData.needsReview ? 'bg-cyan-600 border-cyan-500 shadow-[0_0_10px_rgba(6,182,212,0.5)]' : 'bg-slate-800 border-slate-600 group-hover:border-cyan-500'}`}>{formData.needsReview && <Check size={14} className="text-slate-900" strokeWidth={4}/>}</div><input type="checkbox" checked={formData.needsReview || false} onChange={e => setFormData({...formData, needsReview: e.target.checked})} className="hidden" /><span className="text-xs font-black text-slate-300 group-hover:text-cyan-100 transition-colors">後で確認・復習が必要</span></label>
-                      {formData.needsReview && (
-                        <div className="pl-8 space-y-4 animate-in fade-in">
-                          <div className="flex items-center gap-2"><Bell size={14} className="text-orange-500 shrink-0 drop-shadow-[0_0_5px_rgba(249,115,22,0.8)]"/><input type="date" className="p-2 bg-slate-900 border border-slate-700 rounded-xl font-bold outline-none text-xs text-cyan-50 shadow-inner w-full focus:border-orange-500 focus:ring-1 focus:ring-orange-500" value={formData.reviewDate || ''} onChange={e => setFormData({...formData, reviewDate: e.target.value})} /><span className="text-[10px] text-slate-500 font-bold shrink-0">にお知らせ</span></div>
-                          <label className="flex items-center gap-3 cursor-pointer group"><div className={`w-5 h-5 rounded-md flex items-center justify-center border transition-all ${formData.isReviewed ? 'bg-green-500 border-green-400 shadow-[0_0_10px_rgba(34,197,94,0.5)]' : 'bg-slate-800 border-slate-600 group-hover:border-green-500'}`}>{formData.isReviewed && <Check size={14} className="text-slate-900" strokeWidth={4}/>}</div><input type="checkbox" checked={formData.isReviewed || false} onChange={e => setFormData({...formData, isReviewed: e.target.checked})} className="hidden" /><span className="text-xs font-black text-slate-300 group-hover:text-green-100 transition-colors">確認完了（クリア！）</span></label>
-                        </div>
-                      )}
+                  {(selectedMemo.teacher || selectedMemo.needsReview) && (
+                    <div className="flex flex-wrap gap-2 text-[10px] font-bold mt-2">
+                      {selectedMemo.teacher && <span className="bg-slate-800 text-cyan-200 px-2.5 py-1.5 rounded-lg flex items-center gap-1.5 border border-slate-600 shadow-sm"><User size={12} className="text-cyan-500"/> 伝授: {String(selectedMemo.teacher)}</span>}
+                      {selectedMemo.needsReview && !selectedMemo.isReviewed && <span className="bg-red-950 text-red-400 px-2.5 py-1.5 rounded-lg flex items-center gap-1.5 border border-red-500/50 shadow-[0_0_8px_rgba(239,68,68,0.3)]"><Bell size={12}/> 要確認 ({String(selectedMemo.reviewDate) || '期限なし'})</span>}
+                      {selectedMemo.needsReview && selectedMemo.isReviewed && <span className="bg-green-950 text-green-400 px-2.5 py-1.5 rounded-lg flex items-center gap-1.5 border border-green-500/50 shadow-sm"><CheckSquare size={12}/> 確認完了</span>}
                     </div>
-                  </div>
-                )}
-              </div>
-
-              <div className="space-y-3">
-                <div className="flex justify-between items-end">
-                  <p className="text-[10px] font-black text-cyan-600 flex items-center gap-1 tracking-widest"><Tags size={12}/> COMPONENTS & TAGS</p>
-                  <button type="button" onClick={() => setShowNewTag(!showNewTag)} className="text-[10px] font-bold text-cyan-400 bg-slate-800 px-2.5 py-1.5 rounded-lg flex items-center gap-1 border border-cyan-900 shadow-[0_0_8px_rgba(6,182,212,0.2)] active:scale-95 transition-all"><Plus size={12}/>新規タグ作成</button>
-                </div>
-                {showNewTag && (
-                  <div className="bg-cyan-950/30 p-3 rounded-2xl border border-cyan-900 flex flex-col gap-2 animate-in fade-in slide-in-from-top-2 shadow-inner">
-                    <div className="flex gap-2">
-                      <select value={newTagGroup} onChange={e=>setNewTagGroup(e.target.value)} className="bg-slate-900 border border-slate-700 p-2 rounded-xl text-[10px] sm:text-xs font-bold text-slate-200 outline-none focus:border-cyan-500 shrink-0 w-24">{MainCategories.map(c => <option key={c} value={c}>{String(c)}</option>)}</select>
-                      <input type="text" placeholder="新タグ名" value={newTagName} onChange={e=>setNewTagName(e.target.value)} className="w-full bg-slate-900 border border-slate-700 p-2 rounded-xl text-xs font-bold text-cyan-50 outline-none focus:border-cyan-500 min-w-0" />
+                  )}
+                  {selectedMemo.materials && selectedMemo.materials.length > 0 && (
+                    <div className="flex flex-wrap gap-2 pt-2">
+                      {selectedMemo.materials.map((mat, i) => {
+                        const tagConf = userSettings.tags[mat] || { colorId: 'gray', icon: 'Tag' }; const tColor = ColorMap[tagConf.colorId] || ColorMap.gray;
+                        return <span key={i} className={`${tColor.light} ${tColor.text} ${tColor.border} border px-2.5 py-1.5 rounded-lg text-[10px] font-bold flex items-center gap-1.5 shadow-sm`}><DynamicIcon name={tagConf.icon} size={12}/> {String(mat)}</span>
+                      })}
                     </div>
-                    <div className="flex gap-2 items-center">
-                      <ColorSelector value={newTagColor} onChange={setNewTagColor} />
-                      <IconSelector value={newTagIcon} onChange={setNewTagIcon} />
-                      <button type="button" onClick={() => { if(newTagName.trim()) { handleAddItem('tags', newTagName.trim(), newTagColor, newTagIcon, newTagGroup); const mats = formData.materials || []; if (!mats.includes(newTagName.trim())) { setFormData({...formData, materials: [...mats, newTagName.trim()]}); } setNewTagName(''); setNewTagColor('gray'); setNewTagIcon('Tags'); setShowNewTag(false); } }} className="bg-cyan-600 text-slate-900 px-4 py-2.5 rounded-xl text-xs font-black shadow-[0_0_10px_rgba(6,182,212,0.5)] active:scale-95 shrink-0">追加</button>
-                    </div>
-                  </div>
-                )}
-                <div className="flex flex-col gap-2">{groupedTagsForm.map(({ category, tags }) => <TagAccordion key={category} groupName={`【${String(category)}】`} tags={tags} formData={formData} setFormData={setFormData} />)}</div>
-              </div>
-              
-              <div className="space-y-3 bg-slate-900/80 backdrop-blur-sm p-5 rounded-[2.5rem] border border-slate-700 shadow-lg">
-                <div className="flex justify-between items-center text-[10px] font-black text-cyan-600 mb-2 tracking-widest"><span className="flex items-center gap-1"><Camera size={14}/> VISUAL EVIDENCE</span>
-                  <div className="flex gap-2">
-                    <button type="button" onClick={handlePasteBtn} className="text-slate-900 bg-yellow-500 px-3 py-1.5 rounded-xl flex items-center gap-1 shadow-md active:scale-95 font-bold text-xs"><ClipboardList size={14}/> 貼付</button>
-                    <label className="text-slate-900 bg-cyan-600 px-3 py-1.5 rounded-xl flex items-center gap-1 cursor-pointer active:scale-95 shadow-md hover:bg-cyan-500 font-bold text-xs"><Upload size={14}/> ファイル<input type="file" accept="image/*" multiple onChange={handleFileUpload} className="hidden" /></label>
-                  </div>
-                </div>
-                <div className="flex gap-4 overflow-x-auto pb-4 snap-x">
-                  {!formData.images || formData.images.length === 0 ? (
-                    <div className="w-full flex-shrink-0 h-32 border-2 border-dashed border-slate-700 rounded-[2rem] flex flex-col items-center justify-center text-slate-500 font-bold text-xs bg-slate-950/50 shadow-inner text-center px-4"><ImageIcon size={24} className="mb-2 opacity-50"/> <span>現場の様子を記録</span><span className="text-[9px] mt-1 opacity-70">Googleフォト等からコピーして<br/>「貼付」ボタンで追加できます</span></div>
-                  ) : (
-                    Array.isArray(formData.images) && formData.images.map((img, i) => (
-                      typeof img === 'string' ? (
-                        <div key={i} className="relative w-48 flex-shrink-0 snap-center group">
-                          <img src={img} className="w-full h-32 object-cover rounded-[1.5rem] border border-slate-700 shadow-lg cursor-pointer opacity-90 hover:opacity-100 transition-opacity" onClick={() => setMarkupModal({ isOpen: true, imgIndex: i, dataUrl: img })} />
-                          <button type="button" onClick={() => { const newImgs = [...formData.images]; newImgs.splice(i, 1); setFormData({...formData, images: newImgs}); }} className="absolute -top-2 -right-2 bg-red-500 text-slate-900 p-1.5 rounded-full shadow-[0_0_10px_rgba(239,68,68,0.8)]"><X size={14}/></button>
-                          <div className="absolute bottom-2 right-2 bg-cyan-900/80 text-cyan-100 p-1.5 rounded-full pointer-events-none border border-cyan-500"><Edit3 size={12}/></div>
-                        </div>
-                      ) : null
-                    ))
                   )}
                 </div>
-              </div>
-              
-              <div className="space-y-3 bg-slate-900/80 backdrop-blur-sm p-5 rounded-[2.5rem] border border-slate-700 shadow-lg">
-                <div className="flex flex-wrap gap-2 pb-2 border-b border-slate-800">
-                  {Array.isArray(userSettings.quickPhrases) && userSettings.quickPhrases.map((p, idx) => (
-                    typeof p === 'string' ? <button key={idx} type="button" onClick={() => setFormData({...formData, content: formData.content + (formData.content?'\n':'') + p})} className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-cyan-100 rounded-xl text-[10px] border border-slate-600 font-black transition-colors shadow-inner">+ {String(p)}</button> : null
-                  ))}
+                {((selectedMemo.images && selectedMemo.images.length > 0) || selectedMemo.markupImage) && (
+                  <div className="space-y-3">
+                    <h3 className="text-xs font-black text-cyan-600 flex items-center gap-1 tracking-widest"><Camera size={14}/> VISUAL DATA</h3>
+                    <div className="flex flex-col gap-4">
+                      {selectedMemo.markupImage && (!selectedMemo.images || selectedMemo.images.length===0) && (
+                        <div 
+                          className="bg-slate-900 rounded-[2.5rem] overflow-hidden border-2 border-slate-700 shadow-[0_0_15px_rgba(0,0,0,0.8)] cursor-pointer relative group"
+                          onClick={() => setViewerImage(selectedMemo.markupImage)}
+                        >
+                          <img src={selectedMemo.markupImage} className="w-full opacity-90 group-hover:opacity-100 transition-opacity" />
+                          <div className="absolute inset-0 bg-cyan-500/10 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center pointer-events-none">
+                            <ZoomIn size={32} className="text-cyan-300 drop-shadow-lg" />
+                          </div>
+                        </div>
+                      )}
+                      {selectedMemo.images && selectedMemo.images.map((img, i) => (
+                        <div 
+                          key={i} 
+                          className="bg-slate-900 rounded-[2.5rem] overflow-hidden border-2 border-slate-700 shadow-[0_0_15px_rgba(0,0,0,0.8)] relative cursor-pointer group"
+                          onClick={() => setViewerImage(img)}
+                        >
+                          <img src={img} className="w-full h-auto object-cover opacity-90 group-hover:opacity-100 transition-opacity" />
+                          <div className="absolute inset-0 bg-cyan-500/10 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center pointer-events-none">
+                            <ZoomIn size={32} className="text-cyan-300 drop-shadow-lg" />
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                <div className="bg-slate-900 p-8 rounded-[3rem] text-cyan-50 font-medium border border-cyan-900/50 leading-relaxed relative shadow-[0_0_20px_rgba(6,182,212,0.1)] whitespace-pre-wrap">
+                  <span className="absolute -top-3 left-10 bg-cyan-600 text-slate-900 px-4 py-1 rounded-full text-[10px] not-italic shadow-[0_0_8px_rgba(6,182,212,0.8)] tracking-widest font-black uppercase">Quest Log</span>
+                  {String(selectedMemo.content || '')}
                 </div>
-                <textarea className="w-full h-40 pt-2 bg-transparent outline-none text-sm font-medium leading-relaxed resize-none text-cyan-50 placeholder:text-slate-600" placeholder="攻略のヒント、配線の色、次回への引き継ぎ事項などを記録..." value={formData.content || ''} onChange={e => setFormData({...formData, content: e.target.value})} />
               </div>
-              
-              {view === 'edit' && <button type="button" onClick={() => handleDelete(selectedMemo.id)} className="w-full py-5 text-red-500 font-black text-xs border-2 border-red-900/50 border-dashed rounded-[2.5rem] uppercase tracking-widest hover:bg-red-950 transition-all mt-8 shadow-inner">クエストを破棄する</button>}
             </div>
-          </div>
-        )}
+          )}
+
+          {/* ★ 独立・最前面化された 追加・編集フォーム画面 */}
+          {(view === 'add' || view === 'edit') && (
+            <div className="fixed inset-0 bg-slate-950 overflow-y-auto pb-32 animate-in slide-in-from-bottom-10 z-[120]">
+              <div className="fixed inset-0 pointer-events-none opacity-10" style={{ backgroundImage: `linear-gradient(to right, #facc15 1px, transparent 1px), linear-gradient(to bottom, #facc15 1px, transparent 1px)`, backgroundSize: '40px 40px' }}></div>
+              <header className="bg-slate-900/90 backdrop-blur-md border-b border-yellow-500/30 p-5 flex justify-between items-center sticky top-0 shadow-[0_0_20px_rgba(234,179,8,0.15)] z-20">
+                <button onClick={() => setView('list')} className="text-slate-400 hover:text-yellow-400 active:scale-90 transition-all"><X size={24}/></button>
+                <h2 className="font-black text-yellow-400 tracking-tighter italic flex items-center gap-2 drop-shadow-[0_0_5px_rgba(234,179,8,0.8)]"><ClipperIcon size={18} strokeWidth={2.5}/> RECORD NEW DATA...</h2>
+                <button onClick={handleSave} className="relative group overflow-hidden bg-slate-800 text-cyan-400 px-5 py-2.5 rounded-full font-black text-[10px] uppercase shadow-[0_0_15px_rgba(34,211,238,0.3)] border border-cyan-500/50 disabled:opacity-50 active:scale-95 transition-all">
+                  <span className="relative z-10 flex items-center gap-1.5"><ClipperIcon size={14}/> ログを刻印</span>
+                  <div className="absolute inset-0 bg-gradient-to-r from-cyan-600 to-blue-600 opacity-0 group-hover:opacity-20 transition-opacity"></div>
+                </button>
+              </header>
+              
+              <div className="p-6 space-y-7 max-w-xl mx-auto relative z-10">
+                {view === 'add' && (formData.title || formData.content || formData.images?.length > 0) && (
+                  <div className="flex justify-end mb-[-1rem]">
+                    <button onClick={() => { if (window.confirm('入力内容をすべてリセットしますか？')) { setFormData(initialForm); localStorage.removeItem('voltVaultDraft'); } }} className="text-[10px] text-red-400 font-bold border border-red-500/50 px-2.5 py-1.5 rounded-md bg-red-950/50 shadow-sm active:scale-95"><Trash2 size={12} className="inline mr-1"/>一時保存をクリア</button>
+                  </div>
+                )}
+
+                <div className="space-y-4">
+                  <input list="title-history" className="w-full text-2xl font-black bg-transparent border-b-2 border-slate-700 py-2 text-slate-100 focus:border-cyan-400 outline-none transition-colors placeholder:text-slate-600" placeholder="クエスト名（作業・タイトル）" value={formData.title || ''} onChange={e => setFormData({...formData, title: e.target.value})} />
+                  <datalist id="title-history">{uniqueTitles.map(t => <option key={t} value={t} />)}</datalist>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <input type="date" className="p-3 bg-slate-900 border border-slate-700 rounded-2xl font-bold outline-none text-sm text-cyan-50 shadow-inner focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500" value={formData.date || ''} onChange={e => setFormData({...formData, date: e.target.value})} />
+                    <div className="relative flex items-center">
+                      <select className="p-3 bg-slate-900 border border-slate-700 rounded-2xl font-bold outline-none text-sm text-cyan-50 shadow-inner w-full focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 appearance-none" value={formData.genre || ''} onChange={e => setFormData({...formData, genre: e.target.value})}>
+                        {groupedGenresForm.map(({ category, genres }) => (<optgroup key={category} label={`【${String(category)}】`}>{genres.map(g => <option key={g.key} value={g.key}>{String(g.key)}</option>)}</optgroup>))}
+                      </select>
+                      <ChevronDown size={14} className="absolute right-3 text-slate-500 pointer-events-none"/>
+                      <button type="button" onClick={() => setShowNewGenre(!showNewGenre)} className="absolute -top-2 -right-2 bg-slate-800 text-cyan-400 rounded-full p-1.5 shadow-[0_0_8px_rgba(34,211,238,0.5)] border border-cyan-500/50 hover:bg-slate-700 active:scale-95 transition-all"><Plus size={14}/></button>
+                    </div>
+                  </div>
+
+                  {showNewGenre && (
+                    <div className="bg-cyan-950/30 p-3 rounded-2xl border border-cyan-900 flex flex-col gap-2 animate-in fade-in slide-in-from-top-2 shadow-inner">
+                      <div className="flex gap-2">
+                        <select value={newGenreGroup} onChange={e=>setNewGenreGroup(e.target.value)} className="bg-slate-900 border border-slate-700 p-2 rounded-xl text-[10px] sm:text-xs font-bold text-slate-200 outline-none focus:border-cyan-500 shrink-0 w-24">
+                          {MainCategories.map(c => <option key={c} value={c}>{String(c)}</option>)}
+                        </select>
+                        <input type="text" placeholder="新ジャンル名" value={newGenreName} onChange={e=>setNewGenreName(e.target.value)} className="w-full bg-slate-900 border border-slate-700 p-2 rounded-xl text-xs font-bold text-cyan-50 outline-none focus:border-cyan-500 min-w-0" />
+                      </div>
+                      <div className="flex gap-2 items-center">
+                        <ColorSelector value={newGenreColor} onChange={setNewGenreColor} />
+                        <IconSelector value={newGenreIcon} onChange={setNewGenreIcon} />
+                        <button type="button" onClick={() => { if(newGenreName.trim()) { handleAddItem('genres', newGenreName.trim(), newGenreColor, newGenreIcon, newGenreGroup); setFormData({...formData, genre: newGenreName.trim()}); setNewGenreName(''); setNewGenreColor('blue'); setNewGenreIcon('Info'); setShowNewGenre(false); } }} className="bg-cyan-600 text-slate-900 px-4 py-2.5 rounded-xl text-xs font-black shadow-[0_0_10px_rgba(6,182,212,0.5)] active:scale-95 shrink-0">追加</button>
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="relative shadow-inner rounded-2xl">
+                    <Building className="absolute left-3 top-3.5 text-cyan-700" size={16}/>
+                    <input list="site-history" className="w-full p-3 pl-10 bg-slate-900 border border-slate-700 rounded-2xl font-bold outline-none text-sm text-cyan-50 focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500" placeholder="ダンジョン名（現場・案件）" value={formData.site || ''} onChange={e => setFormData({...formData, site: e.target.value})} />
+                    <datalist id="site-history">{uniqueSites.map(s => <option key={s} value={s} />)}</datalist>
+                  </div>
+                </div>
+
+                <div className="space-y-3 bg-slate-900/80 backdrop-blur-sm p-4 rounded-[2rem] border border-slate-700 shadow-lg">
+                  <button type="button" onClick={() => setShowAdvanced(!showAdvanced)} className="w-full flex justify-between items-center text-xs font-black text-cyan-600 py-1"><span className="flex items-center gap-1.5 tracking-widest"><Info size={14}/> ADVANCED SETTINGS</span>{showAdvanced ? <ChevronUp size={16}/> : <ChevronDown size={16}/>}</button>
+                  {showAdvanced && (
+                    <div className="space-y-4 pt-3 border-t border-slate-800 animate-in fade-in slide-in-from-top-2">
+                      <div className="relative shadow-inner rounded-2xl"><User className="absolute left-3 top-3.5 text-cyan-700" size={16}/><input className="w-full p-3 pl-10 bg-slate-950 border border-slate-800 rounded-2xl font-bold outline-none text-sm text-cyan-50 focus:border-cyan-500 transition-colors" placeholder="教えてくれた人（師匠・先輩など）" value={formData.teacher || ''} onChange={e => setFormData({...formData, teacher: e.target.value})} /></div>
+                      <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800 space-y-4 shadow-inner">
+                        <label className="flex items-center gap-3 cursor-pointer group"><div className={`w-5 h-5 rounded-md flex items-center justify-center border transition-all ${formData.needsReview ? 'bg-cyan-600 border-cyan-500 shadow-[0_0_10px_rgba(6,182,212,0.5)]' : 'bg-slate-800 border-slate-600 group-hover:border-cyan-500'}`}>{formData.needsReview && <Check size={14} className="text-slate-900" strokeWidth={4}/>}</div><input type="checkbox" checked={formData.needsReview || false} onChange={e => setFormData({...formData, needsReview: e.target.checked})} className="hidden" /><span className="text-xs font-black text-slate-300 group-hover:text-cyan-100 transition-colors">後で確認・復習が必要</span></label>
+                        {formData.needsReview && (
+                          <div className="pl-8 space-y-4 animate-in fade-in">
+                            <div className="flex items-center gap-2"><Bell size={14} className="text-orange-500 shrink-0 drop-shadow-[0_0_5px_rgba(249,115,22,0.8)]"/><input type="date" className="p-2 bg-slate-900 border border-slate-700 rounded-xl font-bold outline-none text-xs text-cyan-50 shadow-inner w-full focus:border-orange-500 focus:ring-1 focus:ring-orange-500" value={formData.reviewDate || ''} onChange={e => setFormData({...formData, reviewDate: e.target.value})} /><span className="text-[10px] text-slate-500 font-bold shrink-0">にお知らせ</span></div>
+                            <label className="flex items-center gap-3 cursor-pointer group"><div className={`w-5 h-5 rounded-md flex items-center justify-center border transition-all ${formData.isReviewed ? 'bg-green-500 border-green-400 shadow-[0_0_10px_rgba(34,197,94,0.5)]' : 'bg-slate-800 border-slate-600 group-hover:border-green-500'}`}>{formData.isReviewed && <Check size={14} className="text-slate-900" strokeWidth={4}/>}</div><input type="checkbox" checked={formData.isReviewed || false} onChange={e => setFormData({...formData, isReviewed: e.target.checked})} className="hidden" /><span className="text-xs font-black text-slate-300 group-hover:text-green-100 transition-colors">確認完了（クリア！）</span></label>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                <div className="space-y-3">
+                  <div className="flex justify-between items-end">
+                    <p className="text-[10px] font-black text-cyan-600 flex items-center gap-1 tracking-widest"><Tags size={12}/> COMPONENTS & TAGS</p>
+                    <button type="button" onClick={() => setShowNewTag(!showNewTag)} className="text-[10px] font-bold text-cyan-400 bg-slate-800 px-2.5 py-1.5 rounded-lg flex items-center gap-1 border border-cyan-900 shadow-[0_0_8px_rgba(6,182,212,0.2)] active:scale-95 transition-all"><Plus size={12}/>新規タグ作成</button>
+                  </div>
+                  {showNewTag && (
+                    <div className="bg-cyan-950/30 p-3 rounded-2xl border border-cyan-900 flex flex-col gap-2 animate-in fade-in slide-in-from-top-2 shadow-inner">
+                      <div className="flex gap-2">
+                        <select value={newTagGroup} onChange={e=>setNewTagGroup(e.target.value)} className="bg-slate-900 border border-slate-700 p-2 rounded-xl text-[10px] sm:text-xs font-bold text-slate-200 outline-none focus:border-cyan-500 shrink-0 w-24">{MainCategories.map(c => <option key={c} value={c}>{String(c)}</option>)}</select>
+                        <input type="text" placeholder="新タグ名" value={newTagName} onChange={e=>setNewTagName(e.target.value)} className="w-full bg-slate-900 border border-slate-700 p-2 rounded-xl text-xs font-bold text-cyan-50 outline-none focus:border-cyan-500 min-w-0" />
+                      </div>
+                      <div className="flex gap-2 items-center">
+                        <ColorSelector value={newTagColor} onChange={setNewTagColor} />
+                        <IconSelector value={newTagIcon} onChange={setNewTagIcon} />
+                        <button type="button" onClick={() => { if(newTagName.trim()) { handleAddItem('tags', newTagName.trim(), newTagColor, newTagIcon, newTagGroup); const mats = formData.materials || []; if (!mats.includes(newTagName.trim())) { setFormData({...formData, materials: [...mats, newTagName.trim()]}); } setNewTagName(''); setNewTagColor('gray'); setNewTagIcon('Tags'); setShowNewTag(false); } }} className="bg-cyan-600 text-slate-900 px-4 py-2.5 rounded-xl text-xs font-black shadow-[0_0_10px_rgba(6,182,212,0.5)] active:scale-95 shrink-0">追加</button>
+                      </div>
+                    </div>
+                  )}
+                  <div className="flex flex-col gap-2">{groupedTagsForm.map(({ category, tags }) => <TagAccordion key={category} groupName={`【${String(category)}】`} tags={tags} formData={formData} setFormData={setFormData} />)}</div>
+                </div>
+                
+                <div className="space-y-3 bg-slate-900/80 backdrop-blur-sm p-5 rounded-[2.5rem] border border-slate-700 shadow-lg">
+                  <div className="flex justify-between items-center text-[10px] font-black text-cyan-600 mb-2 tracking-widest"><span className="flex items-center gap-1"><Camera size={14}/> VISUAL EVIDENCE</span>
+                    <div className="flex gap-2">
+                      <button type="button" onClick={handlePasteBtn} className="text-slate-900 bg-yellow-500 px-3 py-1.5 rounded-xl flex items-center gap-1 shadow-md active:scale-95 font-bold text-xs"><ClipboardList size={14}/> 貼付</button>
+                      <label className="text-slate-900 bg-cyan-600 px-3 py-1.5 rounded-xl flex items-center gap-1 cursor-pointer active:scale-95 shadow-md hover:bg-cyan-500 font-bold text-xs"><Upload size={14}/> ファイル<input type="file" accept="image/*" multiple onChange={handleFileUpload} className="hidden" /></label>
+                    </div>
+                  </div>
+                  <div className="flex gap-4 overflow-x-auto pb-4 snap-x">
+                    {!formData.images || formData.images.length === 0 ? (
+                      <div className="w-full flex-shrink-0 h-32 border-2 border-dashed border-slate-700 rounded-[2rem] flex flex-col items-center justify-center text-slate-500 font-bold text-xs bg-slate-950/50 shadow-inner text-center px-4"><ImageIcon size={24} className="mb-2 opacity-50"/> <span>現場の様子を記録</span><span className="text-[9px] mt-1 opacity-70">Googleフォト等からコピーして<br/>「貼付」ボタンで追加できます</span></div>
+                    ) : (
+                      Array.isArray(formData.images) && formData.images.map((img, i) => (
+                        typeof img === 'string' ? (
+                          <div key={i} className="relative w-48 flex-shrink-0 snap-center group">
+                            <img src={img} className="w-full h-32 object-cover rounded-[1.5rem] border border-slate-700 shadow-lg cursor-pointer opacity-90 hover:opacity-100 transition-opacity" onClick={() => setMarkupModal({ isOpen: true, imgIndex: i, dataUrl: img })} />
+                            <button type="button" onClick={() => { const newImgs = [...formData.images]; newImgs.splice(i, 1); setFormData({...formData, images: newImgs}); }} className="absolute -top-2 -right-2 bg-red-500 text-slate-900 p-1.5 rounded-full shadow-[0_0_10px_rgba(239,68,68,0.8)]"><X size={14}/></button>
+                            <div className="absolute bottom-2 right-2 bg-cyan-900/80 text-cyan-100 p-1.5 rounded-full pointer-events-none border border-cyan-500"><Edit3 size={12}/></div>
+                          </div>
+                        ) : null
+                      ))
+                    )}
+                  </div>
+                </div>
+                
+                <div className="space-y-3 bg-slate-900/80 backdrop-blur-sm p-5 rounded-[2.5rem] border border-slate-700 shadow-lg">
+                  <div className="flex flex-wrap gap-2 pb-2 border-b border-slate-800">
+                    {Array.isArray(userSettings.quickPhrases) && userSettings.quickPhrases.map((p, idx) => (
+                      typeof p === 'string' ? <button key={idx} type="button" onClick={() => setFormData({...formData, content: formData.content + (formData.content?'\n':'') + p})} className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-cyan-100 rounded-xl text-[10px] border border-slate-600 font-black transition-colors shadow-inner">+ {String(p)}</button> : null
+                    ))}
+                  </div>
+                  <textarea className="w-full h-40 pt-2 bg-transparent outline-none text-sm font-medium leading-relaxed resize-none text-cyan-50 placeholder:text-slate-600" placeholder="攻略のヒント、配線の色、次回への引き継ぎ事項などを記録..." value={formData.content || ''} onChange={e => setFormData({...formData, content: e.target.value})} />
+                </div>
+                
+                {view === 'edit' && <button type="button" onClick={() => handleDelete(selectedMemo.id)} className="w-full py-5 text-red-500 font-black text-xs border-2 border-red-900/50 border-dashed rounded-[2.5rem] uppercase tracking-widest hover:bg-red-950 transition-all mt-8 shadow-inner">クエストを破棄する</button>}
+              </div>
+            </div>
+          )}
+        </div>
       </div>
       {!markupModal.isOpen && view !== 'add' && view !== 'edit' && view !== 'detail' && <NavBtn view={view} setView={setView} />}
     </div>
