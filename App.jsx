@@ -1,10 +1,10 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { 
   Plus, Calendar, MapPin, Search, ChevronLeft, ClipboardList, HardHat, 
   Image as ImageIcon, Save, X, Edit3, Trash2, Check, 
   ChevronRight, Settings, AlertCircle, 
   Type, Cloud, Loader2, Camera, Upload, Folder,
-  Tags, ListFilter, Archive,
+  Tags, ListFilter, Archive, Download,
   Zap, Plug, Cable, Power, Lightbulb, Wrench, Hammer, 
   CheckCircle, Info, Building, Truck, Grid,
   Shield, Flame, Droplets, Wind, Thermometer, Scissors, Battery,
@@ -21,6 +21,22 @@ import { initializeApp } from 'firebase/app';
 import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from 'firebase/auth';
 import { getFirestore, doc, setDoc, collection, onSnapshot, deleteDoc } from 'firebase/firestore';
 
+// --- API Helpers ---
+const fetchWithRetry = async (url, options, retries = 5) => {
+  let delay = 1000;
+  for (let i = 0; i < retries; i++) {
+    try {
+      const res = await fetch(url, options);
+      if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
+      return await res.json();
+    } catch (e) {
+      if (i === retries - 1) throw e;
+      await new Promise(r => setTimeout(r, delay));
+      delay *= 2;
+    }
+  }
+};
+
 // --- 定数・アイコン定義 ---
 const ClipperIcon = ({ size = 24, className = "", strokeWidth = 2 }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round" className={className}>
@@ -30,15 +46,6 @@ const ClipperIcon = ({ size = 24, className = "", strokeWidth = 2 }) => (
     <path d="M9.5 9.5C8 8 7 6 7 6C7 6 9 5 11 7L12 8" />
     <path d="M14.5 9.5C16 8 17 6 17 6C17 6 15 5 13 7L12 8" />
     <path d="M12 2L11 4H13L12 6" stroke="#06b6d4" strokeWidth="1.5"/>
-  </svg>
-);
-
-const TeaCupIcon = ({ size = 24, className = "", strokeWidth = 2 }) => (
-  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round" className={className}>
-    <path d="M6 8v5a6 6 0 0 0 12 0V8" />
-    <line x1="5" y1="8" x2="19" y2="8" />
-    <path d="M10 3s1 1.5 1 2.5-1 1.5-1 2.5" />
-    <path d="M14 3s-1 1.5-1 2.5 1 1.5 1 2.5" />
   </svg>
 );
 
@@ -191,8 +198,10 @@ const TrophiesModal = ({ showTrophiesModal, setShowTrophiesModal, memos, userSet
 };
 
 const RadarChart = ({ memos, userSettings }) => {
+  // レーダーチャートには下書き（isDraft: true）を含めない
+  const validMemos = memos.filter(m => !m.isDraft);
   const data = MainCategories.map(cat => ({
-    name: cat, count: memos.filter(m => (userSettings?.genres?.[m.genre]?.group || 'その他') === cat).length 
+    name: cat, count: validMemos.filter(m => (userSettings?.genres?.[m.genre]?.group || 'その他') === cat).length 
   }));
   const maxVal = Math.max(...data.map(d => d.count), 5);
   const centerX = 150, centerY = 150, radius = 90; 
@@ -382,7 +391,6 @@ const EditorSection = ({ title, icon: Icon, items, onAdd, onUpdate, onDelete, on
   );
 };
 
-// ★ PC（マウス）からのクリックでも絶対に文字が入力できるテキストエディター
 const TextEditor = ({ t, texts, setTexts, setEditingTextId, zoom, dimensions }) => {
   const ref = useRef(null);
   useEffect(() => { if (ref.current) ref.current.focus(); }, []);
@@ -405,7 +413,6 @@ const TextEditor = ({ t, texts, setTexts, setEditingTextId, zoom, dimensions }) 
   );
 };
 
-// ★ 新追加：本気で画像を拡大・パン操作できる専用ビューア
 const ImageViewer = ({ src, onClose }) => {
   const [scale, setScale] = useState(1);
   const [position, setPosition] = useState({ x: 0, y: 0 });
@@ -442,7 +449,7 @@ const ImageViewer = ({ src, onClose }) => {
       e.preventDefault();
       const dist = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
       const delta = dist - lastTouchDist.current;
-      setScale(s => Math.max(1, Math.min(s + delta * 0.02, 10))); // ★ 最大10倍までズーム可能！
+      setScale(s => Math.max(1, Math.min(s + delta * 0.02, 10))); 
       lastTouchDist.current = dist;
     }
   };
@@ -456,7 +463,7 @@ const ImageViewer = ({ src, onClose }) => {
           setScale(1);
           setPosition({ x: 0, y: 0 });
         } else {
-          setScale(3); // ★ ダブルタップで一気に3倍ズーム！
+          setScale(3); 
         }
       }
       lastTap.current = now;
@@ -467,11 +474,21 @@ const ImageViewer = ({ src, onClose }) => {
     <div className="fixed inset-0 z-[300] bg-black/95 flex items-center justify-center overflow-hidden touch-none"
          onWheel={(e) => setScale(s => Math.max(1, Math.min(s - e.deltaY * 0.01, 10)))}>
       
-      <button onClick={onClose} className="absolute top-6 right-6 z-50 bg-slate-800/80 p-3 rounded-full text-white shadow-lg active:scale-90 transition-all border border-slate-600">
-        <X size={28} />
+      <button onClick={() => {
+        const link = document.createElement('a');
+        link.href = src;
+        link.download = `VoltVault_${Date.now()}.jpg`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+      }} className="absolute top-6 right-20 z-50 bg-slate-800/80 p-3 rounded-full text-white shadow-lg active:scale-90 transition-all border border-slate-600">
+        <Download size={24} />
       </button>
 
-      {/* ズームコントローラー */}
+      <button onClick={onClose} className="absolute top-6 right-6 z-50 bg-slate-800/80 p-3 rounded-full text-white shadow-lg active:scale-90 transition-all border border-slate-600">
+        <X size={24} />
+      </button>
+
       <div className="absolute bottom-10 flex gap-4 z-50 bg-slate-800/80 p-2 rounded-full shadow-[0_0_20px_rgba(0,0,0,0.5)] items-center border border-slate-700">
         <button onClick={() => setScale(s => Math.max(1, s - 0.5))} className="p-3 text-cyan-400 hover:text-cyan-300 active:scale-90 transition-all"><ZoomOut size={24} /></button>
         <span className="text-white font-black flex items-center justify-center w-16 text-lg">{Math.round(scale * 100)}%</span>
@@ -495,8 +512,7 @@ const ImageViewer = ({ src, onClose }) => {
   );
 };
 
-
-const MarkupModalCanvas = ({ markupModal, setMarkupModal, formData, setFormData }) => {
+const MarkupModalCanvas = ({ markupModal, setMarkupModal, onSave }) => {
   const canvasRef = useRef(null); const [mode, setMode] = useState('draw'); const [zoom, setZoom] = useState(1);
   const [dimensions, setDimensions] = useState(null); const [texts, setTexts] = useState([]); 
   const [editingTextId, setEditingTextId] = useState(null); const dragRef = useRef(null);
@@ -509,7 +525,6 @@ const MarkupModalCanvas = ({ markupModal, setMarkupModal, formData, setFormData 
     if (!markupModal.dataUrl || typeof markupModal.dataUrl !== 'string') return;
     const img = new Image();
     
-    // ★ 修正：ローカルのアップロード画像（data:image）にはcrossOriginをつけない（CORSエラー防止）
     if (markupModal.dataUrl.startsWith('http')) {
       img.crossOrigin = "Anonymous"; 
     }
@@ -550,7 +565,6 @@ const MarkupModalCanvas = ({ markupModal, setMarkupModal, formData, setFormData 
 
   const getPos = (e) => {
     const r = canvasRef.current.getBoundingClientRect();
-    // ★ 修正：PointerEventに完全対応し、確実に座標を取得
     return { x: (e.clientX - r.left) / r.width, y: (e.clientY - r.top) / r.height };
   };
 
@@ -606,7 +620,7 @@ const MarkupModalCanvas = ({ markupModal, setMarkupModal, formData, setFormData 
       if (!dimensions || !dimensions.img) throw new Error("画像がまだ読み込まれていません");
       
       const cvs = document.createElement('canvas');
-      const MAX_SAVE_SIZE = 1024; // ★ 超高解像度化（1024px）
+      const MAX_SAVE_SIZE = 1024;
       const scale = Math.min(MAX_SAVE_SIZE / dimensions.origW, MAX_SAVE_SIZE / dimensions.origH, 1);
       cvs.width = dimensions.origW * scale; cvs.height = dimensions.origH * scale;
       const ctx = cvs.getContext('2d'); 
@@ -642,15 +656,9 @@ const MarkupModalCanvas = ({ markupModal, setMarkupModal, formData, setFormData 
         ctx.fillStyle = t.color; lines.forEach((l, i) => ctx.fillText(l, tx + pad, ty + pad + (i * fSize * 1.2)));
       });
       
-      const newDataUrl = cvs.toDataURL('image/jpeg', 0.7); // ★ 高画質化（70%）
+      const newDataUrl = cvs.toDataURL('image/jpeg', 0.7); 
+      onSave(newDataUrl, markupModal.imgIndex);
       
-      setFormData(prev => {
-        const newImages = Array.isArray(prev.images) ? [...prev.images] : [];
-        newImages[markupModal.imgIndex] = newDataUrl;
-        return { ...prev, images: newImages };
-      });
-      
-      setMarkupModal({ isOpen: false, imgIndex: null, dataUrl: null });
     } catch (err) {
       alert("画像処理エラーが発生しました。もう一度お試しください。\n" + err.message);
     }
@@ -739,6 +747,8 @@ const MemoCard = ({ memo, userSettings, onClick }) => {
               <span className="text-cyan-700">{memo.date}</span>
               {memo.needsReview && !memo.isReviewed && <span className="bg-red-950/80 text-red-400 px-1.5 py-0.5 rounded text-[8px] border border-red-500/50 flex items-center not-italic gap-0.5 shadow-md"><Bell size={8}/>要確認</span>}
               {memo.needsReview && memo.isReviewed && <span className="bg-green-950/80 text-green-400 px-1.5 py-0.5 rounded text-[8px] border border-green-500/50 flex items-center not-italic gap-0.5"><CheckSquare size={8}/>確認済</span>}
+              {/* ★ 新設：下書きラベル */}
+              {memo.isDraft && <span className="bg-yellow-950/80 text-yellow-400 px-1.5 py-0.5 rounded text-[8px] border border-yellow-500/50 flex items-center not-italic gap-0.5 shadow-[0_0_5px_rgba(234,179,8,0.5)]"><Edit3 size={8}/>下書き</span>}
             </div>
           </div>
           <h3 className="font-black text-slate-100 text-base leading-tight mb-2 pl-2 truncate">{memo.title}</h3>
@@ -789,11 +799,11 @@ export default function App() {
   const [markupModal, setMarkupModal] = useState({ isOpen: false, imgIndex: null, dataUrl: null });
   const [showPasteModal, setShowPasteModal] = useState(false); 
   
-  // ★ 追加：全画面画像ビューア用の状態
   const [viewerImage, setViewerImage] = useState(null);
+  const [isAILoading, setIsAILoading] = useState(false);
 
-  const uniqueSites = [...new Set(memos.map(m => String(m.site || "")).filter(Boolean))];
-  const uniqueTitles = [...new Set(memos.map(m => String(m.title || "").replace(/\s+\d+$/, "")).filter(Boolean))];
+  const [toastMessage, setToastMessage] = useState('');
+  const hiddenQuickCaptureRef = useRef(null); 
 
   useEffect(() => {
     const initAuth = async () => { 
@@ -843,7 +853,7 @@ export default function App() {
   }, [user]);
 
   const [showAdvanced, setShowAdvanced] = useState(false);
-  const initialForm = { title: '', site: '', genre: '', materials: [], content: '', date: new Date().toISOString().split('T')[0], images: [], teacher: '', needsReview: false, reviewDate: '', isReviewed: false };
+  const initialForm = { title: '', site: '', genre: '', materials: [], content: '', date: new Date().toISOString().split('T')[0], images: [], teacher: '', needsReview: false, reviewDate: '', isReviewed: false, isDraft: false };
   const [formData, setFormData] = useState(initialForm);
 
   const [showNewGenre, setShowNewGenre] = useState(false);
@@ -858,6 +868,52 @@ export default function App() {
   const [newTagColor, setNewTagColor] = useState('gray');
   const [newTagIcon, setNewTagIcon] = useState('Tags');
 
+  const uniqueSites = useMemo(() => [...new Set(memos.map(m => String(m.site || "")).filter(Boolean))], [memos]);
+  const uniqueTitles = useMemo(() => [...new Set(memos.map(m => String(m.title || "").replace(/\s+\d+$/, "")).filter(Boolean))], [memos]);
+
+  const sortedGenres = useMemo(() => Object.entries(userSettings?.genres || {}).map(([k, v]) => ({ key: k, ...v })).sort((a, b) => (a.order || 0) - (b.order || 0)), [userSettings]);
+  const groupedGenresForm = useMemo(() => MainCategories.map(cat => ({ category: cat, genres: sortedGenres.filter(g => g.group === cat) })).filter(g => g.genres.length > 0), [sortedGenres]);
+  
+  const sortedTags = useMemo(() => Object.entries(userSettings?.tags || {}).map(([k, v]) => ({ key: k, ...v })).sort((a, b) => (a.order || 0) - (b.order || 0)), [userSettings]);
+  const groupedTagsForm = useMemo(() => MainCategories.map(cat => ({ category: cat, tags: sortedTags.filter(t => t.group === cat) })).filter(t => t.tags && t.tags.length > 0), [sortedTags]);
+
+  const totalMemos = useMemo(() => memos.filter(m => !m.isDraft).length, [memos]);
+  const streakDays = userSettings?.stats?.streakDays || 0;
+  const bonusExp = userSettings?.stats?.bonusExp || 0;
+  const currentExp = (totalMemos * 25) + (streakDays * 10) + bonusExp;
+  const currentLevel = Math.floor(currentExp / 100) + 1;
+  const expPercentage = currentExp % 100;
+  const pendingReviews = useMemo(() => memos.filter(m => !m.isDraft && m.needsReview && !m.isReviewed), [memos]);
+
+  const weaponStyle = useMemo(() => {
+    if (currentLevel >= 50) return { bg: 'bg-cyan-900', text: 'text-cyan-300', border: 'border-cyan-400', shadow: 'shadow-[0_0_20px_rgba(34,211,238,0.8)]' };
+    if (currentLevel >= 20) return { bg: 'bg-yellow-900', text: 'text-yellow-400', border: 'border-yellow-500', shadow: 'shadow-[0_0_15px_rgba(250,204,21,0.5)]' };
+    if (currentLevel >= 10) return { bg: 'bg-orange-950', text: 'text-orange-400', border: 'border-orange-500', shadow: 'shadow-[0_0_10px_rgba(251,146,60,0.4)]' };
+    return { bg: 'bg-slate-800', text: 'text-slate-400', border: 'border-slate-600', shadow: 'shadow-md' };
+  }, [currentLevel]);
+
+  // ★ 修正：リストのフィルタリング処理（下書き対応）
+  const filteredMemos = useMemo(() => memos.filter(m => {
+    const matchSearch = String(m.title || "").includes(searchTerm) || String(m.site || "").includes(searchTerm) || (m.materials || []).some(mat => String(mat).includes(searchTerm)) || String(m.teacher || "").includes(searchTerm);
+    const matchDate = (dateRange.start ? (m.date || "") >= dateRange.start : true) && (dateRange.end ? (m.date || "") <= dateRange.end : true);
+    const matchPending = filterPending ? (m.needsReview && !m.isReviewed) : true;
+    
+    if (listMode === 'drafts') {
+      return m.isDraft === true && matchSearch && matchDate && matchPending;
+    } else {
+      return m.isDraft !== true && matchSearch && matchDate && matchPending;
+    }
+  }).sort((a, b) => sortOrder === 'newest' ? ((b.date || "").localeCompare(a.date || "") || (parseInt(String(b.id).split('_')[1]) || 0) - (parseInt(String(a.id).split('_')[1]) || 0)) : ((a.date || "").localeCompare(b.date || "") || (parseInt(String(a.id).split('_')[1]) || 0) - (parseInt(String(b.id).split('_')[1]) || 0))), [memos, searchTerm, dateRange, filterPending, sortOrder, listMode]);
+
+  const groupedMemos = useMemo(() => filteredMemos.reduce((acc, memo) => {
+    if (listMode === 'all') return acc;
+    if (listMode === 'drafts') { const k = '📝 下書き (未完了)'; acc[k] = acc[k] || []; acc[k].push(memo); return acc; }
+    if (listMode === 'site') { const k = String(memo.site || 'NO SITE DATA'); acc[k] = acc[k] || []; acc[k].push(memo); }
+    else if (listMode === 'genre') { const k = String(memo.genre || 'UNCLASSIFIED'); acc[k] = acc[k] || []; acc[k].push(memo); }
+    else if (listMode === 'material') { (memo.materials?.length ? memo.materials : ['NO TAGS']).forEach(mat => { const k = String(mat); acc[k] = acc[k] || []; acc[k].push(memo); }); }
+    return acc;
+  }, {}), [filteredMemos, listMode]);
+
   const loadDraft = () => {
     try {
       const draft = localStorage.getItem('voltVaultDraft');
@@ -870,17 +926,12 @@ export default function App() {
             title: safeString(p.title), site: safeString(p.site), genre: safeString(p.genre), 
             materials: safeArray(p.materials), content: safeString(p.content), 
             date: safeString(p.date) || initialForm.date, images: safeArray(p.images),
-            teacher: safeString(p.teacher), needsReview: Boolean(p.needsReview), reviewDate: safeString(p.reviewDate), isReviewed: Boolean(p.isReviewed)
+            teacher: safeString(p.teacher), needsReview: Boolean(p.needsReview), reviewDate: safeString(p.reviewDate), isReviewed: Boolean(p.isReviewed), isDraft: Boolean(p.isDraft)
           });
         } else { setFormData(initialForm); }
       } else { setFormData(initialForm); }
     } catch (e) { setFormData(initialForm); }
   };
-
-  const sortedGenres = Object.entries(userSettings?.genres || {}).map(([k, v]) => ({ key: k, ...v })).sort((a, b) => (a.order || 0) - (b.order || 0));
-  const groupedGenresForm = MainCategories.map(cat => ({ category: cat, genres: sortedGenres.filter(g => g.group === cat) })).filter(g => g.genres.length > 0);
-  const sortedTags = Object.entries(userSettings?.tags || {}).map(([k, v]) => ({ key: k, ...v })).sort((a, b) => (a.order || 0) - (b.order || 0));
-  const groupedTagsForm = MainCategories.map(cat => ({ category: cat, tags: sortedTags.filter(t => t.group === cat) })).filter(t => t.tags && t.tags.length > 0);
 
   useEffect(() => {
     if (view === 'add') {
@@ -895,56 +946,78 @@ export default function App() {
     if (view === 'add' && !formData.genre && Object.keys(userSettings?.genres || {}).length > 0) setFormData(prev => ({ ...prev, genre: Object.keys(userSettings.genres)[0] }));
   }, [view, userSettings]);
 
-  const totalMemos = memos.length;
-  const streakDays = userSettings?.stats?.streakDays || 0;
-  const bonusExp = userSettings?.stats?.bonusExp || 0;
-  const currentExp = (totalMemos * 25) + (streakDays * 10) + bonusExp;
-  const currentLevel = Math.floor(currentExp / 100) + 1;
-  const expPercentage = currentExp % 100;
-  const pendingReviews = memos.filter(m => m.needsReview && !m.isReviewed);
+  // ★ 現場最速！自動でクラウドに下書き保存する即撮影機能
+  const handleQuickCapture = async (e) => {
+    if (!user) { alert("データベースの鍵（認証）を確認中です。"); return; }
+    const files = Array.from(e.target.files);
+    if (files.length === 0) return;
+    
+    setToastMessage("📸 写真をクラウド下書きに保存中...");
 
-  const getWeaponStyle = (level) => {
-    if (level >= 50) return { bg: 'bg-cyan-900', text: 'text-cyan-300', border: 'border-cyan-400', shadow: 'shadow-[0_0_20px_rgba(34,211,238,0.8)]' };
-    if (level >= 20) return { bg: 'bg-yellow-900', text: 'text-yellow-400', border: 'border-yellow-500', shadow: 'shadow-[0_0_15px_rgba(250,204,21,0.5)]' };
-    if (level >= 10) return { bg: 'bg-orange-950', text: 'text-orange-400', border: 'border-orange-500', shadow: 'shadow-[0_0_10px_rgba(251,146,60,0.4)]' };
-    return { bg: 'bg-slate-800', text: 'text-slate-400', border: 'border-slate-600', shadow: 'shadow-md' };
+    const processFile = (file) => {
+      return new Promise((resolve) => {
+        const reader = new FileReader();
+        reader.onload = (event) => {
+          const img = new Image();
+          img.onload = () => {
+            const canvas = document.createElement('canvas');
+            const MAX_WIDTH = 1024; 
+            const scale = Math.min(MAX_WIDTH / img.width, 1);
+            canvas.width = img.width * scale; canvas.height = img.height * scale;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+            resolve(canvas.toDataURL('image/jpeg', 0.7)); 
+          };
+          img.src = event.target.result;
+        };
+        reader.readAsDataURL(file);
+      });
+    };
+    
+    try {
+      const newImageUrls = await Promise.all(files.map(processFile));
+      const id = `memo_${Date.now()}`;
+      const draftTitle = `現場下書き (${new Date().toLocaleString('ja-JP', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })})`;
+      
+      const memoToSave = {
+        title: draftTitle,
+        id: id,
+        site: '',
+        genre: Object.keys(userSettings?.genres || {})[0] || '未分類',
+        content: '',
+        date: new Date().toISOString().split('T')[0],
+        materials: [],
+        images: newImageUrls,
+        teacher: '',
+        needsReview: false,
+        reviewDate: '',
+        isReviewed: false,
+        isDraft: true
+      };
+
+      await setDoc(doc(db, 'artifacts', currentAppId, 'public', 'data', 'memos', id), memoToSave);
+      setToastMessage(`✅ ${newImageUrls.length}枚の写真を「下書き」に保存しました！`);
+      setTimeout(() => setToastMessage(''), 3000);
+    } catch (err) {
+      alert("下書き保存に失敗しました。\n通信環境などを確認してください。");
+      setToastMessage('');
+    }
+    e.target.value = null; 
   };
-  const weaponStyle = getWeaponStyle(currentLevel);
 
-  const filteredMemos = memos.filter(m => {
-    const matchSearch = String(m.title || "").includes(searchTerm) || String(m.site || "").includes(searchTerm) || (m.materials || []).some(mat => String(mat).includes(searchTerm)) || String(m.teacher || "").includes(searchTerm);
-    return matchSearch && (dateRange.start ? (m.date || "") >= dateRange.start : true) && (dateRange.end ? (m.date || "") <= dateRange.end : true) && (filterPending ? (m.needsReview && !m.isReviewed) : true);
-  }).sort((a, b) => sortOrder === 'newest' ? ((b.date || "").localeCompare(a.date || "") || (parseInt(String(b.id).split('_')[1]) || 0) - (parseInt(String(a.id).split('_')[1]) || 0)) : ((a.date || "").localeCompare(b.date || "") || (parseInt(String(a.id).split('_')[1]) || 0) - (parseInt(String(b.id).split('_')[1]) || 0)));
-
-  const groupedMemos = filteredMemos.reduce((acc, memo) => {
-    if (listMode === 'all') return acc;
-    if (listMode === 'site') { const k = String(memo.site || 'NO SITE DATA'); acc[k] = acc[k] || []; acc[k].push(memo); }
-    else if (listMode === 'genre') { const k = String(memo.genre || 'UNCLASSIFIED'); acc[k] = acc[k] || []; acc[k].push(memo); }
-    else if (listMode === 'material') { (memo.materials?.length ? memo.materials : ['NO TAGS']).forEach(mat => { const k = String(mat); acc[k] = acc[k] || []; acc[k].push(memo); }); }
-    return acc;
-  }, {});
-
-  const handleSave = async () => {
-    if (!formData.title || formData.title.trim() === '') {
-      alert("クエスト名（タイトル）を入力してください！");
-      return;
-    }
-    if (!user) {
-      alert("データベースの鍵（認証）を確認中です。数秒待ってからもう一度お試しください。");
-      return;
-    }
+  // ★ 保存機能を「下書き」と「本保存」に分割
+  const handleSave = async (saveAsDraft = false) => {
+    let finalTitle = formData.title ? String(formData.title).trim() : (saveAsDraft ? `現場下書き (${new Date().toLocaleString('ja-JP', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })})` : `現場メモ (${new Date().toLocaleString('ja-JP', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })})`);
+    
+    if (!user) { alert("データベースの鍵（認証）を確認中です。数秒待ってからもう一度お試しください。"); return; }
 
     const payloadSize = JSON.stringify(formData).length;
-    if (payloadSize > 900000) { 
-      alert(`データが大きすぎます！（現在約${Math.round(payloadSize/1000)}KB）\n\nスマホの高画質カメラの影響で、1回の保存容量の限界を超えています。\n画像を減らすか、一度アプリを再読み込みしてください。`);
-      return;
-    }
+    if (payloadSize > 900000) { alert(`データが大きすぎます！（現在約${Math.round(payloadSize/1000)}KB）\n\nスマホの高画質カメラの影響で、1回の保存容量の限界を超えています。\n画像を減らすか、一度アプリを再読み込みしてください。`); return; }
 
     setIsSyncing(true);
     try {
       const isNew = view !== 'edit';
       const id = isNew ? `memo_${Date.now()}` : editingMemo.id;
-      let finalTitle = String(formData.title).trim();
       if (isNew) {
         const regex = new RegExp(`^${String(finalTitle).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?:\\s+(\\d+))?$`);
         let maxNum = 0, hasBase = false;
@@ -956,23 +1029,17 @@ export default function App() {
       }
 
       const memoToSave = {
-        title: finalTitle,
-        id: id,
-        site: String(formData.site || ''),
-        genre: String(formData.genre || ''),
-        content: String(formData.content || ''),
-        date: String(formData.date || ''),
-        materials: Array.isArray(formData.materials) ? formData.materials.map(String) : [],
-        images: Array.isArray(formData.images) ? formData.images.map(String) : [],
-        teacher: String(formData.teacher || ''),
-        needsReview: Boolean(formData.needsReview),
-        reviewDate: String(formData.reviewDate || ''),
-        isReviewed: Boolean(formData.isReviewed)
+        title: finalTitle, id: id, site: String(formData.site || ''), genre: String(formData.genre || ''), content: String(formData.content || ''),
+        date: String(formData.date || ''), materials: Array.isArray(formData.materials) ? formData.materials.map(String) : [],
+        images: Array.isArray(formData.images) ? formData.images.map(String) : [], teacher: String(formData.teacher || ''),
+        needsReview: Boolean(formData.needsReview), reviewDate: String(formData.reviewDate || ''), isReviewed: Boolean(formData.isReviewed),
+        isDraft: saveAsDraft // ★ フラグを保存
       };
 
       await setDoc(doc(db, 'artifacts', currentAppId, 'public', 'data', 'memos', id), memoToSave, { merge: true });
       
-      if (isNew) {
+      // 本保存（刻印）された場合のみ経験値を付与
+      if (isNew && !saveAsDraft) {
         const stats = userSettings.stats || defaultSettings.stats;
         const todayStr = new Date().toISOString().split('T')[0];
         let newStreak = stats.streakDays || 0;
@@ -992,15 +1059,12 @@ export default function App() {
 
       setView('list'); setFormData(initialForm); setShowAdvanced(false); setShowNewGenre(false); setShowNewTag(false);
     } catch (e) { 
-      console.error(e);
-      alert(`保存に失敗しました。\n通信環境を確認するか、画像サイズを減らしてください。\n詳細: ${e.message}`); 
-      setTimeout(()=>setError(null), 5000); 
+      console.error(e); alert(`保存に失敗しました。\n通信環境を確認するか、画像サイズを減らしてください。\n詳細: ${e.message}`); setTimeout(()=>setError(null), 5000); 
     } finally { setIsSyncing(false); }
   };
 
   const handleDelete = async (id) => {
-    if (!user) return;
-    setIsSyncing(true);
+    if (!user) return; setIsSyncing(true);
     try { await deleteDoc(doc(db, 'artifacts', currentAppId, 'public', 'data', 'memos', id)); setView('list'); } 
     catch (e) { setError("DELETE FAILED."); setTimeout(()=>setError(null), 5000); } finally { setIsSyncing(false); }
   };
@@ -1030,23 +1094,15 @@ export default function App() {
   const handleEditClick = () => { 
     setEditingMemo(selectedMemo); 
     const safeMemo = {
-      title: String(selectedMemo.title || ''),
-      site: String(selectedMemo.site || ''),
-      genre: String(selectedMemo.genre || (Object.keys(userSettings?.genres || {})[0]) || ''),
-      content: String(selectedMemo.content || ''),
-      date: String(selectedMemo.date || new Date().toISOString().split('T')[0]),
+      title: String(selectedMemo.title || ''), site: String(selectedMemo.site || ''), genre: String(selectedMemo.genre || (Object.keys(userSettings?.genres || {})[0]) || ''),
+      content: String(selectedMemo.content || ''), date: String(selectedMemo.date || new Date().toISOString().split('T')[0]),
       materials: Array.isArray(selectedMemo.materials) ? selectedMemo.materials.filter(Boolean).map(String) : [],
       images: Array.isArray(selectedMemo.images) ? selectedMemo.images.filter(Boolean).map(String) : [],
-      teacher: String(selectedMemo.teacher || ''),
-      needsReview: Boolean(selectedMemo.needsReview),
-      reviewDate: String(selectedMemo.reviewDate || ''),
-      isReviewed: Boolean(selectedMemo.isReviewed)
+      teacher: String(selectedMemo.teacher || ''), needsReview: Boolean(selectedMemo.needsReview), reviewDate: String(selectedMemo.reviewDate || ''), isReviewed: Boolean(selectedMemo.isReviewed),
+      isDraft: Boolean(selectedMemo.isDraft)
     };
-    if (selectedMemo.markupImage && safeMemo.images.length === 0) {
-      safeMemo.images.push(String(selectedMemo.markupImage));
-    }
-    setFormData(safeMemo); 
-    setView('edit'); 
+    if (selectedMemo.markupImage && safeMemo.images.length === 0) safeMemo.images.push(String(selectedMemo.markupImage));
+    setFormData(safeMemo); setView('edit'); 
   };
 
   const handleFileUpload = async (e) => {
@@ -1058,13 +1114,9 @@ export default function App() {
         reader.onload = (event) => {
           const img = new Image();
           img.onload = () => {
-            const canvas = document.createElement('canvas');
-            const MAX_WIDTH = 1024; 
-            const scale = Math.min(MAX_WIDTH / img.width, 1);
+            const canvas = document.createElement('canvas'); const MAX_WIDTH = 1024; const scale = Math.min(MAX_WIDTH / img.width, 1);
             canvas.width = img.width * scale; canvas.height = img.height * scale;
-            const ctx = canvas.getContext('2d');
-            ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-            resolve(canvas.toDataURL('image/jpeg', 0.7)); 
+            const ctx = canvas.getContext('2d'); ctx.drawImage(img, 0, 0, canvas.width, canvas.height); resolve(canvas.toDataURL('image/jpeg', 0.7)); 
           };
           img.src = event.target.result;
         };
@@ -1072,25 +1124,15 @@ export default function App() {
       });
     };
     const newImageUrls = await Promise.all(files.map(processFile));
-    setFormData(prev => ({...prev, images: Array.isArray(prev.images) ? [...prev.images, ...newImageUrls] : [...newImageUrls]}));
-    e.target.value = null; 
+    setFormData(prev => ({...prev, images: Array.isArray(prev.images) ? [...prev.images, ...newImageUrls] : [...newImageUrls]})); e.target.value = null; 
   };
 
   const handleDirectPaste = async (e) => {
     const items = e.clipboardData?.items;
     if (!items) return;
-    
     const imageFiles = [];
-    for (let i = 0; i < items.length; i++) {
-      if (items[i].type.indexOf('image') !== -1) {
-        imageFiles.push(items[i].getAsFile());
-      }
-    }
-    
-    if (imageFiles.length === 0) {
-      alert("画像が貼り付けられませんでした。\nGoogleフォト等で画像が正しく「コピー」されているか確認してください。");
-      return;
-    }
+    for (let i = 0; i < items.length; i++) { if (items[i].type.indexOf('image') !== -1) { imageFiles.push(items[i].getAsFile()); } }
+    if (imageFiles.length === 0) { alert("画像が貼り付けられませんでした。\nGoogleフォト等で画像が正しく「コピー」されているか確認してください。"); return; }
     
     const processFile = (file) => {
       return new Promise((resolve) => {
@@ -1098,13 +1140,9 @@ export default function App() {
         reader.onload = (event) => {
           const img = new Image();
           img.onload = () => {
-            const canvas = document.createElement('canvas');
-            const MAX_WIDTH = 1024; 
-            const scale = Math.min(MAX_WIDTH / img.width, 1);
+            const canvas = document.createElement('canvas'); const MAX_WIDTH = 1024; const scale = Math.min(MAX_WIDTH / img.width, 1);
             canvas.width = img.width * scale; canvas.height = img.height * scale;
-            const ctx = canvas.getContext('2d');
-            ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-            resolve(canvas.toDataURL('image/jpeg', 0.7)); 
+            const ctx = canvas.getContext('2d'); ctx.drawImage(img, 0, 0, canvas.width, canvas.height); resolve(canvas.toDataURL('image/jpeg', 0.7)); 
           };
           img.src = event.target.result;
         };
@@ -1119,21 +1157,10 @@ export default function App() {
 
   const handlePasteBtn = async () => {
     try {
-      if (!navigator.clipboard || !navigator.clipboard.read) {
-        setShowPasteModal(true);
-        return;
-      }
-      const cItems = await navigator.clipboard.read(); 
-      const files = [];
-      for (const item of cItems) { 
-        for (const type of Array.from(item.types).filter(t => typeof t === 'string' && t.startsWith('image/'))) { 
-          files.push(await item.getType(type)); 
-        } 
-      }
-      if (!files.length) {
-        setShowPasteModal(true);
-        return;
-      }
+      if (!navigator.clipboard || !navigator.clipboard.read) { setShowPasteModal(true); return; }
+      const cItems = await navigator.clipboard.read(); const files = [];
+      for (const item of cItems) { for (const type of Array.from(item.types).filter(t => typeof t === 'string' && t.startsWith('image/'))) { files.push(await item.getType(type)); } }
+      if (!files.length) { setShowPasteModal(true); return; }
       const p = (blob) => new Promise((res) => {
         const r = new FileReader(); r.onload = (ev) => {
           const img = new Image(); img.onload = () => {
@@ -1145,37 +1172,27 @@ export default function App() {
       });
       const newImgs = await Promise.all(files.map(p));
       setFormData(pr => ({...pr, images: Array.isArray(pr.images) ? [...pr.images, ...newImgs] : [...newImgs]}));
-    } catch (e) {
-      setShowPasteModal(true);
-    }
+    } catch (e) { setShowPasteModal(true); }
   };
 
   const handleMoveItem = (type, key, direction) => {
-    const items = userSettings[type]; 
-    const arr = Object.entries(items).map(([k, v]) => ({ key: k, ...v })).sort((a, b) => a.order - b.order);
-    const index = arr.findIndex(item => item.key === key);
-    if (index === -1) return;
+    const items = userSettings[type]; const arr = Object.entries(items).map(([k, v]) => ({ key: k, ...v })).sort((a, b) => a.order - b.order);
+    const index = arr.findIndex(item => item.key === key); if (index === -1) return;
     if (direction === 'up' && index > 0) { const temp = arr[index].order; arr[index].order = arr[index - 1].order; arr[index - 1].order = temp; } 
-    else if (direction === 'down' && index < arr.length - 1) { const temp = arr[index].order; arr[index].order = arr[index + 1].order; arr[index + 1].order = temp; } 
-    else { return; }
-    const newItems = {}; arr.forEach(item => { const { key, ...rest } = item; newItems[key] = rest; });
-    saveSettings({ ...userSettings, [type]: newItems });
+    else if (direction === 'down' && index < arr.length - 1) { const temp = arr[index].order; arr[index].order = arr[index + 1].order; arr[index + 1].order = temp; } else return;
+    const newItems = {}; arr.forEach(item => { const { key, ...rest } = item; newItems[key] = rest; }); saveSettings({ ...userSettings, [type]: newItems });
   };
 
   const handleAddItem = (type, name, colorId, icon, group) => {
-    const items = userSettings[type] || {};
-    const maxOrder = Math.max(...Object.values(items).map(i => i.order || 0), -1);
-    const newItem = { colorId, icon, group, order: maxOrder + 1 };
-    saveSettings({ ...userSettings, [type]: { ...items, [name]: newItem } });
+    const items = userSettings[type] || {}; const maxOrder = Math.max(...Object.values(items).map(i => i.order || 0), -1);
+    const newItem = { colorId, icon, group, order: maxOrder + 1 }; saveSettings({ ...userSettings, [type]: { ...items, [name]: newItem } });
   };
 
   const handleUpdateItem = async (type, oldKey, newKey, colorId, icon, group) => {
-    const items = userSettings[type];
-    const oldOrder = items[oldKey].order;
+    const items = userSettings[type]; const oldOrder = items[oldKey].order;
     if (oldKey !== newKey && items[newKey]) { alert("WARNING: その名前はすでに登録されています！"); return; }
     const newItems = { ...items }; delete newItems[oldKey]; newItems[newKey] = { colorId, icon, group, order: oldOrder };
     await saveSettings({ ...userSettings, [type]: newItems });
-
     if (oldKey !== newKey) {
       setIsSyncing(true);
       try {
@@ -1190,15 +1207,85 @@ export default function App() {
     }
   };
 
+  const handleAIAssist = async () => {
+    if (!formData.content && (!formData.images || formData.images.length === 0)) { alert("画像を追加するか、少しだけメモを入力してからAIアシストを使用してください。"); return; }
+    setIsAILoading(true);
+    try {
+      const apiKey = ""; const parts = [];
+      parts.push({ 
+        text: `あなたは電気工事・建築現場の優秀なアシスタントです。提供された現場の写真（あれば）と、ラフな入力メモを解析し、現場の作業記録や引き継ぎ用としてプロらしい整理された文章を作成してください。
+【指示】1. 箇条書きを使用して見やすくすること。2. 写真から読み取れる状態（機器の状態、配線の色、施工状況、注意点など）があれば推測して補足すること。3. 挨拶などは不要で、メモ本文のみを出力すること。
+
+現在のラフメモ: ${formData.content || '(メモなし。写真から現場状況を推測して日報を作成してください)'}` 
+      });
+      if (formData.images && formData.images.length > 0) {
+        formData.images.forEach(imgUrl => {
+          if (imgUrl.startsWith('data:image')) {
+            const base64 = imgUrl.split(',')[1]; const mimeType = imgUrl.split(':')[1].split(';')[0];
+            parts.push({ inlineData: { mimeType, data: base64 } });
+          }
+        });
+      }
+      const data = await fetchWithRetry(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ contents: [{ parts }] })
+      });
+      if (data.candidates && data.candidates[0] && data.candidates[0].content.parts[0].text) {
+        setFormData(prev => ({ ...prev, content: data.candidates[0].content.parts[0].text.trim() }));
+      } else throw new Error("AIが文章の生成に失敗しました。");
+    } catch (err) { alert("AIアシストに失敗しました。通信環境を確認してください。"); console.error(err); } finally { setIsAILoading(false); }
+  };
+
+  // =============== レンダリング部 ===============
   return (
     <div className="min-h-screen bg-slate-950 pb-28 text-slate-200 font-sans antialiased selection:bg-cyan-500/30 relative">
       <div className="fixed inset-0 pointer-events-none z-0 opacity-20" style={{ backgroundImage: `linear-gradient(to right, #06b6d4 1px, transparent 1px), linear-gradient(to bottom, #06b6d4 1px, transparent 1px)`, backgroundSize: '30px 30px' }}></div>
       <div className="fixed inset-0 pointer-events-none z-0 bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-transparent via-slate-950/80 to-slate-950"></div>
 
       <div className="relative z-10">
+        
+        {/* === モーダル・オーバーレイ群 === */}
+        {toastMessage && (
+          <div className="fixed top-24 left-1/2 -translate-x-1/2 z-[250] bg-cyan-600 text-slate-900 font-black text-xs px-6 py-3 rounded-full shadow-[0_0_20px_rgba(6,182,212,0.8)] animate-in slide-in-from-top fade-in flex items-center gap-2">
+            <CheckCircle size={16} /> {toastMessage}
+          </div>
+        )}
+
         <LevelUpModal levelUpData={levelUpData} />
         <TrophiesModal showTrophiesModal={showTrophiesModal} setShowTrophiesModal={setShowTrophiesModal} memos={memos} userSettings={userSettings} />
-        {markupModal.isOpen && <MarkupModalCanvas markupModal={markupModal} setMarkupModal={setMarkupModal} formData={formData} setFormData={setFormData} />}
+        {viewerImage && <ImageViewer src={viewerImage} onClose={() => setViewerImage(null)} />}
+        
+        {showPasteModal && (
+          <div className="fixed inset-0 z-[250] flex items-center justify-center bg-slate-950/90 backdrop-blur-md p-4 animate-in zoom-in duration-200">
+            <div className="bg-slate-900 border border-slate-700 rounded-[2rem] p-6 w-full max-w-sm shadow-[0_0_30px_rgba(6,182,212,0.3)]">
+              <div className="flex justify-between items-center mb-4">
+                <h3 className="font-black text-cyan-400 flex items-center gap-2"><ClipboardList size={18}/> 画像を貼り付け</h3>
+                <button onClick={() => setShowPasteModal(false)} className="text-slate-500 hover:text-cyan-400 active:scale-90"><X size={24}/></button>
+              </div>
+              <div className="text-xs font-bold text-slate-300 mb-4 leading-relaxed space-y-2">
+                <p>下の入力欄を<strong className="text-yellow-400">長押し</strong>して<strong className="text-yellow-400">「ペースト（貼り付け）」</strong>を選択してください。</p>
+                <div className="bg-red-950/50 border border-red-500/50 p-3 rounded-xl text-red-200 shadow-inner">
+                  <p className="text-red-400 font-black mb-1 flex items-center gap-1"><AlertCircle size={14}/> Googleフォトをお使いの場合</p>
+                  <p className="text-[10px]">
+                    スマホの制限で、直接ペーストできない場合があります。<br/><br/>
+                    【確実な手順】<br/>
+                    1. Googleフォトで<strong className="text-white">「デバイスに保存」</strong><br/>
+                    2. 隣の<strong className="text-white">「ファイル」</strong>ボタンから選択<br/>
+                    お手数ですが、この方法が確実です！
+                  </p>
+                </div>
+              </div>
+              <textarea 
+                autoFocus
+                className="w-full h-24 bg-slate-800 border-2 border-dashed border-cyan-500/50 rounded-xl p-4 text-cyan-50 text-sm focus:border-cyan-400 outline-none resize-none font-bold placeholder-slate-500 shadow-inner"
+                placeholder="👇 ここを長押しして「ペースト」"
+                value=""
+                onChange={() => {}}
+                onPaste={handleDirectPaste}
+              />
+              <button onClick={() => setShowPasteModal(false)} className="w-full mt-4 bg-slate-800 text-slate-400 py-3 rounded-xl font-bold active:scale-95 transition-transform">キャンセル</button>
+            </div>
+          </div>
+        )}
 
         {showBossDefeat && (
           <div className="fixed inset-0 z-[200] flex items-center justify-center bg-red-950/90 overflow-hidden backdrop-blur-sm">
@@ -1227,7 +1314,23 @@ export default function App() {
             </div>
           </div>
         )}
-        
+
+        {markupModal.isOpen && (
+          <MarkupModalCanvas 
+            markupModal={markupModal} 
+            setMarkupModal={setMarkupModal} 
+            onSave={(newDataUrl, index) => {
+              setFormData(prev => {
+                const newImages = Array.isArray(prev.images) ? [...prev.images] : [];
+                newImages[index] = newDataUrl;
+                return { ...prev, images: newImages };
+              });
+              setMarkupModal({ isOpen: false, imgIndex: null, dataUrl: null });
+            }}
+          />
+        )}
+
+        {/* === ヘッダー === */}
         <header className="bg-slate-900 border-b border-cyan-500/30 text-white px-5 py-4 rounded-b-3xl shadow-[0_0_20px_rgba(6,182,212,0.15)] sticky top-0 z-20 overflow-hidden relative">
           <div className="absolute top-0 right-0 opacity-5 pointer-events-none"><Zap size={150} className="-mt-10 -mr-10 rotate-12 text-cyan-400" /></div>
           <div className="flex justify-between items-center mb-3 relative z-10">
@@ -1248,6 +1351,9 @@ export default function App() {
                 <Bell size={22} />
                 {pendingReviews.length > 0 && !filterPending && <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[9px] font-black w-4 h-4 rounded-full flex items-center justify-center animate-pulse shadow-[0_0_8px_rgba(239,68,68,0.8)] border border-slate-900">{pendingReviews.length}</span>}
               </button>
+              
+              <input type="file" accept="image/*" capture="environment" multiple onChange={handleQuickCapture} className="hidden" ref={hiddenQuickCaptureRef} />
+              
               <button onClick={() => { loadDraft(); setShowAdvanced(false); setShowNewGenre(false); setShowNewTag(false); setView('add'); }} className={`${weaponStyle.bg} ${weaponStyle.text} p-2.5 rounded-xl ${weaponStyle.shadow} border ${weaponStyle.border} active:scale-90 hover:scale-105 transition-all`}><ClipperIcon size={22} /></button>
             </div>
           </div>
@@ -1257,7 +1363,7 @@ export default function App() {
               <div className="flex items-center gap-2">
                 <span className="bg-yellow-500/20 border border-yellow-500 text-yellow-400 text-[9px] font-black px-1.5 py-0.5 rounded flex items-center gap-0.5 shadow-[0_0_5px_rgba(234,179,8,0.3)]"><Trophy size={10}/> Lv.{Number(currentLevel)}</span>
                 <span className="text-[10px] font-bold text-cyan-50 tracking-wide truncate max-w-[120px]">{String(getTitle(currentLevel))}</span>
-                {(userSettings.stats?.streakDays || 0) > 0 && <span className="bg-orange-500/20 border border-orange-500 text-orange-400 text-[9px] font-black px-1.5 py-0.5 rounded flex items-center gap-0.5 shadow-[0_0_5px_rgba(249,115,22,0.3)]"><Flame size={10}/> {Number(userSettings.stats.streakDays)}連コンボ</span>}
+                {(userSettings?.stats?.streakDays || 0) > 0 && <span className="bg-orange-500/20 border border-orange-500 text-orange-400 text-[9px] font-black px-1.5 py-0.5 rounded flex items-center gap-0.5 shadow-[0_0_5px_rgba(249,115,22,0.3)]"><Flame size={10}/> {Number(userSettings.stats.streakDays)}連コンボ</span>}
               </div>
               <span className="text-[8px] font-bold text-cyan-600 uppercase tracking-widest">DATA: {Number(totalMemos)}</span>
             </div>
@@ -1269,9 +1375,10 @@ export default function App() {
           {view === 'list' && (
             <div className="space-y-2 animate-in slide-in-from-top-2 relative z-10">
               <div className="flex bg-slate-950/50 p-1 rounded-xl backdrop-blur-sm border border-slate-800">
-                {['all', 'site', 'genre', 'material'].map(mode => (
-                  <button key={mode} onClick={() => setListMode(mode)} className={`flex-1 py-1 rounded-lg text-[10px] font-black transition-all ${listMode === mode ? 'bg-cyan-600 text-slate-900 shadow-[0_0_10px_rgba(6,182,212,0.5)]' : 'text-slate-400 hover:text-cyan-400'}`}>
-                    {mode === 'all' ? '全て' : mode === 'site' ? '現場別' : mode === 'genre' ? 'ジャンル' : '材料別'}
+                {/* ★ 変更：タブに「📝下書き」を追加 */}
+                {['all', 'drafts', 'site', 'genre', 'material'].map(mode => (
+                  <button key={mode} onClick={() => setListMode(mode)} className={`flex-1 py-1.5 rounded-lg text-[10px] font-black transition-all ${listMode === mode ? 'bg-cyan-600 text-slate-900 shadow-[0_0_10px_rgba(6,182,212,0.5)]' : 'text-slate-400 hover:text-cyan-400'}`}>
+                    {mode === 'all' ? '全て' : mode === 'drafts' ? '📝下書き' : mode === 'site' ? '現場別' : mode === 'genre' ? 'ジャンル' : '材料別'}
                   </button>
                 ))}
               </div>
@@ -1293,6 +1400,7 @@ export default function App() {
           )}
         </header>
 
+        {/* === メインコンテンツ群 === */}
         <main className="p-4 max-w-xl mx-auto relative z-10">
           {view === 'list' && (
             <div className="space-y-4">
@@ -1304,6 +1412,16 @@ export default function App() {
                   {filteredMemos.map(memo => (
                     <MemoCard key={memo.id} memo={memo} userSettings={userSettings} onClick={() => { setSelectedMemo(memo); setView('detail'); }} />
                   ))}
+                </div>
+              ) : listMode === 'drafts' ? (
+                <div className="space-y-3">
+                  {filteredMemos.length === 0 ? (
+                    <div className="text-center py-24 opacity-30"><Edit3 size={64} className="mx-auto mb-3 text-yellow-500"/><p className="text-sm font-black uppercase italic tracking-widest text-yellow-600">NO DRAFTS</p></div>
+                  ) : (
+                    filteredMemos.map(memo => (
+                      <MemoCard key={memo.id} memo={memo} userSettings={userSettings} onClick={() => { setSelectedMemo(memo); setView('detail'); }} />
+                    ))
+                  )}
                 </div>
               ) : (
                 Object.keys(groupedMemos).length === 0 ? (
@@ -1333,6 +1451,7 @@ export default function App() {
                           <div key={memo.id} onClick={() => { setSelectedMemo(memo); setView('detail'); }} className="p-2.5 bg-slate-800/50 rounded-xl cursor-pointer active:bg-slate-800 flex justify-between items-center border border-transparent hover:border-cyan-500/30 transition-colors gap-3">
                             <div className="flex-1 min-w-0">
                               <p className="text-xs font-black text-slate-200 flex items-center gap-1 truncate">
+                                {memo.isDraft && <span className="bg-yellow-950 text-yellow-500 px-1 py-0.5 rounded text-[8px] border border-yellow-500/50 mr-1 shrink-0">下書</span>}
                                 {memo.needsReview && !memo.isReviewed && <Bell size={10} className="text-red-500 drop-shadow-[0_0_3px_rgba(239,68,68,0.8)] shrink-0"/>}
                                 <span className="truncate">{String(memo.title)}</span>
                               </p>
@@ -1405,256 +1524,247 @@ export default function App() {
           )}
         </main>
 
-        {/* ★ フルスクリーンオーバーレイのコンテキストを完全に独立 */}
-        <div className="relative z-[200]">
-          
-          {/* ★ 新追加：本気で画像を拡大・パン操作できる専用ビューア */}
-          {viewerImage && (
-            <ImageViewer src={viewerImage} onClose={() => setViewerImage(null)} />
-          )}
+        {/* ★ 現場最速！右下のクイック撮影ボタン（FAB） */}
+        {view === 'list' && (
+          <button 
+            onClick={() => hiddenQuickCaptureRef.current?.click()}
+            className="fixed bottom-24 right-6 z-[90] bg-gradient-to-r from-cyan-400 to-blue-500 text-slate-900 p-4 rounded-full shadow-[0_0_25px_rgba(6,182,212,0.8)] active:scale-90 transition-all flex items-center justify-center border-2 border-cyan-200"
+          >
+            <Camera size={32} fill="currentColor" className="text-slate-900" />
+            <span className="absolute -top-3 -left-3 bg-red-500 text-white text-[9px] font-black px-2 py-0.5 rounded-full shadow-md rotate-[-10deg] animate-pulse">即撮影!</span>
+          </button>
+        )}
 
-          {/* ★ ペースト用モーダル */}
-          {showPasteModal && (
-            <div className="fixed inset-0 flex items-center justify-center bg-slate-950/90 backdrop-blur-md p-4 animate-in zoom-in duration-200">
-              <div className="bg-slate-900 border border-slate-700 rounded-[2rem] p-6 w-full max-w-sm shadow-[0_0_30px_rgba(6,182,212,0.3)]">
-                <div className="flex justify-between items-center mb-4">
-                  <h3 className="font-black text-cyan-400 flex items-center gap-2"><ClipboardList size={18}/> 画像を貼り付け</h3>
-                  <button onClick={() => setShowPasteModal(false)} className="text-slate-500 hover:text-cyan-400 active:scale-90"><X size={24}/></button>
-                </div>
-                <div className="text-xs font-bold text-slate-300 mb-4 leading-relaxed space-y-2">
-                  <p>下の入力欄を<strong className="text-yellow-400">長押し</strong>して<strong className="text-yellow-400">「ペースト（貼り付け）」</strong>を選択してください。</p>
-                  <div className="bg-red-950/50 border border-red-500/50 p-3 rounded-xl text-red-200 shadow-inner">
-                    <p className="text-red-400 font-black mb-1 flex items-center gap-1"><AlertCircle size={14}/> Googleフォトをお使いの場合</p>
-                    <p className="text-[10px]">
-                      スマホの制限で、直接ペーストできない場合があります。<br/><br/>
-                      【確実な手順】<br/>
-                      1. Googleフォトで<strong className="text-white">「デバイスに保存」</strong><br/>
-                      2. 隣の<strong className="text-white">「ファイル」</strong>ボタンから選択<br/>
-                      お手数ですが、この方法が確実です！
-                    </p>
-                  </div>
-                </div>
-                <textarea 
-                  autoFocus
-                  className="w-full h-24 bg-slate-800 border-2 border-dashed border-cyan-500/50 rounded-xl p-4 text-cyan-50 text-sm focus:border-cyan-400 outline-none resize-none font-bold placeholder-slate-500 shadow-inner"
-                  placeholder="👇 ここを長押しして「ペースト」"
-                  value=""
-                  onChange={() => {}}
-                  onPaste={handleDirectPaste}
-                />
-                <button onClick={() => setShowPasteModal(false)} className="w-full mt-4 bg-slate-800 text-slate-400 py-3 rounded-xl font-bold active:scale-95 transition-transform">キャンセル</button>
-              </div>
-            </div>
-          )}
+      </div>
 
-          {/* ★ 独立・最前面化された 詳細表示画面 */}
-          {view === 'detail' && selectedMemo && (
-            <div className="fixed inset-0 bg-slate-950 overflow-y-auto pb-32 animate-in slide-in-from-right duration-300 z-[120]">
-              <header className={`${ColorMap[userSettings.genres[selectedMemo.genre]?.colorId || 'gray']?.bg || 'bg-slate-800'} text-slate-900 p-6 flex justify-between items-center sticky top-0 rounded-b-[2.5rem] shadow-[0_0_20px_rgba(0,0,0,0.8)] border-b border-white/20 relative overflow-hidden z-20`}>
-                <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-white/20 to-transparent"></div>
-                <button onClick={() => setView('list')} className="relative z-10 p-2 bg-black/20 rounded-full text-white backdrop-blur-sm active:scale-90"><ChevronLeft size={28}/></button>
-                <h2 className="font-black italic text-[10px] tracking-widest uppercase relative z-10 opacity-80 text-white drop-shadow-md">DECRYPTED DATA</h2>
-                <button onClick={handleEditClick} className="relative z-10 p-2 bg-black/20 rounded-full text-white backdrop-blur-sm active:scale-90"><Edit3 size={24}/></button>
-              </header>
-              <div className="p-8 space-y-8 max-w-xl mx-auto relative z-10">
-                <div className="space-y-4 relative">
-                  <div className="absolute -left-4 top-0 w-1 h-full bg-cyan-900/30 rounded-full"></div>
-                  <div className="flex gap-2 items-center mb-2">
-                    <span className={`px-3 py-1.5 rounded-lg text-[9px] font-black uppercase flex items-center gap-1.5 ${ColorMap[userSettings.genres[selectedMemo.genre]?.colorId || 'gray']?.light} ${ColorMap[userSettings.genres[selectedMemo.genre]?.colorId || 'gray']?.text} border shadow-inner`}><DynamicIcon name={userSettings.genres[selectedMemo.genre]?.icon} size={14}/> {String(selectedMemo.genre)}</span>
-                  </div>
-                  <h2 className="text-3xl font-black text-slate-100 leading-tight tracking-tighter drop-shadow-md">{String(selectedMemo.title)}</h2>
-                  <div className="flex gap-4 text-[10px] font-black text-slate-400 uppercase bg-slate-900 p-3 rounded-xl border border-slate-700 shadow-inner">
-                    <span className="flex items-center gap-1.5"><MapPin size={12} className="text-cyan-500"/> {String(selectedMemo.site)}</span><span className="flex items-center gap-1.5"><Calendar size={12} className="text-cyan-500"/> {String(selectedMemo.date)}</span>
-                  </div>
-                  {(selectedMemo.teacher || selectedMemo.needsReview) && (
-                    <div className="flex flex-wrap gap-2 text-[10px] font-bold mt-2">
-                      {selectedMemo.teacher && <span className="bg-slate-800 text-cyan-200 px-2.5 py-1.5 rounded-lg flex items-center gap-1.5 border border-slate-600 shadow-sm"><User size={12} className="text-cyan-500"/> 伝授: {String(selectedMemo.teacher)}</span>}
-                      {selectedMemo.needsReview && !selectedMemo.isReviewed && <span className="bg-red-950 text-red-400 px-2.5 py-1.5 rounded-lg flex items-center gap-1.5 border border-red-500/50 shadow-[0_0_8px_rgba(239,68,68,0.3)]"><Bell size={12}/> 要確認 ({String(selectedMemo.reviewDate) || '期限なし'})</span>}
-                      {selectedMemo.needsReview && selectedMemo.isReviewed && <span className="bg-green-950 text-green-400 px-2.5 py-1.5 rounded-lg flex items-center gap-1.5 border border-green-500/50 shadow-sm"><CheckSquare size={12}/> 確認完了</span>}
-                    </div>
-                  )}
-                  {selectedMemo.materials && selectedMemo.materials.length > 0 && (
-                    <div className="flex flex-wrap gap-2 pt-2">
-                      {selectedMemo.materials.map((mat, i) => {
-                        const tagConf = userSettings.tags[mat] || { colorId: 'gray', icon: 'Tag' }; const tColor = ColorMap[tagConf.colorId] || ColorMap.gray;
-                        return <span key={i} className={`${tColor.light} ${tColor.text} ${tColor.border} border px-2.5 py-1.5 rounded-lg text-[10px] font-bold flex items-center gap-1.5 shadow-sm`}><DynamicIcon name={tagConf.icon} size={12}/> {String(mat)}</span>
-                      })}
-                    </div>
-                  )}
+      {/* === フルスクリーン画面群（詳細表示やフォーム） === */}
+      <div className="relative z-[120]">
+        {view === 'detail' && selectedMemo && (
+          <div className="fixed inset-0 bg-slate-950 overflow-y-auto pb-32 animate-in slide-in-from-right duration-300">
+            <header className={`${ColorMap[userSettings.genres[selectedMemo.genre]?.colorId || 'gray']?.bg || 'bg-slate-800'} text-slate-900 p-6 flex justify-between items-center sticky top-0 rounded-b-[2.5rem] shadow-[0_0_20px_rgba(0,0,0,0.8)] border-b border-white/20 relative overflow-hidden z-20`}>
+              <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-white/20 to-transparent"></div>
+              <button onClick={() => setView('list')} className="relative z-10 p-2 bg-black/20 rounded-full text-white backdrop-blur-sm active:scale-90"><ChevronLeft size={28}/></button>
+              <h2 className="font-black italic text-[10px] tracking-widest uppercase relative z-10 opacity-80 text-white drop-shadow-md">DECRYPTED DATA</h2>
+              <button onClick={handleEditClick} className="relative z-10 p-2 bg-black/20 rounded-full text-white backdrop-blur-sm active:scale-90"><Edit3 size={24}/></button>
+            </header>
+            <div className="p-8 space-y-8 max-w-xl mx-auto relative z-10">
+              <div className="space-y-4 relative">
+                <div className="absolute -left-4 top-0 w-1 h-full bg-cyan-900/30 rounded-full"></div>
+                <div className="flex gap-2 items-center mb-2">
+                  <span className={`px-3 py-1.5 rounded-lg text-[9px] font-black uppercase flex items-center gap-1.5 ${ColorMap[userSettings.genres[selectedMemo.genre]?.colorId || 'gray']?.light} ${ColorMap[userSettings.genres[selectedMemo.genre]?.colorId || 'gray']?.text} border shadow-inner`}><DynamicIcon name={userSettings.genres[selectedMemo.genre]?.icon} size={14}/> {String(selectedMemo.genre)}</span>
+                  {selectedMemo.isDraft && <span className="px-3 py-1.5 rounded-lg text-[9px] font-black uppercase flex items-center gap-1.5 bg-yellow-950/50 text-yellow-400 border border-yellow-500/50 shadow-inner ml-auto"><Edit3 size={14}/> 下書き</span>}
                 </div>
-                {((selectedMemo.images && selectedMemo.images.length > 0) || selectedMemo.markupImage) && (
-                  <div className="space-y-3">
-                    <h3 className="text-xs font-black text-cyan-600 flex items-center gap-1 tracking-widest"><Camera size={14}/> VISUAL DATA</h3>
-                    <div className="flex flex-col gap-4">
-                      {selectedMemo.markupImage && (!selectedMemo.images || selectedMemo.images.length===0) && (
-                        <div 
-                          className="bg-slate-900 rounded-[2.5rem] overflow-hidden border-2 border-slate-700 shadow-[0_0_15px_rgba(0,0,0,0.8)] cursor-pointer relative group"
-                          onClick={() => setViewerImage(selectedMemo.markupImage)}
-                        >
-                          <img src={selectedMemo.markupImage} className="w-full opacity-90 group-hover:opacity-100 transition-opacity" />
-                          <div className="absolute inset-0 bg-cyan-500/10 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center pointer-events-none">
-                            <ZoomIn size={32} className="text-cyan-300 drop-shadow-lg" />
-                          </div>
-                        </div>
-                      )}
-                      {selectedMemo.images && selectedMemo.images.map((img, i) => (
-                        <div 
-                          key={i} 
-                          className="bg-slate-900 rounded-[2.5rem] overflow-hidden border-2 border-slate-700 shadow-[0_0_15px_rgba(0,0,0,0.8)] relative cursor-pointer group"
-                          onClick={() => setViewerImage(img)}
-                        >
-                          <img src={img} className="w-full h-auto object-cover opacity-90 group-hover:opacity-100 transition-opacity" />
-                          <div className="absolute inset-0 bg-cyan-500/10 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center pointer-events-none">
-                            <ZoomIn size={32} className="text-cyan-300 drop-shadow-lg" />
-                          </div>
-                        </div>
-                      ))}
-                    </div>
+                <h2 className="text-3xl font-black text-slate-100 leading-tight tracking-tighter drop-shadow-md">{String(selectedMemo.title)}</h2>
+                <div className="flex gap-4 text-[10px] font-black text-slate-400 uppercase bg-slate-900 p-3 rounded-xl border border-slate-700 shadow-inner">
+                  <span className="flex items-center gap-1.5"><MapPin size={12} className="text-cyan-500"/> {String(selectedMemo.site)}</span><span className="flex items-center gap-1.5"><Calendar size={12} className="text-cyan-500"/> {String(selectedMemo.date)}</span>
+                </div>
+                {(selectedMemo.teacher || selectedMemo.needsReview) && (
+                  <div className="flex flex-wrap gap-2 text-[10px] font-bold mt-2">
+                    {selectedMemo.teacher && <span className="bg-slate-800 text-cyan-200 px-2.5 py-1.5 rounded-lg flex items-center gap-1.5 border border-slate-600 shadow-sm"><User size={12} className="text-cyan-500"/> 伝授: {String(selectedMemo.teacher)}</span>}
+                    {selectedMemo.needsReview && !selectedMemo.isReviewed && <span className="bg-red-950 text-red-400 px-2.5 py-1.5 rounded-lg flex items-center gap-1.5 border border-red-500/50 shadow-[0_0_8px_rgba(239,68,68,0.3)]"><Bell size={12}/> 要確認 ({String(selectedMemo.reviewDate) || '期限なし'})</span>}
+                    {selectedMemo.needsReview && selectedMemo.isReviewed && <span className="bg-green-950 text-green-400 px-2.5 py-1.5 rounded-lg flex items-center gap-1.5 border border-green-500/50 shadow-sm"><CheckSquare size={12}/> 確認完了</span>}
                   </div>
                 )}
-                <div className="bg-slate-900 p-8 rounded-[3rem] text-cyan-50 font-medium border border-cyan-900/50 leading-relaxed relative shadow-[0_0_20px_rgba(6,182,212,0.1)] whitespace-pre-wrap">
-                  <span className="absolute -top-3 left-10 bg-cyan-600 text-slate-900 px-4 py-1 rounded-full text-[10px] not-italic shadow-[0_0_8px_rgba(6,182,212,0.8)] tracking-widest font-black uppercase">Quest Log</span>
-                  {String(selectedMemo.content || '')}
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* ★ 独立・最前面化された 追加・編集フォーム画面 */}
-          {(view === 'add' || view === 'edit') && (
-            <div className="fixed inset-0 bg-slate-950 overflow-y-auto pb-32 animate-in slide-in-from-bottom-10 z-[120]">
-              <div className="fixed inset-0 pointer-events-none opacity-10" style={{ backgroundImage: `linear-gradient(to right, #facc15 1px, transparent 1px), linear-gradient(to bottom, #facc15 1px, transparent 1px)`, backgroundSize: '40px 40px' }}></div>
-              <header className="bg-slate-900/90 backdrop-blur-md border-b border-yellow-500/30 p-5 flex justify-between items-center sticky top-0 shadow-[0_0_20px_rgba(234,179,8,0.15)] z-20">
-                <button onClick={() => setView('list')} className="text-slate-400 hover:text-yellow-400 active:scale-90 transition-all"><X size={24}/></button>
-                <h2 className="font-black text-yellow-400 tracking-tighter italic flex items-center gap-2 drop-shadow-[0_0_5px_rgba(234,179,8,0.8)]"><ClipperIcon size={18} strokeWidth={2.5}/> RECORD NEW DATA...</h2>
-                <button onClick={handleSave} className="relative group overflow-hidden bg-slate-800 text-cyan-400 px-5 py-2.5 rounded-full font-black text-[10px] uppercase shadow-[0_0_15px_rgba(34,211,238,0.3)] border border-cyan-500/50 disabled:opacity-50 active:scale-95 transition-all">
-                  <span className="relative z-10 flex items-center gap-1.5"><ClipperIcon size={14}/> ログを刻印</span>
-                  <div className="absolute inset-0 bg-gradient-to-r from-cyan-600 to-blue-600 opacity-0 group-hover:opacity-20 transition-opacity"></div>
-                </button>
-              </header>
-              
-              <div className="p-6 space-y-7 max-w-xl mx-auto relative z-10">
-                {view === 'add' && (formData.title || formData.content || formData.images?.length > 0) && (
-                  <div className="flex justify-end mb-[-1rem]">
-                    <button onClick={() => { if (window.confirm('入力内容をすべてリセットしますか？')) { setFormData(initialForm); localStorage.removeItem('voltVaultDraft'); } }} className="text-[10px] text-red-400 font-bold border border-red-500/50 px-2.5 py-1.5 rounded-md bg-red-950/50 shadow-sm active:scale-95"><Trash2 size={12} className="inline mr-1"/>一時保存をクリア</button>
+                {selectedMemo.materials && selectedMemo.materials.length > 0 && (
+                  <div className="flex flex-wrap gap-2 pt-2">
+                    {selectedMemo.materials.map((mat, i) => {
+                      const tagConf = userSettings.tags[mat] || { colorId: 'gray', icon: 'Tag' }; const tColor = ColorMap[tagConf.colorId] || ColorMap.gray;
+                      return <span key={i} className={`${tColor.light} ${tColor.text} ${tColor.border} border px-2.5 py-1.5 rounded-lg text-[10px] font-bold flex items-center gap-1.5 shadow-sm`}><DynamicIcon name={tagConf.icon} size={12}/> {String(mat)}</span>
+                    })}
                   </div>
                 )}
-
-                <div className="space-y-4">
-                  <input list="title-history" className="w-full text-2xl font-black bg-transparent border-b-2 border-slate-700 py-2 text-slate-100 focus:border-cyan-400 outline-none transition-colors placeholder:text-slate-600" placeholder="クエスト名（作業・タイトル）" value={formData.title || ''} onChange={e => setFormData({...formData, title: e.target.value})} />
-                  <datalist id="title-history">{uniqueTitles.map(t => <option key={t} value={t} />)}</datalist>
-
-                  <div className="grid grid-cols-2 gap-4">
-                    <input type="date" className="p-3 bg-slate-900 border border-slate-700 rounded-2xl font-bold outline-none text-sm text-cyan-50 shadow-inner focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500" value={formData.date || ''} onChange={e => setFormData({...formData, date: e.target.value})} />
-                    <div className="relative flex items-center">
-                      <select className="p-3 bg-slate-900 border border-slate-700 rounded-2xl font-bold outline-none text-sm text-cyan-50 shadow-inner w-full focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 appearance-none" value={formData.genre || ''} onChange={e => setFormData({...formData, genre: e.target.value})}>
-                        {groupedGenresForm.map(({ category, genres }) => (<optgroup key={category} label={`【${String(category)}】`}>{genres.map(g => <option key={g.key} value={g.key}>{String(g.key)}</option>)}</optgroup>))}
-                      </select>
-                      <ChevronDown size={14} className="absolute right-3 text-slate-500 pointer-events-none"/>
-                      <button type="button" onClick={() => setShowNewGenre(!showNewGenre)} className="absolute -top-2 -right-2 bg-slate-800 text-cyan-400 rounded-full p-1.5 shadow-[0_0_8px_rgba(34,211,238,0.5)] border border-cyan-500/50 hover:bg-slate-700 active:scale-95 transition-all"><Plus size={14}/></button>
-                    </div>
-                  </div>
-
-                  {showNewGenre && (
-                    <div className="bg-cyan-950/30 p-3 rounded-2xl border border-cyan-900 flex flex-col gap-2 animate-in fade-in slide-in-from-top-2 shadow-inner">
-                      <div className="flex gap-2">
-                        <select value={newGenreGroup} onChange={e=>setNewGenreGroup(e.target.value)} className="bg-slate-900 border border-slate-700 p-2 rounded-xl text-[10px] sm:text-xs font-bold text-slate-200 outline-none focus:border-cyan-500 shrink-0 w-24">
-                          {MainCategories.map(c => <option key={c} value={c}>{String(c)}</option>)}
-                        </select>
-                        <input type="text" placeholder="新ジャンル名" value={newGenreName} onChange={e=>setNewGenreName(e.target.value)} className="w-full bg-slate-900 border border-slate-700 p-2 rounded-xl text-xs font-bold text-cyan-50 outline-none focus:border-cyan-500 min-w-0" />
-                      </div>
-                      <div className="flex gap-2 items-center">
-                        <ColorSelector value={newGenreColor} onChange={setNewGenreColor} />
-                        <IconSelector value={newGenreIcon} onChange={setNewGenreIcon} />
-                        <button type="button" onClick={() => { if(newGenreName.trim()) { handleAddItem('genres', newGenreName.trim(), newGenreColor, newGenreIcon, newGenreGroup); setFormData({...formData, genre: newGenreName.trim()}); setNewGenreName(''); setNewGenreColor('blue'); setNewGenreIcon('Info'); setShowNewGenre(false); } }} className="bg-cyan-600 text-slate-900 px-4 py-2.5 rounded-xl text-xs font-black shadow-[0_0_10px_rgba(6,182,212,0.5)] active:scale-95 shrink-0">追加</button>
-                      </div>
-                    </div>
-                  )}
-
-                  <div className="relative shadow-inner rounded-2xl">
-                    <Building className="absolute left-3 top-3.5 text-cyan-700" size={16}/>
-                    <input list="site-history" className="w-full p-3 pl-10 bg-slate-900 border border-slate-700 rounded-2xl font-bold outline-none text-sm text-cyan-50 focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500" placeholder="ダンジョン名（現場・案件）" value={formData.site || ''} onChange={e => setFormData({...formData, site: e.target.value})} />
-                    <datalist id="site-history">{uniqueSites.map(s => <option key={s} value={s} />)}</datalist>
-                  </div>
-                </div>
-
-                <div className="space-y-3 bg-slate-900/80 backdrop-blur-sm p-4 rounded-[2rem] border border-slate-700 shadow-lg">
-                  <button type="button" onClick={() => setShowAdvanced(!showAdvanced)} className="w-full flex justify-between items-center text-xs font-black text-cyan-600 py-1"><span className="flex items-center gap-1.5 tracking-widest"><Info size={14}/> ADVANCED SETTINGS</span>{showAdvanced ? <ChevronUp size={16}/> : <ChevronDown size={16}/>}</button>
-                  {showAdvanced && (
-                    <div className="space-y-4 pt-3 border-t border-slate-800 animate-in fade-in slide-in-from-top-2">
-                      <div className="relative shadow-inner rounded-2xl"><User className="absolute left-3 top-3.5 text-cyan-700" size={16}/><input className="w-full p-3 pl-10 bg-slate-950 border border-slate-800 rounded-2xl font-bold outline-none text-sm text-cyan-50 focus:border-cyan-500 transition-colors" placeholder="教えてくれた人（師匠・先輩など）" value={formData.teacher || ''} onChange={e => setFormData({...formData, teacher: e.target.value})} /></div>
-                      <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800 space-y-4 shadow-inner">
-                        <label className="flex items-center gap-3 cursor-pointer group"><div className={`w-5 h-5 rounded-md flex items-center justify-center border transition-all ${formData.needsReview ? 'bg-cyan-600 border-cyan-500 shadow-[0_0_10px_rgba(6,182,212,0.5)]' : 'bg-slate-800 border-slate-600 group-hover:border-cyan-500'}`}>{formData.needsReview && <Check size={14} className="text-slate-900" strokeWidth={4}/>}</div><input type="checkbox" checked={formData.needsReview || false} onChange={e => setFormData({...formData, needsReview: e.target.checked})} className="hidden" /><span className="text-xs font-black text-slate-300 group-hover:text-cyan-100 transition-colors">後で確認・復習が必要</span></label>
-                        {formData.needsReview && (
-                          <div className="pl-8 space-y-4 animate-in fade-in">
-                            <div className="flex items-center gap-2"><Bell size={14} className="text-orange-500 shrink-0 drop-shadow-[0_0_5px_rgba(249,115,22,0.8)]"/><input type="date" className="p-2 bg-slate-900 border border-slate-700 rounded-xl font-bold outline-none text-xs text-cyan-50 shadow-inner w-full focus:border-orange-500 focus:ring-1 focus:ring-orange-500" value={formData.reviewDate || ''} onChange={e => setFormData({...formData, reviewDate: e.target.value})} /><span className="text-[10px] text-slate-500 font-bold shrink-0">にお知らせ</span></div>
-                            <label className="flex items-center gap-3 cursor-pointer group"><div className={`w-5 h-5 rounded-md flex items-center justify-center border transition-all ${formData.isReviewed ? 'bg-green-500 border-green-400 shadow-[0_0_10px_rgba(34,197,94,0.5)]' : 'bg-slate-800 border-slate-600 group-hover:border-green-500'}`}>{formData.isReviewed && <Check size={14} className="text-slate-900" strokeWidth={4}/>}</div><input type="checkbox" checked={formData.isReviewed || false} onChange={e => setFormData({...formData, isReviewed: e.target.checked})} className="hidden" /><span className="text-xs font-black text-slate-300 group-hover:text-green-100 transition-colors">確認完了（クリア！）</span></label>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  )}
-                </div>
-
+              </div>
+              {((selectedMemo.images && selectedMemo.images.length > 0) || selectedMemo.markupImage) && (
                 <div className="space-y-3">
-                  <div className="flex justify-between items-end">
-                    <p className="text-[10px] font-black text-cyan-600 flex items-center gap-1 tracking-widest"><Tags size={12}/> COMPONENTS & TAGS</p>
-                    <button type="button" onClick={() => setShowNewTag(!showNewTag)} className="text-[10px] font-bold text-cyan-400 bg-slate-800 px-2.5 py-1.5 rounded-lg flex items-center gap-1 border border-cyan-900 shadow-[0_0_8px_rgba(6,182,212,0.2)] active:scale-95 transition-all"><Plus size={12}/>新規タグ作成</button>
-                  </div>
-                  {showNewTag && (
-                    <div className="bg-cyan-950/30 p-3 rounded-2xl border border-cyan-900 flex flex-col gap-2 animate-in fade-in slide-in-from-top-2 shadow-inner">
-                      <div className="flex gap-2">
-                        <select value={newTagGroup} onChange={e=>setNewTagGroup(e.target.value)} className="bg-slate-900 border border-slate-700 p-2 rounded-xl text-[10px] sm:text-xs font-bold text-slate-200 outline-none focus:border-cyan-500 shrink-0 w-24">{MainCategories.map(c => <option key={c} value={c}>{String(c)}</option>)}</select>
-                        <input type="text" placeholder="新タグ名" value={newTagName} onChange={e=>setNewTagName(e.target.value)} className="w-full bg-slate-900 border border-slate-700 p-2 rounded-xl text-xs font-bold text-cyan-50 outline-none focus:border-cyan-500 min-w-0" />
+                  <h3 className="text-xs font-black text-cyan-600 flex items-center gap-1 tracking-widest"><Camera size={14}/> VISUAL DATA</h3>
+                  <div className="flex flex-col gap-4">
+                    {selectedMemo.markupImage && (!selectedMemo.images || selectedMemo.images.length===0) && (
+                      <div className="bg-slate-900 rounded-[2.5rem] overflow-hidden border-2 border-slate-700 shadow-[0_0_15px_rgba(0,0,0,0.8)] cursor-pointer relative group" onClick={() => setViewerImage(selectedMemo.markupImage)}>
+                        <img src={selectedMemo.markupImage} className="w-full opacity-90 group-hover:opacity-100 transition-opacity" />
+                        <div className="absolute inset-0 bg-cyan-500/10 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center pointer-events-none"><ZoomIn size={32} className="text-cyan-300 drop-shadow-lg" /></div>
                       </div>
-                      <div className="flex gap-2 items-center">
-                        <ColorSelector value={newTagColor} onChange={setNewTagColor} />
-                        <IconSelector value={newTagIcon} onChange={setNewTagIcon} />
-                        <button type="button" onClick={() => { if(newTagName.trim()) { handleAddItem('tags', newTagName.trim(), newTagColor, newTagIcon, newTagGroup); const mats = formData.materials || []; if (!mats.includes(newTagName.trim())) { setFormData({...formData, materials: [...mats, newTagName.trim()]}); } setNewTagName(''); setNewTagColor('gray'); setNewTagIcon('Tags'); setShowNewTag(false); } }} className="bg-cyan-600 text-slate-900 px-4 py-2.5 rounded-xl text-xs font-black shadow-[0_0_10px_rgba(6,182,212,0.5)] active:scale-95 shrink-0">追加</button>
-                      </div>
-                    </div>
-                  )}
-                  <div className="flex flex-col gap-2">{groupedTagsForm.map(({ category, tags }) => <TagAccordion key={category} groupName={`【${String(category)}】`} tags={tags} formData={formData} setFormData={setFormData} />)}</div>
-                </div>
-                
-                <div className="space-y-3 bg-slate-900/80 backdrop-blur-sm p-5 rounded-[2.5rem] border border-slate-700 shadow-lg">
-                  <div className="flex justify-between items-center text-[10px] font-black text-cyan-600 mb-2 tracking-widest"><span className="flex items-center gap-1"><Camera size={14}/> VISUAL EVIDENCE</span>
-                    <div className="flex gap-2">
-                      <button type="button" onClick={handlePasteBtn} className="text-slate-900 bg-yellow-500 px-3 py-1.5 rounded-xl flex items-center gap-1 shadow-md active:scale-95 font-bold text-xs"><ClipboardList size={14}/> 貼付</button>
-                      <label className="text-slate-900 bg-cyan-600 px-3 py-1.5 rounded-xl flex items-center gap-1 cursor-pointer active:scale-95 shadow-md hover:bg-cyan-500 font-bold text-xs"><Upload size={14}/> ファイル<input type="file" accept="image/*" multiple onChange={handleFileUpload} className="hidden" /></label>
-                    </div>
-                  </div>
-                  <div className="flex gap-4 overflow-x-auto pb-4 snap-x">
-                    {!formData.images || formData.images.length === 0 ? (
-                      <div className="w-full flex-shrink-0 h-32 border-2 border-dashed border-slate-700 rounded-[2rem] flex flex-col items-center justify-center text-slate-500 font-bold text-xs bg-slate-950/50 shadow-inner text-center px-4"><ImageIcon size={24} className="mb-2 opacity-50"/> <span>現場の様子を記録</span><span className="text-[9px] mt-1 opacity-70">Googleフォト等からコピーして<br/>「貼付」ボタンで追加できます</span></div>
-                    ) : (
-                      Array.isArray(formData.images) && formData.images.map((img, i) => (
-                        typeof img === 'string' ? (
-                          <div key={i} className="relative w-48 flex-shrink-0 snap-center group">
-                            <img src={img} className="w-full h-32 object-cover rounded-[1.5rem] border border-slate-700 shadow-lg cursor-pointer opacity-90 hover:opacity-100 transition-opacity" onClick={() => setMarkupModal({ isOpen: true, imgIndex: i, dataUrl: img })} />
-                            <button type="button" onClick={() => { const newImgs = [...formData.images]; newImgs.splice(i, 1); setFormData({...formData, images: newImgs}); }} className="absolute -top-2 -right-2 bg-red-500 text-slate-900 p-1.5 rounded-full shadow-[0_0_10px_rgba(239,68,68,0.8)]"><X size={14}/></button>
-                            <div className="absolute bottom-2 right-2 bg-cyan-900/80 text-cyan-100 p-1.5 rounded-full pointer-events-none border border-cyan-500"><Edit3 size={12}/></div>
-                          </div>
-                        ) : null
-                      ))
                     )}
-                  </div>
-                </div>
-                
-                <div className="space-y-3 bg-slate-900/80 backdrop-blur-sm p-5 rounded-[2.5rem] border border-slate-700 shadow-lg">
-                  <div className="flex flex-wrap gap-2 pb-2 border-b border-slate-800">
-                    {Array.isArray(userSettings.quickPhrases) && userSettings.quickPhrases.map((p, idx) => (
-                      typeof p === 'string' ? <button key={idx} type="button" onClick={() => setFormData({...formData, content: formData.content + (formData.content?'\n':'') + p})} className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-cyan-100 rounded-xl text-[10px] border border-slate-600 font-black transition-colors shadow-inner">+ {String(p)}</button> : null
+                    {selectedMemo.images && selectedMemo.images.map((img, i) => (
+                      <div key={i} className="bg-slate-900 rounded-[2.5rem] overflow-hidden border-2 border-slate-700 shadow-[0_0_15px_rgba(0,0,0,0.8)] relative cursor-pointer group" onClick={() => setViewerImage(img)}>
+                        <img src={img} className="w-full h-auto object-cover opacity-90 group-hover:opacity-100 transition-opacity" />
+                        <div className="absolute inset-0 bg-cyan-500/10 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center pointer-events-none"><ZoomIn size={32} className="text-cyan-300 drop-shadow-lg" /></div>
+                      </div>
                     ))}
                   </div>
-                  <textarea className="w-full h-40 pt-2 bg-transparent outline-none text-sm font-medium leading-relaxed resize-none text-cyan-50 placeholder:text-slate-600" placeholder="攻略のヒント、配線の色、次回への引き継ぎ事項などを記録..." value={formData.content || ''} onChange={e => setFormData({...formData, content: e.target.value})} />
                 </div>
-                
-                {view === 'edit' && <button type="button" onClick={() => handleDelete(selectedMemo.id)} className="w-full py-5 text-red-500 font-black text-xs border-2 border-red-900/50 border-dashed rounded-[2.5rem] uppercase tracking-widest hover:bg-red-950 transition-all mt-8 shadow-inner">クエストを破棄する</button>}
+              )}
+              <div className="bg-slate-900 p-8 rounded-[3rem] text-cyan-50 font-medium border border-cyan-900/50 leading-relaxed relative shadow-[0_0_20px_rgba(6,182,212,0.1)] whitespace-pre-wrap">
+                <span className="absolute -top-3 left-10 bg-cyan-600 text-slate-900 px-4 py-1 rounded-full text-[10px] not-italic shadow-[0_0_8px_rgba(6,182,212,0.8)] tracking-widest font-black uppercase">Quest Log</span>
+                {String(selectedMemo.content || '')}
               </div>
             </div>
-          )}
-        </div>
+          </div>
+        )}
+
+        {(view === 'add' || view === 'edit') && (
+          <div className="fixed inset-0 bg-slate-950 overflow-y-auto pb-32 animate-in slide-in-from-bottom-10 z-[120]">
+            <div className="fixed inset-0 pointer-events-none opacity-10" style={{ backgroundImage: `linear-gradient(to right, #facc15 1px, transparent 1px), linear-gradient(to bottom, #facc15 1px, transparent 1px)`, backgroundSize: '40px 40px' }}></div>
+            
+            {/* ★ ヘッダーの保存ボタンを分割（下書き・本番） */}
+            <header className="bg-slate-900/90 backdrop-blur-md border-b border-yellow-500/30 p-4 sm:p-5 flex justify-between items-center sticky top-0 shadow-[0_0_20px_rgba(234,179,8,0.15)] z-20">
+              <button onClick={() => setView('list')} className="text-slate-400 hover:text-yellow-400 active:scale-90 transition-all mr-2"><X size={24}/></button>
+              
+              <div className="flex gap-2 flex-1 justify-end">
+                <button onClick={() => handleSave(true)} className="bg-yellow-600/20 text-yellow-400 px-3 py-2 sm:px-4 sm:py-2.5 rounded-xl text-[10px] sm:text-xs font-black shadow-inner active:scale-95 border border-yellow-500/50 transition-all flex items-center gap-1">
+                  <Save size={14} /> 下書き
+                </button>
+                <button onClick={() => handleSave(false)} className="relative group overflow-hidden bg-slate-800 text-cyan-400 px-3 py-2 sm:px-4 sm:py-2.5 rounded-xl font-black text-[10px] sm:text-xs shadow-[0_0_15px_rgba(34,211,238,0.3)] border border-cyan-500/50 active:scale-95 transition-all flex items-center gap-1">
+                  <span className="relative z-10 flex items-center gap-1"><ClipperIcon size={14}/> {formData.isDraft ? '完成させる' : 'ログ刻印'}</span>
+                  <div className="absolute inset-0 bg-gradient-to-r from-cyan-600 to-blue-600 opacity-0 group-hover:opacity-20 transition-opacity"></div>
+                </button>
+              </div>
+            </header>
+            
+            <div className="p-4 sm:p-6 space-y-7 max-w-xl mx-auto relative z-10">
+              {view === 'add' && (formData.title || formData.content || formData.images?.length > 0) && (
+                <div className="flex justify-end mb-[-1rem]">
+                  <button onClick={() => { if (window.confirm('入力内容をすべてリセットしますか？')) { setFormData(initialForm); localStorage.removeItem('voltVaultDraft'); } }} className="text-[10px] text-red-400 font-bold border border-red-500/50 px-2.5 py-1.5 rounded-md bg-red-950/50 shadow-sm active:scale-95"><Trash2 size={12} className="inline mr-1"/>一時保存をクリア</button>
+                </div>
+              )}
+
+              <div className="space-y-4">
+                <input list="title-history" className="w-full text-2xl font-black bg-transparent border-b-2 border-slate-700 py-2 text-slate-100 focus:border-cyan-400 outline-none transition-colors placeholder:text-slate-600" placeholder="クエスト名（空なら自動で日時を入力）" value={formData.title || ''} onChange={e => setFormData({...formData, title: e.target.value})} />
+                <datalist id="title-history">{uniqueTitles.map(t => <option key={t} value={t} />)}</datalist>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <input type="date" className="p-3 bg-slate-900 border border-slate-700 rounded-2xl font-bold outline-none text-sm text-cyan-50 shadow-inner focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500" value={formData.date || ''} onChange={e => setFormData({...formData, date: e.target.value})} />
+                  <div className="relative flex items-center">
+                    <select className="p-3 bg-slate-900 border border-slate-700 rounded-2xl font-bold outline-none text-sm text-cyan-50 shadow-inner w-full focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 appearance-none" value={formData.genre || ''} onChange={e => setFormData({...formData, genre: e.target.value})}>
+                      {groupedGenresForm.map(({ category, genres }) => (<optgroup key={category} label={`【${String(category)}】`}>{genres.map(g => <option key={g.key} value={g.key}>{String(g.key)}</option>)}</optgroup>))}
+                    </select>
+                    <ChevronDown size={14} className="absolute right-3 text-slate-500 pointer-events-none"/>
+                    <button type="button" onClick={() => setShowNewGenre(!showNewGenre)} className="absolute -top-2 -right-2 bg-slate-800 text-cyan-400 rounded-full p-1.5 shadow-[0_0_8px_rgba(34,211,238,0.5)] border border-cyan-500/50 hover:bg-slate-700 active:scale-95 transition-all"><Plus size={14}/></button>
+                  </div>
+                </div>
+
+                {showNewGenre && (
+                  <div className="bg-cyan-950/30 p-3 rounded-2xl border border-cyan-900 flex flex-col gap-2 animate-in fade-in slide-in-from-top-2 shadow-inner">
+                    <div className="flex gap-2">
+                      <select value={newGenreGroup} onChange={e=>setNewGenreGroup(e.target.value)} className="bg-slate-900 border border-slate-700 p-2 rounded-xl text-[10px] sm:text-xs font-bold text-slate-200 outline-none focus:border-cyan-500 shrink-0 w-24">
+                        {MainCategories.map(c => <option key={c} value={c}>{String(c)}</option>)}
+                      </select>
+                      <input type="text" placeholder="新ジャンル名" value={newGenreName} onChange={e=>setNewGenreName(e.target.value)} className="w-full bg-slate-900 border border-slate-700 p-2 rounded-xl text-xs font-bold text-cyan-50 outline-none focus:border-cyan-500 min-w-0" />
+                    </div>
+                    <div className="flex gap-2 items-center">
+                      <ColorSelector value={newGenreColor} onChange={setNewGenreColor} />
+                      <IconSelector value={newGenreIcon} onChange={setNewGenreIcon} />
+                      <button type="button" onClick={() => { if(newGenreName.trim()) { handleAddItem('genres', newGenreName.trim(), newGenreColor, newGenreIcon, newGenreGroup); setFormData({...formData, genre: newGenreName.trim()}); setNewGenreName(''); setNewGenreColor('blue'); setNewGenreIcon('Info'); setShowNewGenre(false); } }} className="bg-cyan-600 text-slate-900 px-4 py-2.5 rounded-xl text-xs font-black shadow-[0_0_10px_rgba(6,182,212,0.5)] active:scale-95 shrink-0">追加</button>
+                    </div>
+                  </div>
+                )}
+
+                <div className="relative shadow-inner rounded-2xl">
+                  <Building className="absolute left-3 top-3.5 text-cyan-700" size={16}/>
+                  <input list="site-history" className="w-full p-3 pl-10 bg-slate-900 border border-slate-700 rounded-2xl font-bold outline-none text-sm text-cyan-50 focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500" placeholder="ダンジョン名（現場・案件）" value={formData.site || ''} onChange={e => setFormData({...formData, site: e.target.value})} />
+                  <datalist id="site-history">{uniqueSites.map(s => <option key={s} value={s} />)}</datalist>
+                </div>
+              </div>
+
+              <div className="space-y-3 bg-slate-900/80 backdrop-blur-sm p-4 rounded-[2rem] border border-slate-700 shadow-lg">
+                <button type="button" onClick={() => setShowAdvanced(!showAdvanced)} className="w-full flex justify-between items-center text-xs font-black text-cyan-600 py-1"><span className="flex items-center gap-1.5 tracking-widest"><Info size={14}/> ADVANCED SETTINGS</span>{showAdvanced ? <ChevronUp size={16}/> : <ChevronDown size={16}/>}</button>
+                {showAdvanced && (
+                  <div className="space-y-4 pt-3 border-t border-slate-800 animate-in fade-in slide-in-from-top-2">
+                    <div className="relative shadow-inner rounded-2xl"><User className="absolute left-3 top-3.5 text-cyan-700" size={16}/><input className="w-full p-3 pl-10 bg-slate-950 border border-slate-800 rounded-2xl font-bold outline-none text-sm text-cyan-50 focus:border-cyan-500 transition-colors" placeholder="教えてくれた人（師匠・先輩など）" value={formData.teacher || ''} onChange={e => setFormData({...formData, teacher: e.target.value})} /></div>
+                    <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800 space-y-4 shadow-inner">
+                      <label className="flex items-center gap-3 cursor-pointer group"><div className={`w-5 h-5 rounded-md flex items-center justify-center border transition-all ${formData.needsReview ? 'bg-cyan-600 border-cyan-500 shadow-[0_0_10px_rgba(6,182,212,0.5)]' : 'bg-slate-800 border-slate-600 group-hover:border-cyan-500'}`}>{formData.needsReview && <Check size={14} className="text-slate-900" strokeWidth={4}/>}</div><input type="checkbox" checked={formData.needsReview || false} onChange={e => setFormData({...formData, needsReview: e.target.checked})} className="hidden" /><span className="text-xs font-black text-slate-300 group-hover:text-cyan-100 transition-colors">後で確認・復習が必要</span></label>
+                      {formData.needsReview && (
+                        <div className="pl-8 space-y-4 animate-in fade-in">
+                          <div className="flex items-center gap-2"><Bell size={14} className="text-orange-500 shrink-0 drop-shadow-[0_0_5px_rgba(249,115,22,0.8)]"/><input type="date" className="p-2 bg-slate-900 border border-slate-700 rounded-xl font-bold outline-none text-xs text-cyan-50 shadow-inner w-full focus:border-orange-500 focus:ring-1 focus:ring-orange-500" value={formData.reviewDate || ''} onChange={e => setFormData({...formData, reviewDate: e.target.value})} /><span className="text-[10px] text-slate-500 font-bold shrink-0">にお知らせ</span></div>
+                          <label className="flex items-center gap-3 cursor-pointer group"><div className={`w-5 h-5 rounded-md flex items-center justify-center border transition-all ${formData.isReviewed ? 'bg-green-500 border-green-400 shadow-[0_0_10px_rgba(34,197,94,0.5)]' : 'bg-slate-800 border-slate-600 group-hover:border-green-500'}`}>{formData.isReviewed && <Check size={14} className="text-slate-900" strokeWidth={4}/>}</div><input type="checkbox" checked={formData.isReviewed || false} onChange={e => setFormData({...formData, isReviewed: e.target.checked})} className="hidden" /><span className="text-xs font-black text-slate-300 group-hover:text-green-100 transition-colors">確認完了（クリア！）</span></label>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <div className="space-y-3">
+                <div className="flex justify-between items-end">
+                  <p className="text-[10px] font-black text-cyan-600 flex items-center gap-1 tracking-widest"><Tags size={12}/> COMPONENTS & TAGS</p>
+                  <button type="button" onClick={() => setShowNewTag(!showNewTag)} className="text-[10px] font-bold text-cyan-400 bg-slate-800 px-2.5 py-1.5 rounded-lg flex items-center gap-1 border border-cyan-900 shadow-[0_0_8px_rgba(6,182,212,0.2)] active:scale-95 transition-all"><Plus size={12}/>新規タグ作成</button>
+                </div>
+                {showNewTag && (
+                  <div className="bg-cyan-950/30 p-3 rounded-2xl border border-cyan-900 flex flex-col gap-2 animate-in fade-in slide-in-from-top-2 shadow-inner">
+                    <div className="flex gap-2">
+                      <select value={newTagGroup} onChange={e=>setNewTagGroup(e.target.value)} className="bg-slate-900 border border-slate-700 p-2 rounded-xl text-[10px] sm:text-xs font-bold text-slate-200 outline-none focus:border-cyan-500 shrink-0 w-24">{MainCategories.map(c => <option key={c} value={c}>{String(c)}</option>)}</select>
+                      <input type="text" placeholder="新タグ名" value={newTagName} onChange={e=>setNewTagName(e.target.value)} className="w-full bg-slate-900 border border-slate-700 p-2 rounded-xl text-xs font-bold text-cyan-50 outline-none focus:border-cyan-500 min-w-0" />
+                    </div>
+                    <div className="flex gap-2 items-center">
+                      <ColorSelector value={newTagColor} onChange={setNewTagColor} />
+                      <IconSelector value={newTagIcon} onChange={setNewTagIcon} />
+                      <button type="button" onClick={() => { if(newTagName.trim()) { handleAddItem('tags', newTagName.trim(), newTagColor, newTagIcon, newTagGroup); const mats = formData.materials || []; if (!mats.includes(newTagName.trim())) { setFormData({...formData, materials: [...mats, newTagName.trim()]}); } setNewTagName(''); setNewTagColor('gray'); setNewTagIcon('Tags'); setShowNewTag(false); } }} className="bg-cyan-600 text-slate-900 px-4 py-2.5 rounded-xl text-xs font-black shadow-[0_0_10px_rgba(6,182,212,0.5)] active:scale-95 shrink-0">追加</button>
+                    </div>
+                  </div>
+                )}
+                <div className="flex flex-col gap-2">{groupedTagsForm.map(({ category, tags }) => <TagAccordion key={category} groupName={`【${String(category)}】`} tags={tags} formData={formData} setFormData={setFormData} />)}</div>
+              </div>
+              
+              <div className="space-y-3 bg-slate-900/80 backdrop-blur-sm p-4 sm:p-5 rounded-[2.5rem] border border-slate-700 shadow-lg">
+                <div className="flex justify-between items-center text-[10px] font-black text-cyan-600 mb-2 tracking-widest"><span className="flex items-center gap-1"><Camera size={14}/> VISUAL EVIDENCE</span></div>
+                
+                {/* ★ 編集画面内のカメラとファイル選択ボタンを分割・明示化 */}
+                <div className="flex gap-2 mb-3">
+                  <label className="text-slate-900 bg-cyan-600 py-3 rounded-xl flex items-center justify-center gap-1.5 cursor-pointer active:scale-95 shadow-md hover:bg-cyan-500 font-black text-[10px] sm:text-xs flex-1 border border-cyan-400">
+                    <Camera size={18}/> 続けて撮影
+                    <input type="file" accept="image/*" capture="environment" multiple onChange={handleFileUpload} className="hidden" />
+                  </label>
+                  <label className="text-slate-900 bg-yellow-500 py-3 rounded-xl flex items-center justify-center gap-1.5 cursor-pointer active:scale-95 shadow-md hover:bg-yellow-400 font-black text-[10px] sm:text-xs flex-1 border border-yellow-300">
+                    <Folder size={18}/> ファイルを選択
+                    <input type="file" accept="image/*" multiple onChange={handleFileUpload} className="hidden" />
+                  </label>
+                </div>
+                {/* ★ ペースト用ボタン */}
+                <button type="button" onClick={handlePasteBtn} className="w-full mb-3 text-slate-300 bg-slate-800 border border-slate-600 py-2 rounded-xl flex items-center justify-center gap-1.5 shadow-inner active:scale-95 font-bold text-xs"><ClipboardList size={14}/> 外部からコピーした画像をペースト</button>
+
+                <div className="flex gap-4 overflow-x-auto pb-4 snap-x">
+                  {!formData.images || formData.images.length === 0 ? (
+                    <div className="w-full flex-shrink-0 h-32 border-2 border-dashed border-slate-700 rounded-[2rem] flex flex-col items-center justify-center text-slate-500 font-bold text-xs bg-slate-950/50 shadow-inner text-center px-4"><ImageIcon size={24} className="mb-2 opacity-50"/> <span>現場の様子を記録</span><span className="text-[9px] mt-1 opacity-70">Googleフォト等の写真は一度スマホに保存してから<br/>「ファイルを選択」で追加できます</span></div>
+                  ) : (
+                    Array.isArray(formData.images) && formData.images.map((img, i) => (
+                      typeof img === 'string' ? (
+                        <div key={i} className="relative w-48 flex-shrink-0 snap-center group">
+                          <img src={img} className="w-full h-32 object-cover rounded-[1.5rem] border border-slate-700 shadow-lg opacity-90" />
+                          
+                          {/* ★ 保存前でも確実に画像編集が開けるようにボタンを明示 */}
+                          <button type="button" onClick={() => setMarkupModal({ isOpen: true, imgIndex: i, dataUrl: img })} className="absolute inset-0 w-full h-full flex flex-col items-center justify-center bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity rounded-[1.5rem] cursor-pointer">
+                            <Edit3 className="text-cyan-400 drop-shadow-md mb-1" size={24} />
+                            <span className="text-cyan-400 font-black text-[10px]">タップして編集</span>
+                          </button>
+                          
+                          <button type="button" onClick={() => { const newImgs = [...formData.images]; newImgs.splice(i, 1); setFormData({...formData, images: newImgs}); }} className="absolute -top-2 -right-2 bg-red-500 text-slate-900 p-1.5 rounded-full shadow-[0_0_10px_rgba(239,68,68,0.8)] z-10"><X size={14}/></button>
+                          <button type="button" onClick={() => setMarkupModal({ isOpen: true, imgIndex: i, dataUrl: img })} className="absolute bottom-2 right-2 bg-cyan-600 text-slate-900 p-2 rounded-full shadow-[0_0_10px_rgba(6,182,212,0.8)] active:scale-90 transition-all z-10"><Edit3 size={16}/></button>
+                        </div>
+                      ) : null
+                    ))
+                  )}
+                </div>
+              </div>
+              
+              <div className="space-y-3 bg-slate-900/80 backdrop-blur-sm p-4 sm:p-5 rounded-[2.5rem] border border-slate-700 shadow-lg">
+                <div className="flex justify-between items-center text-[10px] font-black text-cyan-600 mb-2 tracking-widest">
+                  <span className="flex items-center gap-1"><FileText size={14}/> QUEST LOG (MEMO)</span>
+                  <button type="button" onClick={handleAIAssist} disabled={isAILoading} className="bg-indigo-600 text-white px-3 py-1.5 rounded-xl flex items-center gap-1 shadow-[0_0_10px_rgba(79,70,229,0.5)] active:scale-95 font-bold text-xs disabled:opacity-50 hover:bg-indigo-500 transition-colors">
+                    {isAILoading ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
+                    {isAILoading ? 'AI解析中...' : '✨AIで自動整理'}
+                  </button>
+                </div>
+                <div className="flex flex-wrap gap-2 pb-2 border-b border-slate-800">
+                  {Array.isArray(userSettings.quickPhrases) && userSettings.quickPhrases.map((p, idx) => (
+                    typeof p === 'string' ? <button key={idx} type="button" onClick={() => setFormData({...formData, content: formData.content + (formData.content?'\n':'') + p})} className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-cyan-100 rounded-xl text-[10px] border border-slate-600 font-black transition-colors shadow-inner">+ {String(p)}</button> : null
+                  ))}
+                </div>
+                <textarea className="w-full h-40 pt-2 bg-transparent outline-none text-sm font-medium leading-relaxed resize-none text-cyan-50 placeholder:text-slate-600" placeholder="攻略のヒント、配線の色、次回への引き継ぎ事項などを記録...&#10;&#10;【✨AIアシストの使い方】&#10;写真を追加して上の「✨AIで自動整理」を押すと、写真から現場状況を推測して自動でレポートを作成します！ラフなメモを入力してから押すと、プロ仕様の文章に整形してくれます。" value={formData.content || ''} onChange={e => setFormData({...formData, content: e.target.value})} />
+              </div>
+              
+              {view === 'edit' && <button type="button" onClick={() => handleDelete(selectedMemo.id)} className="w-full py-5 text-red-500 font-black text-xs border-2 border-red-900/50 border-dashed rounded-[2.5rem] uppercase tracking-widest hover:bg-red-950 transition-all mt-8 shadow-inner">クエストを破棄する</button>}
+            </div>
+          </div>
+        )}
       </div>
       {!markupModal.isOpen && view !== 'add' && view !== 'edit' && view !== 'detail' && <NavBtn view={view} setView={setView} />}
     </div>
