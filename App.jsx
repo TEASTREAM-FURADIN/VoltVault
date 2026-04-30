@@ -14,7 +14,9 @@ import {
   Gamepad2, Sword, Crown, Trophy, Target, Dumbbell, Book, Star, Sparkles, Medal, Award,
   Move, ZoomIn, ZoomOut, RotateCcw, RotateCw,
   User, Bell, ChevronUp, CheckSquare, ArrowUp, ArrowDown,
-  Coffee, Eraser, Skull, Lock as LockIcon
+  Coffee, Eraser, Skull, Lock as LockIcon,
+  // ★ 電気設備メインでアイコンを大量追加！
+  Cpu, Server, Router, Network, Video, Speaker, Fan, Monitor, Mic, Gauge, Signal, ToggleLeft, Sliders, Cog, Magnet, Scale, Settings2, Crosshair
 } from 'lucide-react';
 
 import { initializeApp } from 'firebase/app';
@@ -49,14 +51,49 @@ const ClipperIcon = ({ size = 24, className = "", strokeWidth = 2 }) => (
   </svg>
 );
 
-const IconMap = { Zap, Plug, Cable, Power, Lightbulb, Wrench, Hammer, HardHat, AlertCircle, CheckCircle, Info, Tags, Folder, MapPin, Building, Truck, Grid, ListFilter, Shield, Flame, Droplets, Wind, Thermometer, Scissors, Battery, FileText, PenTool, Ruler, Compass, Home, Activity, Radio, Wifi, Phone, Car, Clock, Lock: LockIcon, Unlock, Sun, Moon, Snowflake, Paintbrush, Link, Milestone, Layers, Gamepad2, Sword, Crown, Trophy, Target, Dumbbell, Book, Star, Sparkles, Medal, Award };
-const IconNames = { Zap: '強電・雷', Plug: 'コンセント', Cable: '配線', Power: '動力・電源', Lightbulb: '照明', Wrench: 'レンチ', Hammer: 'ハンマー', HardHat: 'ヘルメット', AlertCircle: '注意・警告', CheckCircle: '確認・完了', Info: '情報', Tags: 'タグ', Folder: 'フォルダ', MapPin: '現場・場所', Building: 'ビル・施設', Truck: 'トラック・搬入', Grid: '盤・ラック', ListFilter: 'フィルター', Shield: '保安・防御', Flame: '火気・熱', Droplets: '水回り・配管', Wind: '換気・ダクト', Thermometer: '温度・測定', Scissors: '切断・加工', Battery: 'バッテリー', FileText: '図面・書類', PenTool: 'ペン・記録', Ruler: '寸法・測定', Compass: '方位', Home: '住宅・戸建', Activity: '波形・測定器', Radio: 'アンテナ・無線', Wifi: '通信・Wi-Fi', Phone: '電話・連絡', Car: '車両・移動', Clock: '時間・期限', Lock: '施錠・セキュリティ', Unlock: '解錠', Sun: '太陽光・昼', Moon: '夜間作業', Snowflake: '空調・エアコン', Paintbrush: '塗装・補修', Link: '他職連携', Milestone: '工程・段取り', Layers: '内装・軽天', Gamepad2: 'ゲーム', Sword: '剣（攻撃）', Crown: '王冠（最高）', Trophy: 'トロフィー', Target: 'ダーツ・目標', Dumbbell: '筋トレ', Book: '読書・学習', Star: '星（重要）', Sparkles: 'キラキラ', Medal: 'メダル', Award: 'アワード' };
+const TeaCupIcon = ({ size = 24, className = "", strokeWidth = 2 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round" className={className}>
+    <path d="M6 8v5a6 6 0 0 0 12 0V8" />
+    <line x1="5" y1="8" x2="19" y2="8" />
+    <path d="M10 3s1 1.5 1 2.5-1 1.5-1 2.5" />
+    <path d="M14 3s-1 1.5-1 2.5 1 1.5 1 2.5" />
+  </svg>
+);
+
+// ★ アイコンの統合マップ
+const IconMap = { Zap, Plug, Cable, Power, Lightbulb, Wrench, Hammer, HardHat, AlertCircle, CheckCircle, Info, Tags, Folder, MapPin, Building, Truck, Grid, ListFilter, Shield, Flame, Droplets, Wind, Thermometer, Scissors, Battery, FileText, PenTool, Ruler, Compass, Home, Activity, Radio, Wifi, Phone, Car, Clock, Lock: LockIcon, Unlock, Sun, Moon, Snowflake, Paintbrush, Link, Milestone, Layers, Gamepad2, Sword, Crown, Trophy, Target, Dumbbell, Book, Star, Sparkles, Medal, Award, Cpu, Server, Router, Network, Video, Speaker, Fan, Monitor, Mic, Gauge, Signal, ToggleLeft, Sliders, Cog, Magnet, Scale, Settings2, Crosshair };
+
+// ★ 専門的な名前を割り当て
+const IconNames = { 
+  Zap: '強電・雷', Plug: 'コンセント', Cable: '配線', Power: '動力・電源', Lightbulb: '照明', Grid: '盤・ラック',
+  Cpu: '制御盤・基板', Gauge: '計器・メーター', ToggleLeft: 'スイッチ・切替', Sliders: '調光・調整',
+  
+  Radio: 'アンテナ・無線', Wifi: '通信・Wi-Fi', Network: 'ネットワーク', Router: 'ルーター・HUB', Server: 'サーバー設備',
+  Video: '防犯カメラ・映像', Speaker: '非常放送・音響', Monitor: 'モニター・表示器', Mic: 'マイク・放送', Signal: '電波・信号',
+  
+  Shield: '保安・防御', Flame: '火気・熱', Droplets: '水回り・配管', Wind: '空調・ダクト', Fan: '換気扇・ファン',
+  Building: 'ビル・施設', Home: '住宅・戸建', Snowflake: 'エアコン・冷媒', Paintbrush: '塗装・補修', Layers: '内装・軽天',
+
+  Wrench: 'レンチ・スパナ', Hammer: 'ハンマー・叩き', Scissors: '切断・加工', PenTool: 'ドリル・穴あけ', 
+  Settings2: 'ドライバー・ねじ締め', HardHat: 'ヘルメット', Thermometer: '温度・熱', Ruler: '寸法・測定', Compass: '方位', 
+  Activity: '波形・テスター', Cog: '部品・歯車', Magnet: 'マグネット・吸着', Scale: 'はかり・重量', Crosshair: '墨出し・ターゲット',
+
+  FileText: '図面・書類', Phone: '電話・連絡', Clock: '時間・期限', Link: '他職連携', Milestone: '工程・段取り', Tags: 'タグ', Folder: 'フォルダ', ListFilter: 'フィルター',
+  
+  AlertCircle: '注意・警告', CheckCircle: '確認・完了', Info: '情報', MapPin: '現場・場所', Truck: 'トラック・搬入', Battery: 'バッテリー',
+  Car: '車両・移動', Lock: '施錠・セキュリティ', Unlock: '解錠', Sun: '太陽光・昼', Moon: '夜間作業',
+  
+  Gamepad2: 'ゲーム', Sword: '剣（攻撃）', Crown: '王冠（最高）', Trophy: 'トロフィー', Target: 'ダーツ・目標', Dumbbell: '筋トレ', Book: '読書・学習', Star: '星（重要）', Sparkles: 'キラキラ', Medal: 'メダル', Award: 'アワード'
+};
+
+// ★ カテゴリ分けを細分化して選びやすく
 const IconCategories = [
-  { name: '電気・設備', icons: ['Zap', 'Plug', 'Cable', 'Power', 'Lightbulb', 'Grid'] },
-  { name: '他職・建築', icons: ['Shield', 'Flame', 'Droplets', 'Wind', 'Building', 'Home', 'Snowflake', 'Paintbrush', 'Layers'] },
-  { name: '工具・測定', icons: ['Wrench', 'Hammer', 'HardHat', 'Thermometer', 'Scissors', 'Ruler', 'Compass', 'Activity'] },
-  { name: '工程・打合せ', icons: ['FileText', 'PenTool', 'Phone', 'Clock', 'Link', 'Milestone', 'Tags', 'Folder', 'ListFilter'] },
-  { name: '状態・情報', icons: ['AlertCircle', 'CheckCircle', 'Info', 'MapPin', 'Truck', 'Battery', 'Radio', 'Wifi', 'Car', 'Lock', 'Unlock', 'Sun', 'Moon'] },
+  { name: '電気・強電', icons: ['Zap', 'Plug', 'Cable', 'Power', 'Lightbulb', 'Grid', 'Cpu', 'Gauge', 'ToggleLeft', 'Sliders'] },
+  { name: '通信・弱電', icons: ['Radio', 'Wifi', 'Network', 'Router', 'Server', 'Video', 'Speaker', 'Monitor', 'Mic', 'Signal'] },
+  { name: '他職・建築', icons: ['Shield', 'Flame', 'Droplets', 'Wind', 'Fan', 'Building', 'Home', 'Snowflake', 'Paintbrush', 'Layers'] },
+  { name: '工具・測定', icons: ['PenTool', 'Settings2', 'Wrench', 'Hammer', 'HardHat', 'Thermometer', 'Scissors', 'Ruler', 'Compass', 'Activity', 'Cog', 'Magnet', 'Scale', 'Crosshair'] },
+  { name: '工程・打合せ', icons: ['FileText', 'Phone', 'Clock', 'Link', 'Milestone', 'Tags', 'Folder', 'ListFilter'] },
+  { name: '状態・情報', icons: ['AlertCircle', 'CheckCircle', 'Info', 'MapPin', 'Truck', 'Battery', 'Car', 'Lock', 'Unlock', 'Sun', 'Moon'] },
   { name: '趣味・ゲーム', icons: ['Gamepad2', 'Sword', 'Crown', 'Trophy', 'Target', 'Dumbbell', 'Book', 'Star', 'Sparkles', 'Medal', 'Award'] }
 ];
 
@@ -153,16 +190,34 @@ const LevelUpModal = ({ levelUpData }) => {
   );
 };
 
-const getTrophies = (memos, userSettings) => [
-  { id: 1, reqText: '1件記録', name: '現場デビュー', icon: HardHat, color: 'blue', isUnlocked: memos.length >= 1 },
-  { id: 2, reqText: '5件記録', name: '記録の虫', icon: Book, color: 'green', isUnlocked: memos.length >= 5 },
-  { id: 3, reqText: '20件記録', name: '現場の鬼', icon: Flame, color: 'orange', isUnlocked: memos.length >= 20 },
-  { id: 4, reqText: '50件記録', name: '無双の親方', icon: Crown, color: 'yellow', isUnlocked: memos.length >= 50 },
-  { id: 5, reqText: '100件記録', name: '伝説の電設王', icon: Zap, color: 'cyan', isUnlocked: memos.length >= 100 },
-  { id: 6, reqText: '3日連続', name: '継続の力', icon: Clock, color: 'purple', isUnlocked: (userSettings?.stats?.streakDays || 0) >= 3 },
-  { id: 7, reqText: '趣味5件', name: '文武両道', icon: Dumbbell, color: 'pink', isUnlocked: memos.filter(m => userSettings?.genres?.[m.genre]?.group === '趣味').length >= 5 },
-  { id: 8, reqText: '現場討伐', name: 'ボスハンター', icon: Target, color: 'red', isUnlocked: (userSettings?.stats?.completedSites?.length || 0) >= 1 }
-];
+const getTrophies = (memos, userSettings) => {
+  const validMemos = memos.filter(m => !m.isDraft);
+  const streak = userSettings?.stats?.streakDays || 0;
+  const completedSitesCount = userSettings?.stats?.completedSites?.length || 0;
+  const imageMemosCount = validMemos.filter(m => m.images?.length > 0 || m.markupImage).length;
+  const tagMemosCount = validMemos.filter(m => m.materials?.length > 0).length;
+  const safeMemosCount = validMemos.filter(m => ['事務', '工程'].includes(userSettings?.genres?.[m.genre]?.group)).length;
+  const totalChars = validMemos.reduce((sum, m) => sum + (m.content?.length || 0), 0);
+
+  return [
+    { id: 1, reqText: '1件記録', name: '現場デビュー', icon: HardHat, color: 'blue', isUnlocked: validMemos.length >= 1 },
+    { id: 2, reqText: '5件記録', name: '記録の虫', icon: Book, color: 'green', isUnlocked: validMemos.length >= 5 },
+    { id: 3, reqText: '20件記録', name: '現場の鬼', icon: Flame, color: 'orange', isUnlocked: validMemos.length >= 20 },
+    { id: 4, reqText: '50件記録', name: '無双の親方', icon: Crown, color: 'yellow', isUnlocked: validMemos.length >= 50 },
+    { id: 5, reqText: '100件記録', name: '伝説の電設王', icon: Zap, color: 'cyan', isUnlocked: validMemos.length >= 100 },
+    { id: 17, reqText: '200件記録', name: '神の領域', icon: Sparkles, color: 'purple', isUnlocked: validMemos.length >= 200 },
+    { id: 6, reqText: '3日連続', name: '継続の力', icon: Clock, color: 'purple', isUnlocked: streak >= 3 },
+    { id: 10, reqText: '7日連続', name: 'ルーティン職人', icon: Activity, color: 'teal', isUnlocked: streak >= 7 },
+    { id: 11, reqText: '30日連続', name: '不屈の魂', icon: Shield, color: 'red', isUnlocked: streak >= 30 },
+    { id: 12, reqText: '写真付10件', name: '現場カメラマン', icon: Camera, color: 'blue', isUnlocked: imageMemosCount >= 10 },
+    { id: 13, reqText: 'タグ付10件', name: '整理の達人', icon: Tags, color: 'green', isUnlocked: tagMemosCount >= 10 },
+    { id: 14, reqText: '事務/工程5件', name: '安全第一', icon: FileText, color: 'gray', isUnlocked: safeMemosCount >= 5 },
+    { id: 15, reqText: '合計1000文字', name: '筆まめ職人', icon: PenTool, color: 'orange', isUnlocked: totalChars >= 1000 },
+    { id: 7, reqText: '趣味5件', name: '文武両道', icon: Dumbbell, color: 'pink', isUnlocked: validMemos.filter(m => userSettings?.genres?.[m.genre]?.group === '趣味').length >= 5 },
+    { id: 8, reqText: '現場討伐1件', name: 'ボスハンター', icon: Target, color: 'red', isUnlocked: completedSitesCount >= 1 },
+    { id: 9, reqText: '現場討伐5件', name: 'エリアマスター', icon: MapPin, color: 'yellow', isUnlocked: completedSitesCount >= 5 }
+  ];
+};
 
 const TrophiesModal = ({ showTrophiesModal, setShowTrophiesModal, memos, userSettings }) => {
   if (!showTrophiesModal) return null;
@@ -198,13 +253,29 @@ const TrophiesModal = ({ showTrophiesModal, setShowTrophiesModal, memos, userSet
 };
 
 const RadarChart = ({ memos, userSettings }) => {
-  // レーダーチャートには下書き（isDraft: true）を含めない
   const validMemos = memos.filter(m => !m.isDraft);
-  const data = MainCategories.map(cat => ({
-    name: cat, count: validMemos.filter(m => (userSettings?.genres?.[m.genre]?.group || 'その他') === cat).length 
+  
+  const displayCategories = [
+    { label: '電気', keys: ['電気'] },
+    { label: '弱電', keys: ['弱電'] },
+    { label: '設備', keys: ['設備'] },
+    { label: '建築・内装', keys: ['建築', '内装'] },
+    { label: '事務・工程', keys: ['事務', '工程'] },
+    { label: '知識技術', keys: ['知識技術'] },
+    { label: '趣味', keys: ['趣味'] },
+    { label: 'その他', keys: ['その他'] },
+  ];
+
+  const data = displayCategories.map(cat => ({
+    name: cat.label, 
+    count: validMemos.filter(m => {
+      const group = userSettings?.genres?.[m.genre]?.group || 'その他';
+      return cat.keys.includes(group);
+    }).length 
   }));
+
   const maxVal = Math.max(...data.map(d => d.count), 5);
-  const centerX = 150, centerY = 150, radius = 90; 
+  const centerX = 160, centerY = 160, radius = 90; 
 
   const getPoint = (index, value) => {
     const angle = (Math.PI * 2 * index) / data.length - Math.PI / 2;
@@ -217,8 +288,8 @@ const RadarChart = ({ memos, userSettings }) => {
   const midBgPolygonPoints = data.map((_, i) => getPoint(i, maxVal * 0.5)).join(' ');
 
   return (
-    <div className="relative w-full max-w-xs mx-auto aspect-square mb-6">
-      <svg viewBox="0 0 300 300" className="w-full h-full drop-shadow-[0_0_15px_rgba(6,182,212,0.3)]">
+    <div className="relative w-full max-w-[280px] mx-auto aspect-square mb-6 overflow-visible">
+      <svg viewBox="0 0 320 320" className="w-full h-full drop-shadow-[0_0_15px_rgba(6,182,212,0.3)] overflow-visible">
         <polygon points={bgPolygonPoints} fill="rgba(15,23,42,0.8)" stroke="#1e293b" strokeWidth="2" />
         <polygon points={midBgPolygonPoints} fill="none" stroke="#1e293b" strokeWidth="1" strokeDasharray="4 4" />
         {data.map((_, i) => <line key={i} x1={centerX} y1={centerY} x2={getPoint(i, maxVal).split(',')[0]} y2={getPoint(i, maxVal).split(',')[1]} stroke="#1e293b" strokeWidth="1" />)}
@@ -229,9 +300,14 @@ const RadarChart = ({ memos, userSettings }) => {
         })}
         {data.map((d, i) => {
           const angle = (Math.PI * 2 * i) / data.length - Math.PI / 2;
-          const tx = centerX + (radius + 25) * Math.cos(angle);
-          const ty = centerY + (radius + 25) * Math.sin(angle);
-          return <text key={`label-${i}`} x={tx} y={ty} fill="#94a3b8" fontSize="10" fontWeight="900" textAnchor="middle" dominantBaseline="middle" className="drop-shadow-md">{d.name}</text>;
+          const tx = centerX + (radius + 30) * Math.cos(angle);
+          const ty = centerY + (radius + 30) * Math.sin(angle);
+          
+          let anchor = "middle";
+          if (Math.cos(angle) > 0.1) anchor = "start";
+          else if (Math.cos(angle) < -0.1) anchor = "end";
+
+          return <text key={`label-${i}`} x={tx} y={ty} fill="#94a3b8" fontSize="12" fontWeight="900" textAnchor={anchor} dominantBaseline="middle" className="drop-shadow-md">{d.name}</text>;
         })}
       </svg>
     </div>
@@ -413,17 +489,21 @@ const TextEditor = ({ t, texts, setTexts, setEditingTextId, zoom, dimensions }) 
   );
 };
 
-const ImageViewer = ({ src, onClose }) => {
+const ImageViewer = ({ data, onClose, setViewerData }) => {
   const [scale, setScale] = useState(1);
   const [position, setPosition] = useState({ x: 0, y: 0 });
   const isDragging = useRef(false);
   const dragStart = useRef({ x: 0, y: 0 });
   const lastTouchDist = useRef(null);
   const lastTap = useRef(0);
+  const swipeStart = useRef(null);
+
+  const src = data.images[data.index];
 
   const handlePointerDown = (e) => {
     isDragging.current = true;
     dragStart.current = { x: e.clientX - position.x, y: e.clientY - position.y };
+    swipeStart.current = { x: e.clientX, y: e.clientY, time: Date.now() };
     if (e.target.setPointerCapture) e.target.setPointerCapture(e.pointerId);
   };
 
@@ -435,6 +515,22 @@ const ImageViewer = ({ src, onClose }) => {
   const handlePointerUp = (e) => {
     isDragging.current = false;
     if (e.target.releasePointerCapture) e.target.releasePointerCapture(e.pointerId);
+
+    if (scale === 1 && swipeStart.current) {
+      const dx = e.clientX - swipeStart.current.x;
+      const dy = e.clientY - swipeStart.current.y;
+      const dt = Date.now() - swipeStart.current.time;
+      if (dt < 300 && Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy)) {
+        if (dx > 0 && data.index > 0) {
+          setViewerData({ ...data, index: data.index - 1 });
+          setPosition({ x: 0, y: 0 });
+        } else if (dx < 0 && data.index < data.images.length - 1) {
+          setViewerData({ ...data, index: data.index + 1 });
+          setPosition({ x: 0, y: 0 });
+        }
+      }
+    }
+    swipeStart.current = null;
   };
 
   const handleTouchStart = (e) => {
@@ -474,6 +570,12 @@ const ImageViewer = ({ src, onClose }) => {
     <div className="fixed inset-0 z-[300] bg-black/95 flex items-center justify-center overflow-hidden touch-none"
          onWheel={(e) => setScale(s => Math.max(1, Math.min(s - e.deltaY * 0.01, 10)))}>
       
+      {data.images.length > 1 && (
+        <div className="absolute top-6 left-1/2 -translate-x-1/2 z-50 bg-slate-800/80 px-4 py-1.5 rounded-full text-white shadow-lg border border-slate-600 font-black text-sm tracking-widest">
+          {data.index + 1} / {data.images.length}
+        </div>
+      )}
+
       <button onClick={() => {
         const link = document.createElement('a');
         link.href = src;
@@ -488,6 +590,17 @@ const ImageViewer = ({ src, onClose }) => {
       <button onClick={onClose} className="absolute top-6 right-6 z-50 bg-slate-800/80 p-3 rounded-full text-white shadow-lg active:scale-90 transition-all border border-slate-600">
         <X size={24} />
       </button>
+
+      {data.index > 0 && (
+        <button onClick={(e) => { e.stopPropagation(); setViewerData({ ...data, index: data.index - 1 }); setScale(1); setPosition({x:0, y:0}); }} className="absolute left-2 top-1/2 -translate-y-1/2 z-50 bg-slate-800/80 p-2 rounded-full text-white shadow-lg active:scale-90 transition-all border border-slate-600 hidden sm:block">
+          <ChevronLeft size={28} />
+        </button>
+      )}
+      {data.index < data.images.length - 1 && (
+        <button onClick={(e) => { e.stopPropagation(); setViewerData({ ...data, index: data.index + 1 }); setScale(1); setPosition({x:0, y:0}); }} className="absolute right-2 top-1/2 -translate-y-1/2 z-50 bg-slate-800/80 p-2 rounded-full text-white shadow-lg active:scale-90 transition-all border border-slate-600 hidden sm:block">
+          <ChevronRight size={28} />
+        </button>
+      )}
 
       <div className="absolute bottom-10 flex gap-4 z-50 bg-slate-800/80 p-2 rounded-full shadow-[0_0_20px_rgba(0,0,0,0.5)] items-center border border-slate-700">
         <button onClick={() => setScale(s => Math.max(1, s - 0.5))} className="p-3 text-cyan-400 hover:text-cyan-300 active:scale-90 transition-all"><ZoomOut size={24} /></button>
@@ -747,7 +860,6 @@ const MemoCard = ({ memo, userSettings, onClick }) => {
               <span className="text-cyan-700">{memo.date}</span>
               {memo.needsReview && !memo.isReviewed && <span className="bg-red-950/80 text-red-400 px-1.5 py-0.5 rounded text-[8px] border border-red-500/50 flex items-center not-italic gap-0.5 shadow-md"><Bell size={8}/>要確認</span>}
               {memo.needsReview && memo.isReviewed && <span className="bg-green-950/80 text-green-400 px-1.5 py-0.5 rounded text-[8px] border border-green-500/50 flex items-center not-italic gap-0.5"><CheckSquare size={8}/>確認済</span>}
-              {/* ★ 新設：下書きラベル */}
               {memo.isDraft && <span className="bg-yellow-950/80 text-yellow-400 px-1.5 py-0.5 rounded text-[8px] border border-yellow-500/50 flex items-center not-italic gap-0.5 shadow-[0_0_5px_rgba(234,179,8,0.5)]"><Edit3 size={8}/>下書き</span>}
             </div>
           </div>
@@ -799,7 +911,7 @@ export default function App() {
   const [markupModal, setMarkupModal] = useState({ isOpen: false, imgIndex: null, dataUrl: null });
   const [showPasteModal, setShowPasteModal] = useState(false); 
   
-  const [viewerImage, setViewerImage] = useState(null);
+  const [viewerData, setViewerData] = useState(null);
   const [isAILoading, setIsAILoading] = useState(false);
 
   const [toastMessage, setToastMessage] = useState('');
@@ -892,7 +1004,6 @@ export default function App() {
     return { bg: 'bg-slate-800', text: 'text-slate-400', border: 'border-slate-600', shadow: 'shadow-md' };
   }, [currentLevel]);
 
-  // ★ 修正：リストのフィルタリング処理（下書き対応）
   const filteredMemos = useMemo(() => memos.filter(m => {
     const matchSearch = String(m.title || "").includes(searchTerm) || String(m.site || "").includes(searchTerm) || (m.materials || []).some(mat => String(mat).includes(searchTerm)) || String(m.teacher || "").includes(searchTerm);
     const matchDate = (dateRange.start ? (m.date || "") >= dateRange.start : true) && (dateRange.end ? (m.date || "") <= dateRange.end : true);
@@ -946,7 +1057,6 @@ export default function App() {
     if (view === 'add' && !formData.genre && Object.keys(userSettings?.genres || {}).length > 0) setFormData(prev => ({ ...prev, genre: Object.keys(userSettings.genres)[0] }));
   }, [view, userSettings]);
 
-  // ★ 現場最速！自動でクラウドに下書き保存する即撮影機能
   const handleQuickCapture = async (e) => {
     if (!user) { alert("データベースの鍵（認証）を確認中です。"); return; }
     const files = Array.from(e.target.files);
@@ -1005,7 +1115,6 @@ export default function App() {
     e.target.value = null; 
   };
 
-  // ★ 保存機能を「下書き」と「本保存」に分割
   const handleSave = async (saveAsDraft = false) => {
     let finalTitle = formData.title ? String(formData.title).trim() : (saveAsDraft ? `現場下書き (${new Date().toLocaleString('ja-JP', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })})` : `現場メモ (${new Date().toLocaleString('ja-JP', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })})`);
     
@@ -1033,12 +1142,11 @@ export default function App() {
         date: String(formData.date || ''), materials: Array.isArray(formData.materials) ? formData.materials.map(String) : [],
         images: Array.isArray(formData.images) ? formData.images.map(String) : [], teacher: String(formData.teacher || ''),
         needsReview: Boolean(formData.needsReview), reviewDate: String(formData.reviewDate || ''), isReviewed: Boolean(formData.isReviewed),
-        isDraft: saveAsDraft // ★ フラグを保存
+        isDraft: saveAsDraft
       };
 
       await setDoc(doc(db, 'artifacts', currentAppId, 'public', 'data', 'memos', id), memoToSave, { merge: true });
       
-      // 本保存（刻印）された場合のみ経験値を付与
       if (isNew && !saveAsDraft) {
         const stats = userSettings.stats || defaultSettings.stats;
         const todayStr = new Date().toISOString().split('T')[0];
@@ -1354,6 +1462,7 @@ export default function App() {
               
               <input type="file" accept="image/*" capture="environment" multiple onChange={handleQuickCapture} className="hidden" ref={hiddenQuickCaptureRef} />
               
+              {/* ヘッダーの追加ボタン */}
               <button onClick={() => { loadDraft(); setShowAdvanced(false); setShowNewGenre(false); setShowNewTag(false); setView('add'); }} className={`${weaponStyle.bg} ${weaponStyle.text} p-2.5 rounded-xl ${weaponStyle.shadow} border ${weaponStyle.border} active:scale-90 hover:scale-105 transition-all`}><ClipperIcon size={22} /></button>
             </div>
           </div>
@@ -1375,7 +1484,6 @@ export default function App() {
           {view === 'list' && (
             <div className="space-y-2 animate-in slide-in-from-top-2 relative z-10">
               <div className="flex bg-slate-950/50 p-1 rounded-xl backdrop-blur-sm border border-slate-800">
-                {/* ★ 変更：タブに「📝下書き」を追加 */}
                 {['all', 'drafts', 'site', 'genre', 'material'].map(mode => (
                   <button key={mode} onClick={() => setListMode(mode)} className={`flex-1 py-1.5 rounded-lg text-[10px] font-black transition-all ${listMode === mode ? 'bg-cyan-600 text-slate-900 shadow-[0_0_10px_rgba(6,182,212,0.5)]' : 'text-slate-400 hover:text-cyan-400'}`}>
                     {mode === 'all' ? '全て' : mode === 'drafts' ? '📝下書き' : mode === 'site' ? '現場別' : mode === 'genre' ? 'ジャンル' : '材料別'}
@@ -1524,15 +1632,25 @@ export default function App() {
           )}
         </main>
 
-        {/* ★ 現場最速！右下のクイック撮影ボタン（FAB） */}
+        {/* ★ 現場最速！右下のクイック撮影ボタン（FAB）と下書き再開ボタン */}
         {view === 'list' && (
-          <button 
-            onClick={() => hiddenQuickCaptureRef.current?.click()}
-            className="fixed bottom-24 right-6 z-[90] bg-gradient-to-r from-cyan-400 to-blue-500 text-slate-900 p-4 rounded-full shadow-[0_0_25px_rgba(6,182,212,0.8)] active:scale-90 transition-all flex items-center justify-center border-2 border-cyan-200"
-          >
-            <Camera size={32} fill="currentColor" className="text-slate-900" />
-            <span className="absolute -top-3 -left-3 bg-red-500 text-white text-[9px] font-black px-2 py-0.5 rounded-full shadow-md rotate-[-10deg] animate-pulse">即撮影!</span>
-          </button>
+          <div className="fixed bottom-24 right-6 z-[90] flex flex-col items-end gap-3">
+            {(formData.images?.length > 0 || formData.content || formData.title) && (
+              <button 
+                onClick={() => setView('add')}
+                className="bg-yellow-500 text-slate-900 px-4 py-3 rounded-full shadow-[0_0_15px_rgba(234,179,8,0.5)] active:scale-90 transition-all flex items-center gap-2 font-black text-xs border-2 border-yellow-300 animate-in slide-in-from-right"
+              >
+                <Edit3 size={16} /> 下書きを開く ({Number(formData.images?.length || 0)}枚)
+              </button>
+            )}
+            <button 
+              onClick={() => hiddenQuickCaptureRef.current?.click()}
+              className="bg-gradient-to-r from-cyan-400 to-blue-500 text-slate-900 p-4 rounded-full shadow-[0_0_25px_rgba(6,182,212,0.8)] active:scale-90 transition-all flex items-center justify-center border-2 border-cyan-200 relative"
+            >
+              <Camera size={32} fill="currentColor" className="text-slate-900" />
+              <span className="absolute -top-3 -left-3 bg-red-500 text-white text-[9px] font-black px-2 py-0.5 rounded-full shadow-md rotate-[-10deg] animate-pulse">即撮影!</span>
+            </button>
+          </div>
         )}
 
       </div>
@@ -1579,15 +1697,26 @@ export default function App() {
                   <h3 className="text-xs font-black text-cyan-600 flex items-center gap-1 tracking-widest"><Camera size={14}/> VISUAL DATA</h3>
                   <div className="flex flex-col gap-4">
                     {selectedMemo.markupImage && (!selectedMemo.images || selectedMemo.images.length===0) && (
-                      <div className="bg-slate-900 rounded-[2.5rem] overflow-hidden border-2 border-slate-700 shadow-[0_0_15px_rgba(0,0,0,0.8)] cursor-pointer relative group" onClick={() => setViewerImage(selectedMemo.markupImage)}>
+                      <div 
+                        className="bg-slate-900 rounded-[2.5rem] overflow-hidden border-2 border-slate-700 shadow-[0_0_15px_rgba(0,0,0,0.8)] cursor-pointer relative group"
+                        onClick={() => setViewerData({ images: [selectedMemo.markupImage], index: 0 })}
+                      >
                         <img src={selectedMemo.markupImage} className="w-full opacity-90 group-hover:opacity-100 transition-opacity" />
-                        <div className="absolute inset-0 bg-cyan-500/10 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center pointer-events-none"><ZoomIn size={32} className="text-cyan-300 drop-shadow-lg" /></div>
+                        <div className="absolute inset-0 bg-cyan-500/10 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center pointer-events-none">
+                          <ZoomIn size={32} className="text-cyan-300 drop-shadow-lg" />
+                        </div>
                       </div>
                     )}
                     {selectedMemo.images && selectedMemo.images.map((img, i) => (
-                      <div key={i} className="bg-slate-900 rounded-[2.5rem] overflow-hidden border-2 border-slate-700 shadow-[0_0_15px_rgba(0,0,0,0.8)] relative cursor-pointer group" onClick={() => setViewerImage(img)}>
+                      <div 
+                        key={i} 
+                        className="bg-slate-900 rounded-[2.5rem] overflow-hidden border-2 border-slate-700 shadow-[0_0_15px_rgba(0,0,0,0.8)] relative cursor-pointer group"
+                        onClick={() => setViewerData({ images: selectedMemo.images, index: i })}
+                      >
                         <img src={img} className="w-full h-auto object-cover opacity-90 group-hover:opacity-100 transition-opacity" />
-                        <div className="absolute inset-0 bg-cyan-500/10 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center pointer-events-none"><ZoomIn size={32} className="text-cyan-300 drop-shadow-lg" /></div>
+                        <div className="absolute inset-0 bg-cyan-500/10 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center pointer-events-none">
+                          <ZoomIn size={32} className="text-cyan-300 drop-shadow-lg" />
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -1707,7 +1836,6 @@ export default function App() {
               <div className="space-y-3 bg-slate-900/80 backdrop-blur-sm p-4 sm:p-5 rounded-[2.5rem] border border-slate-700 shadow-lg">
                 <div className="flex justify-between items-center text-[10px] font-black text-cyan-600 mb-2 tracking-widest"><span className="flex items-center gap-1"><Camera size={14}/> VISUAL EVIDENCE</span></div>
                 
-                {/* ★ 編集画面内のカメラとファイル選択ボタンを分割・明示化 */}
                 <div className="flex gap-2 mb-3">
                   <label className="text-slate-900 bg-cyan-600 py-3 rounded-xl flex items-center justify-center gap-1.5 cursor-pointer active:scale-95 shadow-md hover:bg-cyan-500 font-black text-[10px] sm:text-xs flex-1 border border-cyan-400">
                     <Camera size={18}/> 続けて撮影
@@ -1718,7 +1846,6 @@ export default function App() {
                     <input type="file" accept="image/*" multiple onChange={handleFileUpload} className="hidden" />
                   </label>
                 </div>
-                {/* ★ ペースト用ボタン */}
                 <button type="button" onClick={handlePasteBtn} className="w-full mb-3 text-slate-300 bg-slate-800 border border-slate-600 py-2 rounded-xl flex items-center justify-center gap-1.5 shadow-inner active:scale-95 font-bold text-xs"><ClipboardList size={14}/> 外部からコピーした画像をペースト</button>
 
                 <div className="flex gap-4 overflow-x-auto pb-4 snap-x">
@@ -1730,7 +1857,6 @@ export default function App() {
                         <div key={i} className="relative w-48 flex-shrink-0 snap-center group">
                           <img src={img} className="w-full h-32 object-cover rounded-[1.5rem] border border-slate-700 shadow-lg opacity-90" />
                           
-                          {/* ★ 保存前でも確実に画像編集が開けるようにボタンを明示 */}
                           <button type="button" onClick={() => setMarkupModal({ isOpen: true, imgIndex: i, dataUrl: img })} className="absolute inset-0 w-full h-full flex flex-col items-center justify-center bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity rounded-[1.5rem] cursor-pointer">
                             <Edit3 className="text-cyan-400 drop-shadow-md mb-1" size={24} />
                             <span className="text-cyan-400 font-black text-[10px]">タップして編集</span>
@@ -1765,6 +1891,7 @@ export default function App() {
             </div>
           </div>
         )}
+
       </div>
       {!markupModal.isOpen && view !== 'add' && view !== 'edit' && view !== 'detail' && <NavBtn view={view} setView={setView} />}
     </div>
