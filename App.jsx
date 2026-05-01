@@ -64,22 +64,16 @@ const IconMap = { Zap, Plug, Cable, Power, Lightbulb, Wrench, Hammer, HardHat, A
 const IconNames = { 
   Zap: '強電・雷', Plug: 'コンセント', Cable: '配線', Power: '動力・電源', Lightbulb: '照明', Grid: '盤・ラック',
   Cpu: '制御盤・基板', Gauge: '計器・メーター', ToggleLeft: 'スイッチ・切替', Sliders: '調光・調整',
-  
   Radio: 'アンテナ・無線', Wifi: '通信・Wi-Fi', Network: 'ネットワーク', Router: 'ルーター・HUB', Server: 'サーバー設備',
   Video: '防犯カメラ・映像', Speaker: '非常放送・音響', Monitor: 'モニター・表示器', Mic: 'マイク・放送', Signal: '電波・信号',
-  
   Shield: '保安・防御', Flame: '火気・熱', Droplets: '水回り・配管', Wind: '空調・ダクト', Fan: '換気扇・ファン',
   Building: 'ビル・施設', Home: '住宅・戸建', Snowflake: 'エアコン・冷媒', Paintbrush: '塗装・補修', Layers: '内装・軽天',
-
   Wrench: 'レンチ・スパナ', Hammer: 'ハンマー・叩き', Scissors: '切断・加工', PenTool: 'ドリル・穴あけ', 
   Settings2: 'ドライバー・ねじ締め', HardHat: 'ヘルメット', Thermometer: '温度・熱', Ruler: '寸法・測定', Compass: '方位', 
   Activity: '波形・テスター', Cog: '部品・歯車', Magnet: 'マグネット・吸着', Scale: 'はかり・重量', Crosshair: '墨出し・ターゲット',
-
   FileText: '図面・書類', Phone: '電話・連絡', Clock: '時間・期限', Link: '他職連携', Milestone: '工程・段取り', Tags: 'タグ', Folder: 'フォルダ', ListFilter: 'フィルター',
-  
   AlertCircle: '注意・警告', CheckCircle: '確認・完了', Info: '情報', MapPin: '現場・場所', Truck: 'トラック・搬入', Battery: 'バッテリー',
   Car: '車両・移動', Lock: '施錠・セキュリティ', Unlock: '解錠', Sun: '太陽光・昼', Moon: '夜間作業',
-  
   Gamepad2: 'ゲーム', Sword: '剣（攻撃）', Crown: '王冠（最高）', Trophy: 'トロフィー', Target: 'ダーツ・目標', Dumbbell: '筋トレ', Book: '読書・学習', Star: '星（重要）', Sparkles: 'キラキラ', Medal: 'メダル', Award: 'アワード'
 };
 
@@ -298,11 +292,9 @@ const RadarChart = ({ memos, userSettings }) => {
           const angle = (Math.PI * 2 * i) / data.length - Math.PI / 2;
           const tx = centerX + (radius + 30) * Math.cos(angle);
           const ty = centerY + (radius + 30) * Math.sin(angle);
-          
           let anchor = "middle";
           if (Math.cos(angle) > 0.1) anchor = "start";
           else if (Math.cos(angle) < -0.1) anchor = "end";
-
           return <text key={`label-${i}`} x={tx} y={ty} fill="#94a3b8" fontSize="12" fontWeight="900" textAnchor={anchor} dominantBaseline="middle" className="drop-shadow-md">{d.name}</text>;
         })}
       </svg>
@@ -485,7 +477,6 @@ const TextEditor = ({ t, texts, setTexts, setEditingTextId, zoom, dimensions }) 
   );
 };
 
-// ★ ビューア内に「編集ボタン」を統合し、直接マークアップへ遷移できるように強化
 const ImageViewer = ({ data, onClose, setViewerData, onEdit }) => {
   const [scale, setScale] = useState(1);
   const [position, setPosition] = useState({ x: 0, y: 0 });
@@ -568,13 +559,13 @@ const ImageViewer = ({ data, onClose, setViewerData, onEdit }) => {
          onWheel={(e) => setScale(s => Math.max(1, Math.min(s - e.deltaY * 0.01, 10)))}>
       
       {data.images.length > 1 && (
-        <div className="absolute top-6 left-1/2 -translate-x-1/2 z-50 bg-slate-800/80 px-4 py-1.5 rounded-full text-white shadow-lg border border-slate-600 font-black text-sm tracking-widest">
+        <div className="absolute top-6 left-1/2 -translate-x-1/2 z-50 bg-slate-800/80 px-4 py-1.5 rounded-full text-white shadow-lg border border-slate-600 font-black text-sm tracking-widest pointer-events-none">
           {data.index + 1} / {data.images.length}
         </div>
       )}
 
-      {/* ★ プレビュー画面から直接編集モードへ行けるボタン */}
-      <button onClick={() => { onClose(); onEdit(src, data.index); }} className="absolute top-6 right-36 z-50 bg-cyan-600 p-3 rounded-full text-slate-900 shadow-[0_0_15px_rgba(6,182,212,0.8)] active:scale-90 transition-all">
+      {/* ★ 詳細画面から直接画像編集を開くボタン */}
+      <button onClick={() => { onClose(); onEdit(src, data.index); }} className="absolute top-6 right-36 z-50 bg-cyan-600 p-3 rounded-full text-slate-900 shadow-[0_0_15px_rgba(6,182,212,0.8)] active:scale-90 transition-all border-2 border-cyan-300">
         <Edit3 size={24} />
       </button>
 
@@ -593,13 +584,14 @@ const ImageViewer = ({ data, onClose, setViewerData, onEdit }) => {
         <X size={24} />
       </button>
 
+      {/* スワイプだけでなくボタンでも切り替え可能に */}
       {data.index > 0 && (
-        <button onClick={(e) => { e.stopPropagation(); setViewerData({ ...data, index: data.index - 1 }); setScale(1); setPosition({x:0, y:0}); }} className="absolute left-2 top-1/2 -translate-y-1/2 z-50 bg-slate-800/80 p-2 rounded-full text-white shadow-lg active:scale-90 transition-all border border-slate-600 hidden sm:block">
+        <button onClick={(e) => { e.stopPropagation(); setViewerData({ ...data, index: data.index - 1 }); setScale(1); setPosition({x:0, y:0}); }} className="absolute left-2 top-1/2 -translate-y-1/2 z-50 bg-slate-800/80 p-2 rounded-full text-white shadow-lg active:scale-90 transition-all border border-slate-600 sm:block hidden">
           <ChevronLeft size={28} />
         </button>
       )}
       {data.index < data.images.length - 1 && (
-        <button onClick={(e) => { e.stopPropagation(); setViewerData({ ...data, index: data.index + 1 }); setScale(1); setPosition({x:0, y:0}); }} className="absolute right-2 top-1/2 -translate-y-1/2 z-50 bg-slate-800/80 p-2 rounded-full text-white shadow-lg active:scale-90 transition-all border border-slate-600 hidden sm:block">
+        <button onClick={(e) => { e.stopPropagation(); setViewerData({ ...data, index: data.index + 1 }); setScale(1); setPosition({x:0, y:0}); }} className="absolute right-2 top-1/2 -translate-y-1/2 z-50 bg-slate-800/80 p-2 rounded-full text-white shadow-lg active:scale-90 transition-all border border-slate-600 sm:block hidden">
           <ChevronRight size={28} />
         </button>
       )}
@@ -1364,8 +1356,15 @@ export default function App() {
       <div className="fixed inset-0 pointer-events-none z-0 opacity-20" style={{ backgroundImage: `linear-gradient(to right, #06b6d4 1px, transparent 1px), linear-gradient(to bottom, #06b6d4 1px, transparent 1px)`, backgroundSize: '30px 30px' }}></div>
       <div className="fixed inset-0 pointer-events-none z-0 bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-transparent via-slate-950/80 to-slate-950"></div>
 
+      {/* --- z-10 レイヤー (背景・ヘッダー・リスト) --- */}
       <div className="relative z-10">
         
+        {toastMessage && (
+          <div className="fixed top-24 left-1/2 -translate-x-1/2 z-[250] bg-cyan-600 text-slate-900 font-black text-xs px-6 py-3 rounded-full shadow-[0_0_20px_rgba(6,182,212,0.8)] animate-in slide-in-from-top fade-in flex items-center gap-2">
+            <CheckCircle size={16} /> {toastMessage}
+          </div>
+        )}
+
         {/* === ヘッダー === */}
         <header className="bg-slate-900 border-b border-cyan-500/30 text-white px-5 py-4 rounded-b-3xl shadow-[0_0_20px_rgba(6,182,212,0.15)] sticky top-0 z-20 overflow-hidden relative">
           <div className="absolute top-0 right-0 opacity-5 pointer-events-none"><Zap size={150} className="-mt-10 -mr-10 rotate-12 text-cyan-400" /></div>
@@ -1412,7 +1411,6 @@ export default function App() {
           {view === 'list' && (
             <div className="space-y-2 animate-in slide-in-from-top-2 relative z-10">
               <div className="flex bg-slate-950/50 p-1 rounded-xl backdrop-blur-sm border border-slate-800">
-                {/* ★ 変更：タブに「📝下書き」を追加 */}
                 {['all', 'drafts', 'site', 'genre', 'material'].map(mode => (
                   <button key={mode} onClick={() => setListMode(mode)} className={`flex-1 py-1.5 rounded-lg text-[10px] font-black transition-all ${listMode === mode ? 'bg-cyan-600 text-slate-900 shadow-[0_0_10px_rgba(6,182,212,0.5)]' : 'text-slate-400 hover:text-cyan-400'}`}>
                     {mode === 'all' ? '全て' : mode === 'drafts' ? '📝下書き' : mode === 'site' ? '現場別' : mode === 'genre' ? 'ジャンル' : '材料別'}
@@ -1794,13 +1792,16 @@ export default function App() {
                     Array.isArray(formData.images) && formData.images.map((img, i) => (
                       typeof img === 'string' ? (
                         <div key={i} className="relative w-48 flex-shrink-0 snap-center group">
-                          {/* ★ スマホでは画像を直接タップするだけで編集モーダルを開く */}
-                          <img src={img} className="w-full h-32 object-cover rounded-[1.5rem] border border-slate-700 shadow-lg cursor-pointer active:opacity-50 transition-opacity" onClick={() => setMarkupModal({ isOpen: true, imgIndex: i, dataUrl: img })} />
+                          {/* ★ 修正：iOS Safariのタップ問題対策 (onClickでのイベント伝播停止) */}
+                          <div 
+                            className="w-full h-32 rounded-[1.5rem] border border-slate-700 shadow-lg cursor-pointer active:opacity-50 transition-opacity bg-cover bg-center" 
+                            style={{ backgroundImage: `url(${img})` }}
+                            onClick={(e) => { e.preventDefault(); e.stopPropagation(); setMarkupModal({ isOpen: true, imgIndex: i, dataUrl: img }); }}
+                          />
+                          <button type="button" onClick={(e) => { e.preventDefault(); e.stopPropagation(); const newImgs = [...formData.images]; newImgs.splice(i, 1); setFormData({...formData, images: newImgs}); }} className="absolute -top-2 -right-2 bg-red-500 text-slate-900 p-1.5 rounded-full shadow-[0_0_10px_rgba(239,68,68,0.8)] z-10"><X size={14}/></button>
                           
-                          <button type="button" onClick={() => { const newImgs = [...formData.images]; newImgs.splice(i, 1); setFormData({...formData, images: newImgs}); }} className="absolute -top-2 -right-2 bg-red-500 text-slate-900 p-1.5 rounded-full shadow-[0_0_10px_rgba(239,68,68,0.8)] z-10"><X size={14}/></button>
-                          
-                          {/* ★ 右下のボタンでも編集モーダルを開く（スマホで分かりやすいように常時表示） */}
-                          <button type="button" onClick={() => setMarkupModal({ isOpen: true, imgIndex: i, dataUrl: img })} className="absolute bottom-2 right-2 bg-cyan-600 text-slate-900 p-2 rounded-full shadow-[0_0_10px_rgba(6,182,212,0.8)] active:scale-90 transition-all z-10"><Edit3 size={16}/></button>
+                          {/* ★ スマホで確実にタップできるペンのマーク */}
+                          <button type="button" onClick={(e) => { e.preventDefault(); e.stopPropagation(); setMarkupModal({ isOpen: true, imgIndex: i, dataUrl: img }); }} className="absolute bottom-2 right-2 bg-cyan-600 text-slate-900 p-2 rounded-full shadow-[0_0_10px_rgba(6,182,212,0.8)] active:scale-90 transition-all z-10"><Edit3 size={16}/></button>
                         </div>
                       ) : null
                     ))
@@ -1830,7 +1831,54 @@ export default function App() {
         )}
 
       </div>
-      {!markupModal.isOpen && view !== 'add' && view !== 'edit' && view !== 'detail' && <NavBtn view={view} setView={setView} />}
+
+      {/* --- ルートレベルのモーダル群（一番外側・最前面に統一・重複排除） --- */}
+      <div className="relative z-[200]">
+        
+        {/* ★ 本気で画像を拡大・パン操作・複数枚切り替えできる専用ビューア */}
+        {viewerData && (
+          <ImageViewer 
+            data={viewerData} 
+            onClose={() => setViewerData(null)} 
+            setViewerData={setViewerData} 
+            onEdit={(src, idx) => {
+              setViewerData(null);
+              setMarkupModal({ isOpen: true, imgIndex: idx, dataUrl: src });
+            }}
+          />
+        )}
+
+        {/* ★ 画像編集モード */}
+        {markupModal.isOpen && (
+          <MarkupModalCanvas 
+            markupModal={markupModal} 
+            setMarkupModal={setMarkupModal} 
+            onSave={async (newDataUrl, index) => {
+              if (view === 'detail' && selectedMemo) {
+                // 詳細画面からの編集：直接Firestoreを更新
+                const newImages = Array.isArray(selectedMemo.images) ? [...selectedMemo.images] : [];
+                newImages[index] = newDataUrl;
+                try {
+                  await setDoc(doc(db, 'artifacts', currentAppId, 'public', 'data', 'memos', selectedMemo.id), { images: newImages }, { merge: true });
+                  setSelectedMemo(prev => ({ ...prev, images: newImages }));
+                } catch(e) {
+                  alert('画像の上書き保存に失敗しました。');
+                }
+              } else {
+                // 追加・編集画面からの編集：フォームデータを更新
+                setFormData(prev => {
+                  const newImages = Array.isArray(prev.images) ? [...prev.images] : [];
+                  newImages[index] = newDataUrl;
+                  return { ...prev, images: newImages };
+                });
+              }
+              setMarkupModal({ isOpen: false, imgIndex: null, dataUrl: null });
+            }}
+          />
+        )}
+      </div>
+
+      {!markupModal.isOpen && !viewerData && view !== 'add' && view !== 'edit' && view !== 'detail' && <NavBtn view={view} setView={setView} />}
     </div>
   );
 }
