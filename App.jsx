@@ -485,7 +485,8 @@ const TextEditor = ({ t, texts, setTexts, setEditingTextId, zoom, dimensions }) 
   );
 };
 
-const ImageViewer = ({ data, onClose, setViewerData }) => {
+// ★ ビューア内に「編集ボタン」を統合し、直接マークアップへ遷移できるように強化
+const ImageViewer = ({ data, onClose, setViewerData, onEdit }) => {
   const [scale, setScale] = useState(1);
   const [position, setPosition] = useState({ x: 0, y: 0 });
   const isDragging = useRef(false);
@@ -571,6 +572,11 @@ const ImageViewer = ({ data, onClose, setViewerData }) => {
           {data.index + 1} / {data.images.length}
         </div>
       )}
+
+      {/* ★ プレビュー画面から直接編集モードへ行けるボタン */}
+      <button onClick={() => { onClose(); onEdit(src, data.index); }} className="absolute top-6 right-36 z-50 bg-cyan-600 p-3 rounded-full text-slate-900 shadow-[0_0_15px_rgba(6,182,212,0.8)] active:scale-90 transition-all">
+        <Edit3 size={24} />
+      </button>
 
       <button onClick={() => {
         const link = document.createElement('a');
@@ -1006,11 +1012,24 @@ export default function App() {
     const matchPending = filterPending ? (m.needsReview && !m.isReviewed) : true;
     
     if (listMode === 'drafts') {
-      return m.isDraft === true && matchSearch && matchDate && matchPending;
+      return !!m.isDraft && matchSearch && matchDate && matchPending;
     } else {
-      return m.isDraft !== true && matchSearch && matchDate && matchPending;
+      return !m.isDraft && matchSearch && matchDate && matchPending;
     }
-  }).sort((a, b) => sortOrder === 'newest' ? ((b.date || "").localeCompare(a.date || "") || (parseInt(String(b.id).split('_')[1]) || 0) - (parseInt(String(a.id).split('_')[1]) || 0)) : ((a.date || "").localeCompare(b.date || "") || (parseInt(String(a.id).split('_')[1]) || 0) - (parseInt(String(b.id).split('_')[1]) || 0))), [memos, searchTerm, dateRange, filterPending, sortOrder, listMode]);
+  }).sort((a, b) => {
+    const dateA = a.date || "";
+    const dateB = b.date || "";
+    const idA = parseInt(String(a.id).split('_')[1]) || 0;
+    const idB = parseInt(String(b.id).split('_')[1]) || 0;
+    
+    if (sortOrder === 'newest') {
+      const dateDiff = dateB.localeCompare(dateA);
+      return dateDiff !== 0 ? dateDiff : idB - idA;
+    } else {
+      const dateDiff = dateA.localeCompare(dateB);
+      return dateDiff !== 0 ? dateDiff : idA - idB;
+    }
+  }), [memos, searchTerm, dateRange, filterPending, sortOrder, listMode]);
 
   const groupedMemos = useMemo(() => filteredMemos.reduce((acc, memo) => {
     if (listMode === 'all') return acc;
@@ -1616,6 +1635,11 @@ export default function App() {
                         <div className="absolute inset-0 bg-cyan-500/10 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center pointer-events-none">
                           <ZoomIn size={32} className="text-cyan-300 drop-shadow-lg" />
                         </div>
+                        
+                        {/* ★ 詳細画面から直接マークアップ（編集）モードへ行けるボタン */}
+                        <button onClick={(e) => { e.stopPropagation(); setMarkupModal({ isOpen: true, imgIndex: 0, dataUrl: selectedMemo.markupImage }); }} className="absolute bottom-4 right-4 bg-cyan-600 p-3 rounded-full shadow-[0_0_15px_rgba(6,182,212,0.8)] text-slate-900 z-10 active:scale-90 transition-all">
+                          <Edit3 size={20} />
+                        </button>
                       </div>
                     )}
                     {selectedMemo.images && selectedMemo.images.map((img, i) => (
@@ -1628,6 +1652,11 @@ export default function App() {
                         <div className="absolute inset-0 bg-cyan-500/10 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center pointer-events-none">
                           <ZoomIn size={32} className="text-cyan-300 drop-shadow-lg" />
                         </div>
+                        
+                        {/* ★ 詳細画面から直接マークアップ（編集）モードへ行けるボタン */}
+                        <button onClick={(e) => { e.stopPropagation(); setMarkupModal({ isOpen: true, imgIndex: i, dataUrl: img }); }} className="absolute bottom-4 right-4 bg-cyan-600 p-3 rounded-full shadow-[0_0_15px_rgba(6,182,212,0.8)] text-slate-900 z-10 active:scale-90 transition-all">
+                          <Edit3 size={20} />
+                        </button>
                       </div>
                     ))}
                   </div>
@@ -1645,7 +1674,6 @@ export default function App() {
           <div className="fixed inset-0 bg-slate-950 overflow-y-auto pb-32 animate-in slide-in-from-bottom-10 z-[120]">
             <div className="fixed inset-0 pointer-events-none opacity-10" style={{ backgroundImage: `linear-gradient(to right, #facc15 1px, transparent 1px), linear-gradient(to bottom, #facc15 1px, transparent 1px)`, backgroundSize: '40px 40px' }}></div>
             
-            {/* ★ ヘッダーの保存ボタンを分割（下書き・本番） */}
             <header className="bg-slate-900/90 backdrop-blur-md border-b border-yellow-500/30 p-4 sm:p-5 flex justify-between items-center sticky top-0 shadow-[0_0_20px_rgba(234,179,8,0.15)] z-20">
               <button onClick={() => setView('list')} className="text-slate-400 hover:text-yellow-400 active:scale-90 transition-all mr-2"><X size={24}/></button>
               
@@ -1766,14 +1794,12 @@ export default function App() {
                     Array.isArray(formData.images) && formData.images.map((img, i) => (
                       typeof img === 'string' ? (
                         <div key={i} className="relative w-48 flex-shrink-0 snap-center group">
-                          <img src={img} className="w-full h-32 object-cover rounded-[1.5rem] border border-slate-700 shadow-lg opacity-90" />
-                          
-                          <button type="button" onClick={() => setMarkupModal({ isOpen: true, imgIndex: i, dataUrl: img })} className="absolute inset-0 w-full h-full flex flex-col items-center justify-center bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity rounded-[1.5rem] cursor-pointer">
-                            <Edit3 className="text-cyan-400 drop-shadow-md mb-1" size={24} />
-                            <span className="text-cyan-400 font-black text-[10px]">タップして編集</span>
-                          </button>
+                          {/* ★ スマホでは画像を直接タップするだけで編集モーダルを開く */}
+                          <img src={img} className="w-full h-32 object-cover rounded-[1.5rem] border border-slate-700 shadow-lg cursor-pointer active:opacity-50 transition-opacity" onClick={() => setMarkupModal({ isOpen: true, imgIndex: i, dataUrl: img })} />
                           
                           <button type="button" onClick={() => { const newImgs = [...formData.images]; newImgs.splice(i, 1); setFormData({...formData, images: newImgs}); }} className="absolute -top-2 -right-2 bg-red-500 text-slate-900 p-1.5 rounded-full shadow-[0_0_10px_rgba(239,68,68,0.8)] z-10"><X size={14}/></button>
+                          
+                          {/* ★ 右下のボタンでも編集モーダルを開く（スマホで分かりやすいように常時表示） */}
                           <button type="button" onClick={() => setMarkupModal({ isOpen: true, imgIndex: i, dataUrl: img })} className="absolute bottom-2 right-2 bg-cyan-600 text-slate-900 p-2 rounded-full shadow-[0_0_10px_rgba(6,182,212,0.8)] active:scale-90 transition-all z-10"><Edit3 size={16}/></button>
                         </div>
                       ) : null
