@@ -15,7 +15,6 @@ import {
   Move, ZoomIn, ZoomOut, RotateCcw, RotateCw,
   User, Bell, ChevronUp, CheckSquare, ArrowUp, ArrowDown,
   Coffee, Eraser, Skull, Lock as LockIcon,
-  // ★ 電気設備メインでアイコンを大量追加！
   Cpu, Server, Router, Network, Video, Speaker, Fan, Monitor, Mic, Gauge, Signal, ToggleLeft, Sliders, Cog, Magnet, Scale, Settings2, Crosshair
 } from 'lucide-react';
 
@@ -60,10 +59,8 @@ const TeaCupIcon = ({ size = 24, className = "", strokeWidth = 2 }) => (
   </svg>
 );
 
-// ★ アイコンの統合マップ
 const IconMap = { Zap, Plug, Cable, Power, Lightbulb, Wrench, Hammer, HardHat, AlertCircle, CheckCircle, Info, Tags, Folder, MapPin, Building, Truck, Grid, ListFilter, Shield, Flame, Droplets, Wind, Thermometer, Scissors, Battery, FileText, PenTool, Ruler, Compass, Home, Activity, Radio, Wifi, Phone, Car, Clock, Lock: LockIcon, Unlock, Sun, Moon, Snowflake, Paintbrush, Link, Milestone, Layers, Gamepad2, Sword, Crown, Trophy, Target, Dumbbell, Book, Star, Sparkles, Medal, Award, Cpu, Server, Router, Network, Video, Speaker, Fan, Monitor, Mic, Gauge, Signal, ToggleLeft, Sliders, Cog, Magnet, Scale, Settings2, Crosshair };
 
-// ★ 専門的な名前を割り当て
 const IconNames = { 
   Zap: '強電・雷', Plug: 'コンセント', Cable: '配線', Power: '動力・電源', Lightbulb: '照明', Grid: '盤・ラック',
   Cpu: '制御盤・基板', Gauge: '計器・メーター', ToggleLeft: 'スイッチ・切替', Sliders: '調光・調整',
@@ -86,7 +83,6 @@ const IconNames = {
   Gamepad2: 'ゲーム', Sword: '剣（攻撃）', Crown: '王冠（最高）', Trophy: 'トロフィー', Target: 'ダーツ・目標', Dumbbell: '筋トレ', Book: '読書・学習', Star: '星（重要）', Sparkles: 'キラキラ', Medal: 'メダル', Award: 'アワード'
 };
 
-// ★ カテゴリ分けを細分化して選びやすく
 const IconCategories = [
   { name: '電気・強電', icons: ['Zap', 'Plug', 'Cable', 'Power', 'Lightbulb', 'Grid', 'Cpu', 'Gauge', 'ToggleLeft', 'Sliders'] },
   { name: '通信・弱電', icons: ['Radio', 'Wifi', 'Network', 'Router', 'Server', 'Video', 'Speaker', 'Monitor', 'Mic', 'Signal'] },
@@ -1351,93 +1347,6 @@ export default function App() {
 
       <div className="relative z-10">
         
-        {/* === モーダル・オーバーレイ群 === */}
-        {toastMessage && (
-          <div className="fixed top-24 left-1/2 -translate-x-1/2 z-[250] bg-cyan-600 text-slate-900 font-black text-xs px-6 py-3 rounded-full shadow-[0_0_20px_rgba(6,182,212,0.8)] animate-in slide-in-from-top fade-in flex items-center gap-2">
-            <CheckCircle size={16} /> {toastMessage}
-          </div>
-        )}
-
-        <LevelUpModal levelUpData={levelUpData} />
-        <TrophiesModal showTrophiesModal={showTrophiesModal} setShowTrophiesModal={setShowTrophiesModal} memos={memos} userSettings={userSettings} />
-        {viewerImage && <ImageViewer src={viewerImage} onClose={() => setViewerImage(null)} />}
-        
-        {showPasteModal && (
-          <div className="fixed inset-0 z-[250] flex items-center justify-center bg-slate-950/90 backdrop-blur-md p-4 animate-in zoom-in duration-200">
-            <div className="bg-slate-900 border border-slate-700 rounded-[2rem] p-6 w-full max-w-sm shadow-[0_0_30px_rgba(6,182,212,0.3)]">
-              <div className="flex justify-between items-center mb-4">
-                <h3 className="font-black text-cyan-400 flex items-center gap-2"><ClipboardList size={18}/> 画像を貼り付け</h3>
-                <button onClick={() => setShowPasteModal(false)} className="text-slate-500 hover:text-cyan-400 active:scale-90"><X size={24}/></button>
-              </div>
-              <div className="text-xs font-bold text-slate-300 mb-4 leading-relaxed space-y-2">
-                <p>下の入力欄を<strong className="text-yellow-400">長押し</strong>して<strong className="text-yellow-400">「ペースト（貼り付け）」</strong>を選択してください。</p>
-                <div className="bg-red-950/50 border border-red-500/50 p-3 rounded-xl text-red-200 shadow-inner">
-                  <p className="text-red-400 font-black mb-1 flex items-center gap-1"><AlertCircle size={14}/> Googleフォトをお使いの場合</p>
-                  <p className="text-[10px]">
-                    スマホの制限で、直接ペーストできない場合があります。<br/><br/>
-                    【確実な手順】<br/>
-                    1. Googleフォトで<strong className="text-white">「デバイスに保存」</strong><br/>
-                    2. 隣の<strong className="text-white">「ファイル」</strong>ボタンから選択<br/>
-                    お手数ですが、この方法が確実です！
-                  </p>
-                </div>
-              </div>
-              <textarea 
-                autoFocus
-                className="w-full h-24 bg-slate-800 border-2 border-dashed border-cyan-500/50 rounded-xl p-4 text-cyan-50 text-sm focus:border-cyan-400 outline-none resize-none font-bold placeholder-slate-500 shadow-inner"
-                placeholder="👇 ここを長押しして「ペースト」"
-                value=""
-                onChange={() => {}}
-                onPaste={handleDirectPaste}
-              />
-              <button onClick={() => setShowPasteModal(false)} className="w-full mt-4 bg-slate-800 text-slate-400 py-3 rounded-xl font-bold active:scale-95 transition-transform">キャンセル</button>
-            </div>
-          </div>
-        )}
-
-        {showBossDefeat && (
-          <div className="fixed inset-0 z-[200] flex items-center justify-center bg-red-950/90 overflow-hidden backdrop-blur-sm">
-            <div className="absolute inset-0 bg-red-500 animate-ping mix-blend-overlay opacity-20"></div>
-            <div className="text-center animate-in zoom-in duration-500">
-              <Zap size={120} className="text-yellow-400 mx-auto animate-pulse drop-shadow-[0_0_30px_rgba(250,204,21,1)]" fill="currentColor"/>
-              <h1 className="text-5xl font-black text-white mt-4 italic tracking-tighter drop-shadow-[0_0_15px_rgba(239,68,68,1)]">現場討伐完了!!</h1>
-              <p className="text-yellow-400 font-black mt-4 text-2xl drop-shadow-md">BONUS EXP +{bossExp}</p>
-            </div>
-          </div>
-        )}
-
-        {encounterMemo && (
-          <div className="fixed inset-0 z-[150] flex items-center justify-center bg-slate-950/80 p-4 backdrop-blur-sm animate-in fade-in">
-            <div className="bg-slate-900 border-2 border-red-500 rounded-3xl p-6 w-full max-w-sm shadow-[0_0_30px_rgba(239,68,68,0.5)]">
-              <h3 className="text-red-400 font-black text-xl mb-2 animate-pulse flex items-center gap-2"><AlertCircle /> WARNING!</h3>
-              <p className="text-slate-300 text-sm font-bold mb-4">野生の「未確認メモ」が飛び出してきた！</p>
-              <div className="bg-slate-950 p-4 rounded-xl border border-slate-800 mb-6 shadow-inner">
-                <p className="text-cyan-400 font-black text-lg truncate">{String(encounterMemo.title)}</p>
-                <p className="text-slate-500 text-xs mt-1 truncate">📍 {String(encounterMemo.site)}</p>
-              </div>
-              <div className="flex gap-2">
-                <button onClick={() => setEncounterMemo(null)} className="flex-1 bg-slate-800 text-slate-400 py-3 rounded-xl font-bold active:scale-95 transition-transform">逃げる</button>
-                <button onClick={() => { setSelectedMemo(encounterMemo); setView('detail'); setEncounterMemo(null); }} className="flex-1 bg-red-600 text-white py-3 rounded-xl font-black shadow-[0_0_15px_rgba(239,68,68,0.5)] active:scale-95 transition-transform">立ち向かう</button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {markupModal.isOpen && (
-          <MarkupModalCanvas 
-            markupModal={markupModal} 
-            setMarkupModal={setMarkupModal} 
-            onSave={(newDataUrl, index) => {
-              setFormData(prev => {
-                const newImages = Array.isArray(prev.images) ? [...prev.images] : [];
-                newImages[index] = newDataUrl;
-                return { ...prev, images: newImages };
-              });
-              setMarkupModal({ isOpen: false, imgIndex: null, dataUrl: null });
-            }}
-          />
-        )}
-
         {/* === ヘッダー === */}
         <header className="bg-slate-900 border-b border-cyan-500/30 text-white px-5 py-4 rounded-b-3xl shadow-[0_0_20px_rgba(6,182,212,0.15)] sticky top-0 z-20 overflow-hidden relative">
           <div className="absolute top-0 right-0 opacity-5 pointer-events-none"><Zap size={150} className="-mt-10 -mr-10 rotate-12 text-cyan-400" /></div>
@@ -1484,6 +1393,7 @@ export default function App() {
           {view === 'list' && (
             <div className="space-y-2 animate-in slide-in-from-top-2 relative z-10">
               <div className="flex bg-slate-950/50 p-1 rounded-xl backdrop-blur-sm border border-slate-800">
+                {/* ★ 変更：タブに「📝下書き」を追加 */}
                 {['all', 'drafts', 'site', 'genre', 'material'].map(mode => (
                   <button key={mode} onClick={() => setListMode(mode)} className={`flex-1 py-1.5 rounded-lg text-[10px] font-black transition-all ${listMode === mode ? 'bg-cyan-600 text-slate-900 shadow-[0_0_10px_rgba(6,182,212,0.5)]' : 'text-slate-400 hover:text-cyan-400'}`}>
                     {mode === 'all' ? '全て' : mode === 'drafts' ? '📝下書き' : mode === 'site' ? '現場別' : mode === 'genre' ? 'ジャンル' : '材料別'}
@@ -1657,6 +1567,7 @@ export default function App() {
 
       {/* === フルスクリーン画面群（詳細表示やフォーム） === */}
       <div className="relative z-[120]">
+        
         {view === 'detail' && selectedMemo && (
           <div className="fixed inset-0 bg-slate-950 overflow-y-auto pb-32 animate-in slide-in-from-right duration-300">
             <header className={`${ColorMap[userSettings.genres[selectedMemo.genre]?.colorId || 'gray']?.bg || 'bg-slate-800'} text-slate-900 p-6 flex justify-between items-center sticky top-0 rounded-b-[2.5rem] shadow-[0_0_20px_rgba(0,0,0,0.8)] border-b border-white/20 relative overflow-hidden z-20`}>
