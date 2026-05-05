@@ -292,9 +292,11 @@ const RadarChart = ({ memos, userSettings }) => {
           const angle = (Math.PI * 2 * i) / data.length - Math.PI / 2;
           const tx = centerX + (radius + 30) * Math.cos(angle);
           const ty = centerY + (radius + 30) * Math.sin(angle);
+          
           let anchor = "middle";
           if (Math.cos(angle) > 0.1) anchor = "start";
           else if (Math.cos(angle) < -0.1) anchor = "end";
+
           return <text key={`label-${i}`} x={tx} y={ty} fill="#94a3b8" fontSize="12" fontWeight="900" textAnchor={anchor} dominantBaseline="middle" className="drop-shadow-md">{d.name}</text>;
         })}
       </svg>
@@ -477,6 +479,44 @@ const TextEditor = ({ t, texts, setTexts, setEditingTextId, zoom, dimensions }) 
   );
 };
 
+// ★ 復元：MemoCardコンポーネント（一覧画面のカード表示）
+const MemoCard = ({ memo, userSettings, onClick }) => {
+  const gConf = userSettings?.genres?.[memo.genre] || { colorId: 'gray', icon: 'Info' };
+  const c = ColorMap[gConf.colorId] || ColorMap.gray;
+  return (
+    <div onClick={onClick} className="bg-slate-900/80 backdrop-blur-sm p-4 rounded-3xl border border-slate-700 relative overflow-hidden cursor-pointer active:scale-[0.98] hover:border-cyan-500/50 transition-all shadow-lg">
+      <div className={`absolute top-0 left-0 w-1.5 h-full ${c.bg} shadow-[0_0_10px_currentColor]`} />
+      <div className="flex gap-4">
+        <div className="flex-1 min-w-0">
+          <div className="flex justify-between items-start mb-1.5 font-black italic text-slate-500 text-[9px] uppercase pl-1 tracking-widest">
+            <div className="flex items-center gap-1.5">
+              <span className="text-cyan-700">{memo.date}</span>
+              {memo.needsReview && !memo.isReviewed && <span className="bg-red-950/80 text-red-400 px-1.5 py-0.5 rounded text-[8px] border border-red-500/50 flex items-center not-italic gap-0.5 shadow-md"><Bell size={8}/>要確認</span>}
+              {memo.needsReview && memo.isReviewed && <span className="bg-green-950/80 text-green-400 px-1.5 py-0.5 rounded text-[8px] border border-green-500/50 flex items-center not-italic gap-0.5"><CheckSquare size={8}/>確認済</span>}
+              {memo.isDraft && <span className="bg-yellow-950/80 text-yellow-400 px-1.5 py-0.5 rounded text-[8px] border border-yellow-500/50 flex items-center not-italic gap-0.5 shadow-[0_0_5px_rgba(234,179,8,0.5)]"><Edit3 size={8}/>下書き</span>}
+            </div>
+          </div>
+          <h3 className="font-black text-slate-100 text-base leading-tight mb-2 pl-2 truncate">{memo.title}</h3>
+          <div className="flex gap-2 text-cyan-600 pl-2 mb-2">
+            {memo.teacher && <span className="flex items-center gap-0.5 text-[9px] font-bold"><User size={10}/>{memo.teacher}</span>}
+            {memo.materials?.length > 0 && <span className="flex items-center gap-0.5 text-[9px] font-bold"><Tags size={10} className="text-orange-400" />{memo.materials.length}</span>}
+          </div>
+          <div className="flex items-center justify-between text-[9px] font-black pt-2 border-t border-slate-800 pl-1">
+            <span className="flex items-center gap-1 bg-slate-950 px-2.5 py-1 rounded-md text-slate-400 border border-slate-800 truncate max-w-[120px]"><MapPin size={10} className="text-cyan-500 shrink-0"/> <span className="truncate">{memo.site}</span></span>
+            <span className={`px-2.5 py-1 rounded-md flex items-center gap-1 ${c.light} ${c.text} border ${c.border} uppercase shrink-0`}><DynamicIcon name={gConf.icon} size={10}/> {memo.genre}</span>
+          </div>
+        </div>
+        {((memo.images?.length > 0) || memo.markupImage) && (
+          <div className="w-20 h-20 shrink-0 rounded-2xl overflow-hidden border-2 border-slate-700 shadow-md relative">
+            <img src={memo.markupImage || memo.images[0]} alt="thumb" className="w-full h-full object-cover opacity-80" />
+            {memo.images?.length > 1 && <div className="absolute bottom-1 right-1 bg-slate-900/80 text-cyan-400 text-[8px] font-black px-1.5 py-0.5 rounded-md backdrop-blur-sm">+{memo.images.length - (memo.markupImage ? 0 : 1)}</div>}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
 const ImageViewer = ({ data, onClose, setViewerData, onEdit }) => {
   const [scale, setScale] = useState(1);
   const [position, setPosition] = useState({ x: 0, y: 0 });
@@ -564,7 +604,7 @@ const ImageViewer = ({ data, onClose, setViewerData, onEdit }) => {
         </div>
       )}
 
-      {/* ★ 詳細画面から直接画像編集を開くボタン */}
+      {/* ★ 詳細画面から直接編集モードへ行けるボタン */}
       <button onClick={() => { onClose(); onEdit(src, data.index); }} className="absolute top-6 right-36 z-50 bg-cyan-600 p-3 rounded-full text-slate-900 shadow-[0_0_15px_rgba(6,182,212,0.8)] active:scale-90 transition-all border-2 border-cyan-300">
         <Edit3 size={24} />
       </button>
@@ -584,14 +624,13 @@ const ImageViewer = ({ data, onClose, setViewerData, onEdit }) => {
         <X size={24} />
       </button>
 
-      {/* スワイプだけでなくボタンでも切り替え可能に */}
       {data.index > 0 && (
-        <button onClick={(e) => { e.stopPropagation(); setViewerData({ ...data, index: data.index - 1 }); setScale(1); setPosition({x:0, y:0}); }} className="absolute left-2 top-1/2 -translate-y-1/2 z-50 bg-slate-800/80 p-2 rounded-full text-white shadow-lg active:scale-90 transition-all border border-slate-600 sm:block hidden">
+        <button onClick={(e) => { e.stopPropagation(); setViewerData({ ...data, index: data.index - 1 }); setScale(1); setPosition({x:0, y:0}); }} className="absolute left-2 top-1/2 -translate-y-1/2 z-50 bg-slate-800/80 p-2 rounded-full text-white shadow-lg active:scale-90 transition-all border border-slate-600 hidden sm:block">
           <ChevronLeft size={28} />
         </button>
       )}
       {data.index < data.images.length - 1 && (
-        <button onClick={(e) => { e.stopPropagation(); setViewerData({ ...data, index: data.index + 1 }); setScale(1); setPosition({x:0, y:0}); }} className="absolute right-2 top-1/2 -translate-y-1/2 z-50 bg-slate-800/80 p-2 rounded-full text-white shadow-lg active:scale-90 transition-all border border-slate-600 sm:block hidden">
+        <button onClick={(e) => { e.stopPropagation(); setViewerData({ ...data, index: data.index + 1 }); setScale(1); setPosition({x:0, y:0}); }} className="absolute right-2 top-1/2 -translate-y-1/2 z-50 bg-slate-800/80 p-2 rounded-full text-white shadow-lg active:scale-90 transition-all border border-slate-600 hidden sm:block">
           <ChevronRight size={28} />
         </button>
       )}
@@ -625,6 +664,9 @@ const MarkupModalCanvas = ({ markupModal, setMarkupModal, onSave }) => {
   const [editingTextId, setEditingTextId] = useState(null); const dragRef = useRef(null);
   const [strokes, setStrokes] = useState([]); const [redoStack, setRedoStack] = useState([]); 
   const currentStroke = useRef(null); const [penColor, setPenColor] = useState('#ef4444'); 
+  const [pan, setPan] = useState({ x: 0, y: 0 });
+  const isPanning = useRef(false);
+  const panStart = useRef({ x: 0, y: 0 });
 
   const PEN_COLORS = [{id:'red',v:'#ef4444',tw:'bg-red-500'},{id:'cyan',v:'#22d3ee',tw:'bg-cyan-400'},{id:'yellow',v:'#facc15',tw:'bg-yellow-400'},{id:'green',v:'#4ade80',tw:'bg-green-400'}];
 
@@ -676,7 +718,16 @@ const MarkupModalCanvas = ({ markupModal, setMarkupModal, onSave }) => {
   };
 
   const handleStart = (e) => {
-    if (!canvasRef.current) return; const p = getPos(e);
+    if (!canvasRef.current) return; 
+
+    if (mode === 'move') {
+      isPanning.current = true;
+      panStart.current = { x: e.clientX - pan.x, y: e.clientY - pan.y };
+      if (e.target && e.target.setPointerCapture) e.target.setPointerCapture(e.pointerId);
+      return;
+    }
+
+    const p = getPos(e);
     if (editingTextId) { setEditingTextId(null); return; }
     if (mode === 'text') { setTexts([...texts, { id: Date.now(), text: '', x: p.x, y: p.y, color: penColor }]); setEditingTextId(Date.now()); return; }
     if (mode !== 'draw' && mode !== 'eraser') return;
@@ -689,6 +740,13 @@ const MarkupModalCanvas = ({ markupModal, setMarkupModal, onSave }) => {
 
   const handleMove = (e) => {
     if (dragRef.current) { e.preventDefault(); const p = getPos(e); dragRef.current.moved = true; setTexts(texts.map(t => t.id === dragRef.current.id ? { ...t, x: p.x - dragRef.current.ox, y: p.y - dragRef.current.oy } : t)); return; }
+    
+    if (mode === 'move' && isPanning.current) {
+      e.preventDefault();
+      setPan({ x: e.clientX - panStart.current.x, y: e.clientY - panStart.current.y });
+      return;
+    }
+
     if (!currentStroke.current || !canvasRef.current) return;
     e.preventDefault(); const p = getPos(e); const pts = currentStroke.current.points; const prev = pts[pts.length - 1]; pts.push(p);
     const cvs = canvasRef.current; const ctx = cvs.getContext('2d');
@@ -698,6 +756,13 @@ const MarkupModalCanvas = ({ markupModal, setMarkupModal, onSave }) => {
 
   const handleEnd = (e) => {
     if (dragRef.current) dragRef.current = null;
+    
+    if (mode === 'move' && isPanning.current) {
+      isPanning.current = false;
+      if (e && e.target && e.target.releasePointerCapture) e.target.releasePointerCapture(e.pointerId);
+      return;
+    }
+
     if (currentStroke.current) { setStrokes([...strokes, currentStroke.current]); setRedoStack([]); currentStroke.current = null; }
     if (e && e.target && e.target.releasePointerCapture) e.target.releasePointerCapture(e.pointerId);
   };
@@ -772,8 +837,8 @@ const MarkupModalCanvas = ({ markupModal, setMarkupModal, onSave }) => {
   };
 
   return (
-    <div className="fixed inset-0 bg-slate-950 z-[150] flex flex-col items-center justify-center p-2 sm:p-4 animate-in fade-in">
-      <div className="w-full max-w-lg bg-slate-900 rounded-[2rem] p-3 flex flex-col gap-3 shadow-[0_0_30px_rgba(6,182,212,0.2)] border border-cyan-900/50 absolute top-4 bottom-4">
+    <div className="fixed inset-0 bg-slate-950 z-[300] flex flex-col items-center justify-center p-2 sm:p-4 animate-in fade-in">
+      <div className="w-full max-w-lg bg-slate-900 rounded-[2rem] p-3 flex flex-col gap-3 shadow-[0_0_30px_rgba(6,182,212,0.5)] border border-cyan-500/50 absolute top-4 bottom-4">
         <div className="flex justify-between items-center px-2 pt-1 shrink-0"><h3 className="font-black text-cyan-400 flex gap-2"><Edit3 size={18}/> MARKUP</h3><button onClick={() => setMarkupModal({ isOpen: false, imgIndex: null, dataUrl: null })} className="text-slate-500 hover:text-cyan-400"><X size={28}/></button></div>
         <div className="flex flex-col gap-2 bg-slate-800 p-2 rounded-xl shrink-0">
           <div className="flex justify-between items-center bg-slate-900 p-1.5 rounded-lg border border-slate-700">
@@ -791,7 +856,7 @@ const MarkupModalCanvas = ({ markupModal, setMarkupModal, onSave }) => {
         </div>
         <div className="flex-1 relative flex justify-center items-center bg-slate-950 rounded-xl overflow-hidden shadow-inner border border-slate-700" style={{ touchAction: 'none' }}>
           {dimensions ? (
-            <div style={{ width: dimensions.dispW, height: dimensions.dispH, position: 'relative', transform: `scale(${zoom})`, transformOrigin: 'top left' }}>
+            <div style={{ width: dimensions.dispW, height: dimensions.dispH, position: 'relative', transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`, transformOrigin: 'center' }}>
               <img src={markupModal.dataUrl} alt="base" style={{ width: '100%', height: '100%', display: 'block', opacity: 0.8, pointerEvents: 'none' }} />
               <canvas ref={canvasRef} width={dimensions.dispW} height={dimensions.dispH} style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', zIndex: 10 }}
                 className={`${mode === 'draw' ? 'cursor-crosshair' : mode === 'text' ? 'cursor-text' : mode === 'eraser' ? 'cursor-cell' : 'cursor-grab'}`}
@@ -831,48 +896,11 @@ const MarkupModalCanvas = ({ markupModal, setMarkupModal, onSave }) => {
           ) : <Loader2 size={24} className="animate-spin text-cyan-500"/>}
         </div>
         <div className="flex gap-2 items-center justify-center bg-slate-900 py-1.5 rounded-lg border border-slate-700 shadow-inner shrink-0">
-          <button onClick={() => setZoom(z => Math.max(1, z - 0.5))} className="p-1 text-slate-400 active:scale-95 hover:text-cyan-400"><ZoomOut size={16}/></button>
+          <button onClick={() => { setZoom(z => Math.max(1, z - 0.5)); if (zoom <= 1.5) setPan({x:0, y:0}); }} className="p-1 text-slate-400 active:scale-95 hover:text-cyan-400"><ZoomOut size={16}/></button>
           <span className="text-[10px] font-black w-12 text-center text-cyan-400">{Math.round(zoom * 100)}%</span>
           <button onClick={() => setZoom(z => Math.min(4, z + 0.5))} className="p-1 text-slate-400 active:scale-95 hover:text-cyan-400"><ZoomIn size={16}/></button>
         </div>
         <button onClick={handleSaveImage} className="w-full shrink-0 bg-cyan-600 hover:bg-cyan-500 text-slate-900 py-4 rounded-2xl font-black uppercase shadow-lg active:scale-[0.98] transition-all mt-3">編集を確定する</button>
-      </div>
-    </div>
-  );
-};
-
-const MemoCard = ({ memo, userSettings, onClick }) => {
-  const gConf = userSettings?.genres?.[memo.genre] || { colorId: 'gray', icon: 'Info' };
-  const c = ColorMap[gConf.colorId] || ColorMap.gray;
-  return (
-    <div onClick={onClick} className="bg-slate-900/80 backdrop-blur-sm p-4 rounded-3xl border border-slate-700 relative overflow-hidden cursor-pointer active:scale-[0.98] hover:border-cyan-500/50 transition-all shadow-lg">
-      <div className={`absolute top-0 left-0 w-1.5 h-full ${c.bg} shadow-[0_0_10px_currentColor]`} />
-      <div className="flex gap-4">
-        <div className="flex-1 min-w-0">
-          <div className="flex justify-between items-start mb-1.5 font-black italic text-slate-500 text-[9px] uppercase pl-1 tracking-widest">
-            <div className="flex items-center gap-1.5">
-              <span className="text-cyan-700">{memo.date}</span>
-              {memo.needsReview && !memo.isReviewed && <span className="bg-red-950/80 text-red-400 px-1.5 py-0.5 rounded text-[8px] border border-red-500/50 flex items-center not-italic gap-0.5 shadow-md"><Bell size={8}/>要確認</span>}
-              {memo.needsReview && memo.isReviewed && <span className="bg-green-950/80 text-green-400 px-1.5 py-0.5 rounded text-[8px] border border-green-500/50 flex items-center not-italic gap-0.5"><CheckSquare size={8}/>確認済</span>}
-              {memo.isDraft && <span className="bg-yellow-950/80 text-yellow-400 px-1.5 py-0.5 rounded text-[8px] border border-yellow-500/50 flex items-center not-italic gap-0.5 shadow-[0_0_5px_rgba(234,179,8,0.5)]"><Edit3 size={8}/>下書き</span>}
-            </div>
-          </div>
-          <h3 className="font-black text-slate-100 text-base leading-tight mb-2 pl-2 truncate">{memo.title}</h3>
-          <div className="flex gap-2 text-cyan-600 pl-2 mb-2">
-            {memo.teacher && <span className="flex items-center gap-0.5 text-[9px] font-bold"><User size={10}/>{memo.teacher}</span>}
-            {memo.materials?.length > 0 && <span className="flex items-center gap-0.5 text-[9px] font-bold"><Tags size={10} className="text-orange-400" />{memo.materials.length}</span>}
-          </div>
-          <div className="flex items-center justify-between text-[9px] font-black pt-2 border-t border-slate-800 pl-1">
-            <span className="flex items-center gap-1 bg-slate-950 px-2.5 py-1 rounded-md text-slate-400 border border-slate-800 truncate max-w-[120px]"><MapPin size={10} className="text-cyan-500 shrink-0"/> <span className="truncate">{memo.site}</span></span>
-            <span className={`px-2.5 py-1 rounded-md flex items-center gap-1 ${c.light} ${c.text} border ${c.border} uppercase shrink-0`}><DynamicIcon name={gConf.icon} size={10}/> {memo.genre}</span>
-          </div>
-        </div>
-        {((memo.images?.length > 0) || memo.markupImage) && (
-          <div className="w-20 h-20 shrink-0 rounded-2xl overflow-hidden border-2 border-slate-700 shadow-md relative">
-            <img src={memo.markupImage || memo.images[0]} alt="thumb" className="w-full h-full object-cover opacity-80" />
-            {memo.images?.length > 1 && <div className="absolute bottom-1 right-1 bg-slate-900/80 text-cyan-400 text-[8px] font-black px-1.5 py-0.5 rounded-md backdrop-blur-sm">+{memo.images.length - (memo.markupImage ? 0 : 1)}</div>}
-          </div>
-        )}
       </div>
     </div>
   );
@@ -1411,6 +1439,7 @@ export default function App() {
           {view === 'list' && (
             <div className="space-y-2 animate-in slide-in-from-top-2 relative z-10">
               <div className="flex bg-slate-950/50 p-1 rounded-xl backdrop-blur-sm border border-slate-800">
+                {/* ★ 変更：タブに「📝下書き」を追加 */}
                 {['all', 'drafts', 'site', 'genre', 'material'].map(mode => (
                   <button key={mode} onClick={() => setListMode(mode)} className={`flex-1 py-1.5 rounded-lg text-[10px] font-black transition-all ${listMode === mode ? 'bg-cyan-600 text-slate-900 shadow-[0_0_10px_rgba(6,182,212,0.5)]' : 'text-slate-400 hover:text-cyan-400'}`}>
                     {mode === 'all' ? '全て' : mode === 'drafts' ? '📝下書き' : mode === 'site' ? '現場別' : mode === 'genre' ? 'ジャンル' : '材料別'}
@@ -1559,25 +1588,15 @@ export default function App() {
           )}
         </main>
 
-        {/* ★ 現場最速！右下のクイック撮影ボタン（FAB）と下書き再開ボタン */}
+        {/* ★ 現場最速！右下のクイック撮影ボタン（FAB） */}
         {view === 'list' && (
-          <div className="fixed bottom-24 right-6 z-[90] flex flex-col items-end gap-3">
-            {(formData.images?.length > 0 || formData.content || formData.title) && (
-              <button 
-                onClick={() => setView('add')}
-                className="bg-yellow-500 text-slate-900 px-4 py-3 rounded-full shadow-[0_0_15px_rgba(234,179,8,0.5)] active:scale-90 transition-all flex items-center gap-2 font-black text-xs border-2 border-yellow-300 animate-in slide-in-from-right"
-              >
-                <Edit3 size={16} /> 下書きを開く ({Number(formData.images?.length || 0)}枚)
-              </button>
-            )}
-            <button 
-              onClick={() => hiddenQuickCaptureRef.current?.click()}
-              className="bg-gradient-to-r from-cyan-400 to-blue-500 text-slate-900 p-4 rounded-full shadow-[0_0_25px_rgba(6,182,212,0.8)] active:scale-90 transition-all flex items-center justify-center border-2 border-cyan-200 relative"
-            >
-              <Camera size={32} fill="currentColor" className="text-slate-900" />
-              <span className="absolute -top-3 -left-3 bg-red-500 text-white text-[9px] font-black px-2 py-0.5 rounded-full shadow-md rotate-[-10deg] animate-pulse">即撮影!</span>
-            </button>
-          </div>
+          <button 
+            onClick={() => hiddenQuickCaptureRef.current?.click()}
+            className="fixed bottom-24 right-6 z-[90] bg-gradient-to-r from-cyan-400 to-blue-500 text-slate-900 p-4 rounded-full shadow-[0_0_25px_rgba(6,182,212,0.8)] active:scale-90 transition-all flex items-center justify-center border-2 border-cyan-200"
+          >
+            <Camera size={32} fill="currentColor" className="text-slate-900" />
+            <span className="absolute -top-3 -left-3 bg-red-500 text-white text-[9px] font-black px-2 py-0.5 rounded-full shadow-md rotate-[-10deg] animate-pulse">即撮影!</span>
+          </button>
         )}
 
       </div>
@@ -1585,6 +1604,7 @@ export default function App() {
       {/* === フルスクリーン画面群（詳細表示やフォーム） === */}
       <div className="relative z-[120]">
         
+        {/* 詳細画面（ログ閲覧） */}
         {view === 'detail' && selectedMemo && (
           <div className="fixed inset-0 bg-slate-950 overflow-y-auto pb-32 animate-in slide-in-from-right duration-300">
             <header className={`${ColorMap[userSettings.genres[selectedMemo.genre]?.colorId || 'gray']?.bg || 'bg-slate-800'} text-slate-900 p-6 flex justify-between items-center sticky top-0 rounded-b-[2.5rem] shadow-[0_0_20px_rgba(0,0,0,0.8)] border-b border-white/20 relative overflow-hidden z-20`}>
@@ -1620,6 +1640,8 @@ export default function App() {
                   </div>
                 )}
               </div>
+              
+              {/* ビジュアルデータ表示 */}
               {((selectedMemo.images && selectedMemo.images.length > 0) || selectedMemo.markupImage) && (
                 <div className="space-y-3">
                   <h3 className="text-xs font-black text-cyan-600 flex items-center gap-1 tracking-widest"><Camera size={14}/> VISUAL DATA</h3>
@@ -1634,7 +1656,7 @@ export default function App() {
                           <ZoomIn size={32} className="text-cyan-300 drop-shadow-lg" />
                         </div>
                         
-                        {/* ★ 詳細画面から直接マークアップ（編集）モードへ行けるボタン */}
+                        {/* ★ 詳細画面から直接画像編集モードを開くボタン */}
                         <button onClick={(e) => { e.stopPropagation(); setMarkupModal({ isOpen: true, imgIndex: 0, dataUrl: selectedMemo.markupImage }); }} className="absolute bottom-4 right-4 bg-cyan-600 p-3 rounded-full shadow-[0_0_15px_rgba(6,182,212,0.8)] text-slate-900 z-10 active:scale-90 transition-all">
                           <Edit3 size={20} />
                         </button>
@@ -1651,7 +1673,7 @@ export default function App() {
                           <ZoomIn size={32} className="text-cyan-300 drop-shadow-lg" />
                         </div>
                         
-                        {/* ★ 詳細画面から直接マークアップ（編集）モードへ行けるボタン */}
+                        {/* ★ 詳細画面から直接画像編集モードを開くボタン */}
                         <button onClick={(e) => { e.stopPropagation(); setMarkupModal({ isOpen: true, imgIndex: i, dataUrl: img }); }} className="absolute bottom-4 right-4 bg-cyan-600 p-3 rounded-full shadow-[0_0_15px_rgba(6,182,212,0.8)] text-slate-900 z-10 active:scale-90 transition-all">
                           <Edit3 size={20} />
                         </button>
@@ -1668,6 +1690,7 @@ export default function App() {
           </div>
         )}
 
+        {/* 追加・編集画面（フォーム） */}
         {(view === 'add' || view === 'edit') && (
           <div className="fixed inset-0 bg-slate-950 overflow-y-auto pb-32 animate-in slide-in-from-bottom-10 z-[120]">
             <div className="fixed inset-0 pointer-events-none opacity-10" style={{ backgroundImage: `linear-gradient(to right, #facc15 1px, transparent 1px), linear-gradient(to bottom, #facc15 1px, transparent 1px)`, backgroundSize: '40px 40px' }}></div>
@@ -1792,15 +1815,17 @@ export default function App() {
                     Array.isArray(formData.images) && formData.images.map((img, i) => (
                       typeof img === 'string' ? (
                         <div key={i} className="relative w-48 flex-shrink-0 snap-center group">
-                          {/* ★ 修正：iOS Safariのタップ問題対策 (onClickでのイベント伝播停止) */}
-                          <div 
-                            className="w-full h-32 rounded-[1.5rem] border border-slate-700 shadow-lg cursor-pointer active:opacity-50 transition-opacity bg-cover bg-center" 
-                            style={{ backgroundImage: `url(${img})` }}
-                            onClick={(e) => { e.preventDefault(); e.stopPropagation(); setMarkupModal({ isOpen: true, imgIndex: i, dataUrl: img }); }}
-                          />
+                          <img src={img} className="w-full h-32 object-cover rounded-[1.5rem] border border-slate-700 shadow-lg opacity-90" />
+                          
+                          {/* ★ 修正：確実に画像編集モーダルを開くボタン */}
+                          <button type="button" onClick={(e) => { e.preventDefault(); e.stopPropagation(); setMarkupModal({ isOpen: true, imgIndex: i, dataUrl: img }); }} className="absolute inset-0 w-full h-full flex flex-col items-center justify-center bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity rounded-[1.5rem] cursor-pointer">
+                            <Edit3 className="text-cyan-400 drop-shadow-md mb-1" size={24} />
+                            <span className="text-cyan-400 font-black text-[10px]">タップして編集</span>
+                          </button>
+                          
                           <button type="button" onClick={(e) => { e.preventDefault(); e.stopPropagation(); const newImgs = [...formData.images]; newImgs.splice(i, 1); setFormData({...formData, images: newImgs}); }} className="absolute -top-2 -right-2 bg-red-500 text-slate-900 p-1.5 rounded-full shadow-[0_0_10px_rgba(239,68,68,0.8)] z-10"><X size={14}/></button>
                           
-                          {/* ★ スマホで確実にタップできるペンのマーク */}
+                          {/* ★ 右下のボタンでも編集モーダルを開く */}
                           <button type="button" onClick={(e) => { e.preventDefault(); e.stopPropagation(); setMarkupModal({ isOpen: true, imgIndex: i, dataUrl: img }); }} className="absolute bottom-2 right-2 bg-cyan-600 text-slate-900 p-2 rounded-full shadow-[0_0_10px_rgba(6,182,212,0.8)] active:scale-90 transition-all z-10"><Edit3 size={16}/></button>
                         </div>
                       ) : null
@@ -1877,7 +1902,7 @@ export default function App() {
           />
         )}
       </div>
-
+      
       {!markupModal.isOpen && !viewerData && view !== 'add' && view !== 'edit' && view !== 'detail' && <NavBtn view={view} setView={setView} />}
     </div>
   );
