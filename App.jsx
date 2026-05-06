@@ -28,7 +28,10 @@ const fetchWithRetry = async (url, options, retries = 5) => {
   for (let i = 0; i < retries; i++) {
     try {
       const res = await fetch(url, options);
-      if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.error?.message || `HTTP error! status: ${res.status}`);
+      }
       return await res.json();
     } catch (e) {
       if (i === retries - 1) throw e;
@@ -36,6 +39,23 @@ const fetchWithRetry = async (url, options, retries = 5) => {
       delay *= 2;
     }
   }
+};
+
+// ★ スマホからのAI送信時、データが重すぎて通信エラーになるのを防ぐための専用圧縮関数
+const compressImageForAI = (dataUrl, maxSize = 600) => {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      const scale = Math.min(maxSize / img.width, maxSize / img.height, 1);
+      canvas.width = img.width * scale;
+      canvas.height = img.height * scale;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      resolve(canvas.toDataURL('image/jpeg', 0.5)); // AI解析用は画質を落として超軽量化
+    };
+    img.src = dataUrl;
+  });
 };
 
 // --- 定数・アイコン定義 ---
@@ -1361,21 +1381,32 @@ export default function App() {
 
 現在のラフメモ: ${formData.content || '(メモなし。写真から現場状況を推測して日報を作成してください)'}` 
       });
+      
       if (formData.images && formData.images.length > 0) {
-        formData.images.forEach(imgUrl => {
+        // ★ 最大5枚まで。iPhoneからの重い画像はAI送信用に「裏側で超軽量化」して送る
+        const imagesToSend = formData.images.slice(0, 5); 
+        for (const imgUrl of imagesToSend) {
           if (imgUrl.startsWith('data:image')) {
-            const base64 = imgUrl.split(',')[1]; const mimeType = imgUrl.split(':')[1].split(';')[0];
+            const compressedUrl = await compressImageForAI(imgUrl);
+            const base64 = compressedUrl.split(',')[1]; 
+            const mimeType = compressedUrl.split(':')[1].split(';')[0];
             parts.push({ inlineData: { mimeType, data: base64 } });
           }
-        });
+        }
       }
+      
       const data = await fetchWithRetry(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ contents: [{ parts }] })
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, 
+        body: JSON.stringify({ contents: [{ role: "user", parts: parts }] }) // ★ role指定を追加して安全に
       });
+      
       if (data.candidates && data.candidates[0] && data.candidates[0].content.parts[0].text) {
         setFormData(prev => ({ ...prev, content: data.candidates[0].content.parts[0].text.trim() }));
       } else throw new Error("AIが文章の生成に失敗しました。");
-    } catch (err) { alert("AIアシストに失敗しました。通信環境を確認してください。"); console.error(err); } finally { setIsAILoading(false); }
+    } catch (err) { 
+      alert(`AIアシストに失敗しました。\n通信環境またはAPI設定を確認してください。\n詳細: ${err.message}`); 
+      console.error(err); 
+    } finally { setIsAILoading(false); }
   };
 
   // =============== レンダリング部 ===============
