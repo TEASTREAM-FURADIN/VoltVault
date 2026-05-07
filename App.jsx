@@ -74,6 +74,15 @@ const ClipperIcon = ({ size = 24, className = "", strokeWidth = 2 }) => (
   </svg>
 );
 
+const TeaCupIcon = ({ size = 24, className = "", strokeWidth = 2 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round" className={className}>
+    <path d="M6 8v5a6 6 0 0 0 12 0V8" />
+    <line x1="5" y1="8" x2="19" y2="8" />
+    <path d="M10 3s1 1.5 1 2.5-1 1.5-1 2.5" />
+    <path d="M14 3s-1 1.5-1 2.5 1 1.5 1 2.5" />
+  </svg>
+);
+
 const IconMap = { Zap, Plug, Cable, Power, Lightbulb, Wrench, Hammer, HardHat, AlertCircle, CheckCircle, Info, Tags, Folder, MapPin, Building, Truck, Grid, ListFilter, Shield, Flame, Droplets, Wind, Thermometer, Scissors, Battery, FileText, PenTool, Ruler, Compass, Home, Activity, Radio, Wifi, Phone, Car, Clock, Lock: LockIcon, Unlock, Sun, Moon, Snowflake, Paintbrush, Link, Milestone, Layers, Gamepad2, Sword, Crown, Trophy, Target, Dumbbell, Book, Star, Sparkles, Medal, Award, Cpu, Server, Router, Network, Video, Speaker, Fan, Monitor, Mic, Gauge, Signal, ToggleLeft, Sliders, Cog, Magnet, Scale, Settings2, Crosshair };
 
 const IconNames = { 
@@ -494,6 +503,7 @@ const TextEditor = ({ t, texts, setTexts, setEditingTextId, zoom, dimensions }) 
   );
 };
 
+// ★ 復元した MemoCard
 const MemoCard = ({ memo, userSettings, onClick }) => {
   const gConf = userSettings?.genres?.[memo.genre] || { colorId: 'gray', icon: 'Info' };
   const c = ColorMap[gConf.colorId] || ColorMap.gray;
@@ -618,7 +628,7 @@ const ImageViewer = ({ data, onClose, setViewerData, onEdit }) => {
         </div>
       )}
 
-      {/* ★ 詳細画面から直接編集モードへ行けるボタン（確実に開くようにsetTimeoutをかませる） */}
+      {/* ★ 詳細画面から直接編集モードへ行けるボタン */}
       <button onClick={() => { onClose(); setTimeout(() => onEdit(src, data.index), 50); }} className="absolute top-6 right-36 z-50 bg-cyan-600 p-3 rounded-full text-slate-900 shadow-[0_0_15px_rgba(6,182,212,0.8)] active:scale-90 transition-all border-2 border-cyan-300">
         <Edit3 size={24} />
       </button>
@@ -639,12 +649,12 @@ const ImageViewer = ({ data, onClose, setViewerData, onEdit }) => {
       </button>
 
       {data.index > 0 && (
-        <button onClick={(e) => { e.stopPropagation(); setViewerData({ ...data, index: data.index - 1 }); setScale(1); setPosition({x:0, y:0}); }} className="absolute left-2 top-1/2 -translate-y-1/2 z-50 bg-slate-800/80 p-2 rounded-full text-white shadow-lg active:scale-90 transition-all border border-slate-600">
+        <button onClick={(e) => { e.stopPropagation(); setViewerData({ ...data, index: data.index - 1 }); setScale(1); setPosition({x:0, y:0}); }} className="absolute left-2 top-1/2 -translate-y-1/2 z-50 bg-slate-800/80 p-2 rounded-full text-white shadow-lg active:scale-90 transition-all border border-slate-600 hidden sm:block">
           <ChevronLeft size={28} />
         </button>
       )}
       {data.index < data.images.length - 1 && (
-        <button onClick={(e) => { e.stopPropagation(); setViewerData({ ...data, index: data.index + 1 }); setScale(1); setPosition({x:0, y:0}); }} className="absolute right-2 top-1/2 -translate-y-1/2 z-50 bg-slate-800/80 p-2 rounded-full text-white shadow-lg active:scale-90 transition-all border border-slate-600">
+        <button onClick={(e) => { e.stopPropagation(); setViewerData({ ...data, index: data.index + 1 }); setScale(1); setPosition({x:0, y:0}); }} className="absolute right-2 top-1/2 -translate-y-1/2 z-50 bg-slate-800/80 p-2 rounded-full text-white shadow-lg active:scale-90 transition-all border border-slate-600 hidden sm:block">
           <ChevronRight size={28} />
         </button>
       )}
@@ -672,6 +682,7 @@ const ImageViewer = ({ data, onClose, setViewerData, onEdit }) => {
   );
 };
 
+// ★ 復元した MarkupModalCanvas
 const MarkupModalCanvas = ({ markupModal, setMarkupModal, onSave }) => {
   const canvasRef = useRef(null); const [mode, setMode] = useState('draw'); const [zoom, setZoom] = useState(1);
   const [dimensions, setDimensions] = useState(null); const [texts, setTexts] = useState([]); 
@@ -696,7 +707,6 @@ const MarkupModalCanvas = ({ markupModal, setMarkupModal, onSave }) => {
       const scale = Math.min((window.innerWidth - 32) / img.width, (window.innerHeight * 0.55) / img.height, 1);
       setDimensions({ dispW: img.width * scale, dispH: img.height * scale, origW: img.width, origH: img.height, img });
     };
-    // ★ 追加：iPhoneなどで画像が重すぎて読み込み失敗した時のフェイルセーフ
     img.onerror = () => {
       alert("⚠️ 画像の読み込みに失敗しました。\n(メモリ制限のため、少し時間をおいて再度お試しください)");
       setMarkupModal({ isOpen: false, imgIndex: null, dataUrl: null });
@@ -1371,7 +1381,6 @@ export default function App() {
     }
   };
 
-  // ★ AI機能の改善とエラー対策
   const handleAIAssist = async (mode = 'organize', customQuestion = '') => {
     if (!formData.content && (!formData.images || formData.images.length === 0) && mode !== 'ask') { 
       setToastMessage("⚠️ 画像を追加するか、少しメモを入力してください。");
@@ -1383,17 +1392,18 @@ export default function App() {
     setToastMessage("✨ AIが解析中...");
 
     try {
-      // ★ Vercel等の外部で動かす場合は、Google AI Studioで取得したAPIキーを localStorage に保存して使用
       const canvasApiKey = ""; 
-      const apiKey = canvasApiKey || localStorage.getItem('voltVaultGeminiApiKey') || "";
+      const savedApiKey = localStorage.getItem('voltVaultGeminiApiKey') || "";
+      const apiKey = canvasApiKey || savedApiKey;
 
       if (!apiKey) {
-        alert("⚠️ Vercel等の外部環境でAIを使用するには、右下の設定画面（Equipment）から「Gemini APIキー」を登録してください。\n(Canvas内では自動で適用されます)");
+        alert("⚠️ 右下の設定画面(Equipment)の一番上から「AI (Gemini) APIキー」を登録してください。\n(Canvas内では自動で適用されます)");
         setIsAILoading(false);
         setToastMessage('');
         return;
       }
 
+      const modelName = savedApiKey ? "gemini-1.5-flash" : "gemini-2.5-flash-preview-09-2025";
       const parts = [];
 
       let systemPrompt = "";
@@ -1417,7 +1427,6 @@ export default function App() {
 
       const imageParts = [];
       if (formData.images && formData.images.length > 0) {
-        // ★ iPhoneのメモリ・通信制限対策: AIに送る画像は最大2枚まで、サイズも512pxに縮小
         const imagesToSend = formData.images.slice(0, 2); 
         for (const imgUrl of imagesToSend) {
           if (imgUrl.startsWith('data:image')) {
@@ -1434,7 +1443,7 @@ export default function App() {
         systemInstruction: { parts: [{ text: systemPrompt }] }
       };
 
-      const data = await fetchWithRetry(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`, {
+      const data = await fetchWithRetry(`https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`, {
         method: 'POST', 
         headers: { 'Content-Type': 'application/json' }, 
         body: JSON.stringify(payload) 
@@ -1915,7 +1924,6 @@ export default function App() {
                 <div className="flex flex-col gap-2">{groupedTagsForm.map(({ category, tags }) => <TagAccordion key={category} groupName={`【${String(category)}】`} tags={tags} formData={formData} setFormData={setFormData} />)}</div>
               </div>
               
-              {/* ★ 写真添付欄 */}
               <div className="space-y-3 bg-slate-900/80 backdrop-blur-sm p-4 sm:p-5 rounded-[2.5rem] border border-slate-700 shadow-lg">
                 <div className="flex justify-between items-center text-[10px] font-black text-cyan-600 mb-2 tracking-widest"><span className="flex items-center gap-1"><Camera size={14}/> VISUAL EVIDENCE</span></div>
                 
@@ -1931,31 +1939,52 @@ export default function App() {
                 </div>
                 <button type="button" onClick={handlePasteBtn} className="w-full mb-3 text-slate-300 bg-slate-800 border border-slate-600 py-2 rounded-xl flex items-center justify-center gap-1.5 shadow-inner active:scale-95 font-bold text-xs"><ClipboardList size={14}/> 外部からコピーした画像をペースト</button>
 
-                <div className="flex gap-4 overflow-x-auto pb-4 snap-x">
+                <div className="flex gap-4 overflow-x-auto pb-4 snap-x relative">
                   {!formData.images || formData.images.length === 0 ? (
                     <div className="w-full flex-shrink-0 h-32 border-2 border-dashed border-slate-700 rounded-[2rem] flex flex-col items-center justify-center text-slate-500 font-bold text-xs bg-slate-950/50 shadow-inner text-center px-4"><ImageIcon size={24} className="mb-2 opacity-50"/> <span>現場の様子を記録</span><span className="text-[9px] mt-1 opacity-70">Googleフォト等の写真は一度スマホに保存してから<br/>「ファイルを選択」で追加できます</span></div>
                   ) : (
                     Array.isArray(formData.images) && formData.images.map((img, i) => (
                       typeof img === 'string' ? (
                         <div key={i} className="relative w-48 flex-shrink-0 snap-center group">
-                          {/* ★ 修正：iOS Safariのタップ問題対策。画像自体ではなく外側のDivにonClickをつけ、透明なカバーで全体をボタン化する */}
-                          <div 
-                            className="absolute inset-0 w-full h-full z-10 cursor-pointer"
+                          {/* ★ iOS Safari対策：全体を覆う透明なボタン */}
+                          <button 
+                            type="button"
+                            className="w-full h-32 rounded-[1.5rem] border border-slate-700 shadow-lg bg-cover bg-center overflow-hidden block active:opacity-70 transition-opacity" 
+                            style={{ backgroundImage: `url(${img})` }}
                             onClick={(e) => { 
                               e.preventDefault(); 
+                              e.stopPropagation(); 
                               setMarkupModal({ isOpen: true, imgIndex: i, dataUrl: img }); 
                             }}
-                          ></div>
-
-                          <div 
-                            className="w-full h-32 rounded-[1.5rem] border border-slate-700 shadow-lg bg-cover bg-center" 
-                            style={{ backgroundImage: `url(${img})` }}
                           />
-                          <button type="button" onClick={(e) => { e.preventDefault(); const newImgs = [...formData.images]; newImgs.splice(i, 1); setFormData({...formData, images: newImgs}); }} className="absolute -top-2 -right-2 bg-red-500 text-slate-900 p-1.5 rounded-full shadow-[0_0_10px_rgba(239,68,68,0.8)] z-20"><X size={14}/></button>
                           
-                          <div className="absolute bottom-2 right-2 bg-cyan-600 text-slate-900 p-2 rounded-full shadow-[0_0_10px_rgba(6,182,212,0.8)] z-0 pointer-events-none">
-                            <Edit3 size={16}/>
-                          </div>
+                          {/* ★ 削除ボタン（独立） */}
+                          <button 
+                            type="button" 
+                            onClick={(e) => { 
+                              e.preventDefault(); 
+                              e.stopPropagation(); 
+                              const newImgs = [...formData.images]; 
+                              newImgs.splice(i, 1); 
+                              setFormData({...formData, images: newImgs}); 
+                            }} 
+                            className="absolute -top-2 -right-2 bg-red-500 text-slate-900 p-2 rounded-full shadow-[0_0_10px_rgba(239,68,68,0.8)] z-20"
+                          >
+                            <X size={14} strokeWidth={3}/>
+                          </button>
+                          
+                          {/* ★ 編集ボタン（独立） */}
+                          <button 
+                            type="button" 
+                            onClick={(e) => { 
+                              e.preventDefault(); 
+                              e.stopPropagation(); 
+                              setMarkupModal({ isOpen: true, imgIndex: i, dataUrl: img }); 
+                            }} 
+                            className="absolute bottom-2 right-2 bg-cyan-600 text-slate-900 p-2.5 rounded-full shadow-[0_0_10px_rgba(6,182,212,0.8)] active:scale-90 transition-all z-20"
+                          >
+                            <Edit3 size={18} strokeWidth={2.5}/>
+                          </button>
                         </div>
                       ) : null
                     ))
