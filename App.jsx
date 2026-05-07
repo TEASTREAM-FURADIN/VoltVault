@@ -41,19 +41,24 @@ const fetchWithRetry = async (url, options, retries = 5) => {
   }
 };
 
-// ★ スマホからのAI送信時、データが重すぎて通信エラーになるのを防ぐための専用圧縮関数
-const compressImageForAI = (dataUrl, maxSize = 600) => {
+// ★ スマホ（特にiPhone Safari）からのAI送信時、データが重すぎて通信エラーになるのを防ぐための専用圧縮関数
+const compressImageForAI = (dataUrl, maxSize = 512) => {
   return new Promise((resolve) => {
     const img = new Image();
     img.onload = () => {
-      const canvas = document.createElement('canvas');
-      const scale = Math.min(maxSize / img.width, maxSize / img.height, 1);
-      canvas.width = img.width * scale;
-      canvas.height = img.height * scale;
-      const ctx = canvas.getContext('2d');
-      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-      resolve(canvas.toDataURL('image/jpeg', 0.5)); // AI解析用は画質を落として超軽量化
+      try {
+        const canvas = document.createElement('canvas');
+        const scale = Math.min(maxSize / img.width, maxSize / img.height, 1);
+        canvas.width = img.width * scale;
+        canvas.height = img.height * scale;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        resolve(canvas.toDataURL('image/jpeg', 0.5)); // AI解析用は画質を落として超軽量化
+      } catch (e) {
+        resolve(dataUrl); // エラー時はフェイルセーフでそのまま返す
+      }
     };
+    img.onerror = () => resolve(dataUrl); // 読み込み失敗時も止まらず返す
     img.src = dataUrl;
   });
 };
@@ -499,7 +504,6 @@ const TextEditor = ({ t, texts, setTexts, setEditingTextId, zoom, dimensions }) 
   );
 };
 
-// ★ 復元：MemoCardコンポーネント（一覧画面のカード表示）
 const MemoCard = ({ memo, userSettings, onClick }) => {
   const gConf = userSettings?.genres?.[memo.genre] || { colorId: 'gray', icon: 'Info' };
   const c = ColorMap[gConf.colorId] || ColorMap.gray;
@@ -1396,29 +1400,37 @@ export default function App() {
       } else if (mode === 'shorten') {
         systemPrompt = `あなたは電気工事・建築現場の優秀なアシスタントです。提供された現場のメモ内容を、無駄を完全に省き、現場でパッと見て要点が伝わるように「極限まで簡潔な箇条書き」に短縮してください。挨拶や前置きは不要です。`;
       } else if (mode === 'ask') {
-        systemPrompt = `あなたは電気工事・建築現場の優秀なアシスタント（ベテラン職人）です。現場の写真（あれば）や現在のメモ内容を踏まえて、ユーザーからの質問にプロの視点で的確に答えてください。
-【ユーザーからの質問】: ${customQuestion}`;
+        systemPrompt = `あなたは電気工事・建築現場の優秀なアシスタント（ベテラン職人）です。現場の写真（あれば）や現在のメモ内容を踏まえて、ユーザーからの質問にプロの視点で的確に答えてください。`;
       }
 
-      parts.push({ 
-        text: `${systemPrompt}\n\n現在のラフメモ: ${formData.content || '(メモなし。写真から現場状況を推測してください)'}` 
-      });
-      
+      let userQuery = `現在のラフメモ: ${formData.content || '(メモなし。写真から現場状況を推測してください)'}`;
+      if (mode === 'ask') {
+        userQuery += `\n\n【ユーザーからの質問】: ${customQuestion}`;
+      }
+
+      const imageParts = [];
       if (formData.images && formData.images.length > 0) {
-        const imagesToSend = formData.images.slice(0, 5); 
+        // ★ iPhoneのメモリ・通信制限対策: AIに送る画像は最大2枚まで、サイズも512pxに縮小
+        const imagesToSend = formData.images.slice(0, 2); 
         for (const imgUrl of imagesToSend) {
           if (imgUrl.startsWith('data:image')) {
-            const compressedUrl = await compressImageForAI(imgUrl);
+            const compressedUrl = await compressImageForAI(imgUrl, 512);
             const base64 = compressedUrl.split(',')[1]; 
             const mimeType = compressedUrl.split(':')[1].split(';')[0];
-            parts.push({ inlineData: { mimeType, data: base64 } });
+            imageParts.push({ inlineData: { mimeType, data: base64 } });
           }
         }
       }
       
+      const payload = {
+        contents: [{ role: "user", parts: [{ text: userQuery }, ...imageParts] }],
+        systemInstruction: { parts: [{ text: systemPrompt }] }
+      };
+
       const data = await fetchWithRetry(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, 
-        body: JSON.stringify({ contents: [{ role: "user", parts: parts }] }) 
+        method: 'POST', 
+        headers: { 'Content-Type': 'application/json' }, 
+        body: JSON.stringify(payload) 
       });
       
       if (data.candidates && data.candidates[0] && data.candidates[0].content.parts[0].text) {
@@ -1431,13 +1443,16 @@ export default function App() {
         }
         
         setToastMessage(`✅ AIの処理が完了しました！`);
-      } else throw new Error("AIが文章の生成に失敗しました。");
+      } else {
+        throw new Error("AIが文章の生成に失敗しました。(データフォーマット異常)");
+      }
     } catch (err) { 
-      setToastMessage(`❌ AIエラー: 通信環境を確認してください。`); 
+      setToastMessage(`❌ AIエラー: ${err.message.substring(0, 30)}...`); 
       console.error(err); 
+      alert(`AIエラーが発生しました。\n・iPhoneの通信制限\n・画像の容量オーバー\nなどの可能性があります。\n詳細: ${err.message}`);
     } finally { 
       setIsAILoading(false); 
-      setTimeout(() => setToastMessage(''), 3000);
+      setTimeout(() => setToastMessage(''), 4000);
     }
   };
 
@@ -1651,15 +1666,25 @@ export default function App() {
           )}
         </main>
 
-        {/* ★ 現場最速！右下のクイック撮影ボタン（FAB） */}
+        {/* ★ 現場最速！右下のクイック撮影ボタン（FAB）と下書き再開ボタン */}
         {view === 'list' && (
-          <button 
-            onClick={() => hiddenQuickCaptureRef.current?.click()}
-            className="fixed bottom-24 right-6 z-[90] bg-gradient-to-r from-cyan-400 to-blue-500 text-slate-900 p-4 rounded-full shadow-[0_0_25px_rgba(6,182,212,0.8)] active:scale-90 transition-all flex items-center justify-center border-2 border-cyan-200"
-          >
-            <Camera size={32} fill="currentColor" className="text-slate-900" />
-            <span className="absolute -top-3 -left-3 bg-red-500 text-white text-[9px] font-black px-2 py-0.5 rounded-full shadow-md rotate-[-10deg] animate-pulse">即撮影!</span>
-          </button>
+          <div className="fixed bottom-24 right-6 z-[90] flex flex-col items-end gap-3">
+            {(formData.images?.length > 0 || formData.content || formData.title) && (
+              <button 
+                onClick={() => setView('add')}
+                className="bg-yellow-500 text-slate-900 px-4 py-3 rounded-full shadow-[0_0_15px_rgba(234,179,8,0.5)] active:scale-90 transition-all flex items-center gap-2 font-black text-xs border-2 border-yellow-300 animate-in slide-in-from-right"
+              >
+                <Edit3 size={16} /> 下書きを開く ({Number(formData.images?.length || 0)}枚)
+              </button>
+            )}
+            <button 
+              onClick={() => hiddenQuickCaptureRef.current?.click()}
+              className="bg-gradient-to-r from-cyan-400 to-blue-500 text-slate-900 p-4 rounded-full shadow-[0_0_25px_rgba(6,182,212,0.8)] active:scale-90 transition-all flex items-center justify-center border-2 border-cyan-200 relative"
+            >
+              <Camera size={32} fill="currentColor" className="text-slate-900" />
+              <span className="absolute -top-3 -left-3 bg-red-500 text-white text-[9px] font-black px-2 py-0.5 rounded-full shadow-md rotate-[-10deg] animate-pulse">即撮影!</span>
+            </button>
+          </div>
         )}
 
       </div>
@@ -1856,7 +1881,7 @@ export default function App() {
                 <div className="flex flex-col gap-2">{groupedTagsForm.map(({ category, tags }) => <TagAccordion key={category} groupName={`【${String(category)}】`} tags={tags} formData={formData} setFormData={setFormData} />)}</div>
               </div>
               
-              {/* ★ 誤って消去してしまっていた写真添付欄を完全に復元！ */}
+              {/* ★ 写真添付欄 */}
               <div className="space-y-3 bg-slate-900/80 backdrop-blur-sm p-4 sm:p-5 rounded-[2.5rem] border border-slate-700 shadow-lg">
                 <div className="flex justify-between items-center text-[10px] font-black text-cyan-600 mb-2 tracking-widest"><span className="flex items-center gap-1"><Camera size={14}/> VISUAL EVIDENCE</span></div>
                 
@@ -1895,7 +1920,7 @@ export default function App() {
                   )}
                 </div>
               </div>
-
+              
               <div className="space-y-3 bg-slate-900/80 backdrop-blur-sm p-4 sm:p-5 rounded-[2.5rem] border border-slate-700 shadow-lg">
                 <div className="flex flex-col gap-2">
                   <div className="flex justify-between items-center text-[10px] font-black text-cyan-600 tracking-widest">
