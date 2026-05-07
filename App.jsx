@@ -955,6 +955,8 @@ export default function App() {
   
   const [viewerData, setViewerData] = useState(null);
   const [isAILoading, setIsAILoading] = useState(false);
+  const [showAIPrompt, setShowAIPrompt] = useState(false);
+  const [aiPromptText, setAiPromptText] = useState('');
 
   const [toastMessage, setToastMessage] = useState('');
   const hiddenQuickCaptureRef = useRef(null); 
@@ -1370,20 +1372,39 @@ export default function App() {
     }
   };
 
-  const handleAIAssist = async () => {
-    if (!formData.content && (!formData.images || formData.images.length === 0)) { alert("画像を追加するか、少しだけメモを入力してからAIアシストを使用してください。"); return; }
+  const handleAIAssist = async (mode = 'organize', customQuestion = '') => {
+    if (!formData.content && (!formData.images || formData.images.length === 0) && mode !== 'ask') { 
+      setToastMessage("⚠️ 画像を追加するか、少しメモを入力してください。");
+      setTimeout(() => setToastMessage(''), 3000);
+      return; 
+    }
+    
     setIsAILoading(true);
+    setToastMessage("✨ AIが解析中...");
+
     try {
       const apiKey = ""; const parts = [];
-      parts.push({ 
-        text: `あなたは電気工事・建築現場の優秀なアシスタントです。提供された現場の写真（あれば）と、ラフな入力メモを解析し、現場の作業記録や引き継ぎ用としてプロらしい整理された文章を作成してください。
-【指示】1. 箇条書きを使用して見やすくすること。2. 写真から読み取れる状態（機器の状態、配線の色、施工状況、注意点など）があれば推測して補足すること。3. 挨拶などは不要で、メモ本文のみを出力すること。
 
-現在のラフメモ: ${formData.content || '(メモなし。写真から現場状況を推測して日報を作成してください)'}` 
+      let systemPrompt = "";
+      if (mode === 'organize') {
+        systemPrompt = `あなたは電気工事・建築現場の優秀なアシスタントです。提供された現場の写真（あれば）と、ラフな入力メモを解析し、現場の作業記録や引き継ぎ用としてプロらしい整理された文章を作成してください。
+【指示】1. 箇条書きを使用して見やすくすること。2. 写真から読み取れる状態（機器の状態、配線の色、施工状況、注意点など）があれば推測して補足すること。3. 挨拶などは不要で、メモ本文のみを出力すること。`;
+      } else if (mode === 'summarize') {
+        systemPrompt = `あなたは電気工事・建築現場の優秀なアシスタントです。提供された現場のメモ内容と写真を解析し、重要なポイントだけを抽出して「3〜5行程度の短い要約」を作成してください。挨拶は不要で要約本文のみ出力してください。`;
+      } else if (mode === 'expand') {
+        systemPrompt = `あなたは電気工事・建築現場の優秀なアシスタントです。提供された現場のメモ内容と写真から、プロの視点で詳細な状況、想定される手順、安全上の注意点、確認すべき事項などを推測して肉付けし、「非常に詳しく丁寧な作業レポート」を作成してください。挨拶は不要で本文のみ出力してください。`;
+      } else if (mode === 'shorten') {
+        systemPrompt = `あなたは電気工事・建築現場の優秀なアシスタントです。提供された現場のメモ内容を、無駄を完全に省き、現場でパッと見て要点が伝わるように「極限まで簡潔な箇条書き」に短縮してください。挨拶や前置きは不要です。`;
+      } else if (mode === 'ask') {
+        systemPrompt = `あなたは電気工事・建築現場の優秀なアシスタント（ベテラン職人）です。現場の写真（あれば）や現在のメモ内容を踏まえて、ユーザーからの質問にプロの視点で的確に答えてください。
+【ユーザーからの質問】: ${customQuestion}`;
+      }
+
+      parts.push({ 
+        text: `${systemPrompt}\n\n現在のラフメモ: ${formData.content || '(メモなし。写真から現場状況を推測してください)'}` 
       });
       
       if (formData.images && formData.images.length > 0) {
-        // ★ 最大5枚まで。iPhoneからの重い画像はAI送信用に「裏側で超軽量化」して送る
         const imagesToSend = formData.images.slice(0, 5); 
         for (const imgUrl of imagesToSend) {
           if (imgUrl.startsWith('data:image')) {
@@ -1397,16 +1418,27 @@ export default function App() {
       
       const data = await fetchWithRetry(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, 
-        body: JSON.stringify({ contents: [{ role: "user", parts: parts }] }) // ★ role指定を追加して安全に
+        body: JSON.stringify({ contents: [{ role: "user", parts: parts }] }) 
       });
       
       if (data.candidates && data.candidates[0] && data.candidates[0].content.parts[0].text) {
-        setFormData(prev => ({ ...prev, content: data.candidates[0].content.parts[0].text.trim() }));
+        const aiText = data.candidates[0].content.parts[0].text.trim();
+        
+        if (mode === 'ask') {
+          setFormData(prev => ({ ...prev, content: prev.content + (prev.content ? '\n\n' : '') + `【AIへの質問: ${customQuestion}】\n${aiText}` }));
+        } else {
+          setFormData(prev => ({ ...prev, content: aiText }));
+        }
+        
+        setToastMessage(`✅ AIの処理が完了しました！`);
       } else throw new Error("AIが文章の生成に失敗しました。");
     } catch (err) { 
-      alert(`AIアシストに失敗しました。\n通信環境またはAPI設定を確認してください。\n詳細: ${err.message}`); 
+      setToastMessage(`❌ AIエラー: 通信環境を確認してください。`); 
       console.error(err); 
-    } finally { setIsAILoading(false); }
+    } finally { 
+      setIsAILoading(false); 
+      setTimeout(() => setToastMessage(''), 3000);
+    }
   };
 
   // =============== レンダリング部 ===============
@@ -1824,6 +1856,7 @@ export default function App() {
                 <div className="flex flex-col gap-2">{groupedTagsForm.map(({ category, tags }) => <TagAccordion key={category} groupName={`【${String(category)}】`} tags={tags} formData={formData} setFormData={setFormData} />)}</div>
               </div>
               
+              {/* ★ 誤って消去してしまっていた写真添付欄を完全に復元！ */}
               <div className="space-y-3 bg-slate-900/80 backdrop-blur-sm p-4 sm:p-5 rounded-[2.5rem] border border-slate-700 shadow-lg">
                 <div className="flex justify-between items-center text-[10px] font-black text-cyan-600 mb-2 tracking-widest"><span className="flex items-center gap-1"><Camera size={14}/> VISUAL EVIDENCE</span></div>
                 
@@ -1846,17 +1879,15 @@ export default function App() {
                     Array.isArray(formData.images) && formData.images.map((img, i) => (
                       typeof img === 'string' ? (
                         <div key={i} className="relative w-48 flex-shrink-0 snap-center group">
-                          <img src={img} className="w-full h-32 object-cover rounded-[1.5rem] border border-slate-700 shadow-lg opacity-90" />
-                          
-                          {/* ★ 修正：確実に画像編集モーダルを開くボタン */}
-                          <button type="button" onClick={(e) => { e.preventDefault(); e.stopPropagation(); setMarkupModal({ isOpen: true, imgIndex: i, dataUrl: img }); }} className="absolute inset-0 w-full h-full flex flex-col items-center justify-center bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity rounded-[1.5rem] cursor-pointer">
-                            <Edit3 className="text-cyan-400 drop-shadow-md mb-1" size={24} />
-                            <span className="text-cyan-400 font-black text-[10px]">タップして編集</span>
-                          </button>
-                          
+                          {/* ★ 修正：iOS Safariのタップ問題対策 (onClickでのイベント伝播停止) */}
+                          <div 
+                            className="w-full h-32 rounded-[1.5rem] border border-slate-700 shadow-lg cursor-pointer active:opacity-50 transition-opacity bg-cover bg-center" 
+                            style={{ backgroundImage: `url(${img})` }}
+                            onClick={(e) => { e.preventDefault(); e.stopPropagation(); setMarkupModal({ isOpen: true, imgIndex: i, dataUrl: img }); }}
+                          />
                           <button type="button" onClick={(e) => { e.preventDefault(); e.stopPropagation(); const newImgs = [...formData.images]; newImgs.splice(i, 1); setFormData({...formData, images: newImgs}); }} className="absolute -top-2 -right-2 bg-red-500 text-slate-900 p-1.5 rounded-full shadow-[0_0_10px_rgba(239,68,68,0.8)] z-10"><X size={14}/></button>
                           
-                          {/* ★ 右下のボタンでも編集モーダルを開く */}
+                          {/* ★ スマホで確実にタップできるペンのマーク */}
                           <button type="button" onClick={(e) => { e.preventDefault(); e.stopPropagation(); setMarkupModal({ isOpen: true, imgIndex: i, dataUrl: img }); }} className="absolute bottom-2 right-2 bg-cyan-600 text-slate-900 p-2 rounded-full shadow-[0_0_10px_rgba(6,182,212,0.8)] active:scale-90 transition-all z-10"><Edit3 size={16}/></button>
                         </div>
                       ) : null
@@ -1864,15 +1895,52 @@ export default function App() {
                   )}
                 </div>
               </div>
-              
+
               <div className="space-y-3 bg-slate-900/80 backdrop-blur-sm p-4 sm:p-5 rounded-[2.5rem] border border-slate-700 shadow-lg">
-                <div className="flex justify-between items-center text-[10px] font-black text-cyan-600 mb-2 tracking-widest">
-                  <span className="flex items-center gap-1"><FileText size={14}/> QUEST LOG (MEMO)</span>
-                  <button type="button" onClick={handleAIAssist} disabled={isAILoading} className="bg-indigo-600 text-white px-3 py-1.5 rounded-xl flex items-center gap-1 shadow-[0_0_10px_rgba(79,70,229,0.5)] active:scale-95 font-bold text-xs disabled:opacity-50 hover:bg-indigo-500 transition-colors">
-                    {isAILoading ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
-                    {isAILoading ? 'AI解析中...' : '✨AIで自動整理'}
-                  </button>
+                <div className="flex flex-col gap-2">
+                  <div className="flex justify-between items-center text-[10px] font-black text-cyan-600 tracking-widest">
+                    <span className="flex items-center gap-1"><FileText size={14}/> QUEST LOG (MEMO) & AI ASSIST</span>
+                  </div>
+                  <div className="flex gap-2 overflow-x-auto pb-2 snap-x" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
+                    <button type="button" onClick={() => handleAIAssist('organize')} disabled={isAILoading} className="shrink-0 bg-indigo-600 text-white px-3 py-2 rounded-xl flex items-center gap-1.5 shadow-[0_0_10px_rgba(79,70,229,0.5)] active:scale-95 font-bold text-xs disabled:opacity-50 hover:bg-indigo-500 transition-colors">
+                      {isAILoading && !showAIPrompt ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />} 自動整理
+                    </button>
+                    <button type="button" onClick={() => handleAIAssist('summarize')} disabled={isAILoading} className="shrink-0 bg-slate-700 text-cyan-100 px-3 py-2 rounded-xl flex items-center gap-1.5 border border-slate-600 shadow-inner active:scale-95 font-bold text-xs disabled:opacity-50 hover:bg-slate-600 transition-colors">
+                      <FileText size={14} /> 要約
+                    </button>
+                    <button type="button" onClick={() => handleAIAssist('expand')} disabled={isAILoading} className="shrink-0 bg-slate-700 text-cyan-100 px-3 py-2 rounded-xl flex items-center gap-1.5 border border-slate-600 shadow-inner active:scale-95 font-bold text-xs disabled:opacity-50 hover:bg-slate-600 transition-colors">
+                      <Plus size={14} /> 詳しく
+                    </button>
+                    <button type="button" onClick={() => handleAIAssist('shorten')} disabled={isAILoading} className="shrink-0 bg-slate-700 text-cyan-100 px-3 py-2 rounded-xl flex items-center gap-1.5 border border-slate-600 shadow-inner active:scale-95 font-bold text-xs disabled:opacity-50 hover:bg-slate-600 transition-colors">
+                      <Scissors size={14} /> 簡潔に
+                    </button>
+                    <button type="button" onClick={() => setShowAIPrompt(!showAIPrompt)} disabled={isAILoading} className={`shrink-0 ${showAIPrompt ? 'bg-purple-600 text-white' : 'bg-slate-700 text-purple-300'} px-3 py-2 rounded-xl flex items-center gap-1.5 border border-slate-600 shadow-inner active:scale-95 font-bold text-xs disabled:opacity-50 transition-colors`}>
+                      <Info size={14} /> 質問する
+                    </button>
+                  </div>
+                  
+                  {showAIPrompt && (
+                    <div className="flex gap-2 animate-in fade-in slide-in-from-top-2 mb-2">
+                      <input 
+                        type="text" 
+                        value={aiPromptText} 
+                        onChange={e => setAiPromptText(e.target.value)} 
+                        placeholder="現場や写真についてAIに質問... (例: 配線の注意点は？)" 
+                        className="flex-1 bg-slate-900 border border-purple-500/50 p-2.5 rounded-xl text-xs font-bold text-cyan-50 outline-none focus:border-purple-400"
+                        onKeyDown={e => { if(e.key === 'Enter' && aiPromptText.trim()) { handleAIAssist('ask', aiPromptText); setAiPromptText(''); setShowAIPrompt(false); } }}
+                      />
+                      <button 
+                        type="button" 
+                        onClick={() => { if(aiPromptText.trim()) { handleAIAssist('ask', aiPromptText); setAiPromptText(''); setShowAIPrompt(false); } }}
+                        disabled={isAILoading || !aiPromptText.trim()}
+                        className="bg-purple-600 text-white px-4 py-2.5 rounded-xl text-xs font-black shadow-[0_0_10px_rgba(147,51,234,0.5)] active:scale-95 disabled:opacity-50 shrink-0"
+                      >
+                        送信
+                      </button>
+                    </div>
+                  )}
                 </div>
+
                 <div className="flex flex-wrap gap-2 pb-2 border-b border-slate-800">
                   {Array.isArray(userSettings.quickPhrases) && userSettings.quickPhrases.map((p, idx) => (
                     typeof p === 'string' ? <button key={idx} type="button" onClick={() => setFormData({...formData, content: formData.content + (formData.content?'\n':'') + p})} className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-cyan-100 rounded-xl text-[10px] border border-slate-600 font-black transition-colors shadow-inner">+ {String(p)}</button> : null
