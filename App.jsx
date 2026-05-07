@@ -41,7 +41,6 @@ const fetchWithRetry = async (url, options, retries = 5) => {
   }
 };
 
-// ★ スマホ（特にiPhone Safari）からのAI送信時、データが重すぎて通信エラーになるのを防ぐための専用圧縮関数
 const compressImageForAI = (dataUrl, maxSize = 512) => {
   return new Promise((resolve) => {
     const img = new Image();
@@ -53,12 +52,12 @@ const compressImageForAI = (dataUrl, maxSize = 512) => {
         canvas.height = img.height * scale;
         const ctx = canvas.getContext('2d');
         ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-        resolve(canvas.toDataURL('image/jpeg', 0.5)); // AI解析用は画質を落として超軽量化
+        resolve(canvas.toDataURL('image/jpeg', 0.5)); 
       } catch (e) {
-        resolve(dataUrl); // エラー時はフェイルセーフでそのまま返す
+        resolve(dataUrl); 
       }
     };
-    img.onerror = () => resolve(dataUrl); // 読み込み失敗時も止まらず返す
+    img.onerror = () => resolve(dataUrl); 
     img.src = dataUrl;
   });
 };
@@ -72,15 +71,6 @@ const ClipperIcon = ({ size = 24, className = "", strokeWidth = 2 }) => (
     <path d="M9.5 9.5C8 8 7 6 7 6C7 6 9 5 11 7L12 8" />
     <path d="M14.5 9.5C16 8 17 6 17 6C17 6 15 5 13 7L12 8" />
     <path d="M12 2L11 4H13L12 6" stroke="#06b6d4" strokeWidth="1.5"/>
-  </svg>
-);
-
-const TeaCupIcon = ({ size = 24, className = "", strokeWidth = 2 }) => (
-  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round" className={className}>
-    <path d="M6 8v5a6 6 0 0 0 12 0V8" />
-    <line x1="5" y1="8" x2="19" y2="8" />
-    <path d="M10 3s1 1.5 1 2.5-1 1.5-1 2.5" />
-    <path d="M14 3s-1 1.5-1 2.5 1 1.5 1 2.5" />
   </svg>
 );
 
@@ -628,8 +618,8 @@ const ImageViewer = ({ data, onClose, setViewerData, onEdit }) => {
         </div>
       )}
 
-      {/* ★ 詳細画面から直接編集モードへ行けるボタン */}
-      <button onClick={() => { onClose(); onEdit(src, data.index); }} className="absolute top-6 right-36 z-50 bg-cyan-600 p-3 rounded-full text-slate-900 shadow-[0_0_15px_rgba(6,182,212,0.8)] active:scale-90 transition-all border-2 border-cyan-300">
+      {/* ★ 詳細画面から直接編集モードへ行けるボタン（確実に開くようにsetTimeoutをかませる） */}
+      <button onClick={() => { onClose(); setTimeout(() => onEdit(src, data.index), 50); }} className="absolute top-6 right-36 z-50 bg-cyan-600 p-3 rounded-full text-slate-900 shadow-[0_0_15px_rgba(6,182,212,0.8)] active:scale-90 transition-all border-2 border-cyan-300">
         <Edit3 size={24} />
       </button>
 
@@ -649,12 +639,12 @@ const ImageViewer = ({ data, onClose, setViewerData, onEdit }) => {
       </button>
 
       {data.index > 0 && (
-        <button onClick={(e) => { e.stopPropagation(); setViewerData({ ...data, index: data.index - 1 }); setScale(1); setPosition({x:0, y:0}); }} className="absolute left-2 top-1/2 -translate-y-1/2 z-50 bg-slate-800/80 p-2 rounded-full text-white shadow-lg active:scale-90 transition-all border border-slate-600 hidden sm:block">
+        <button onClick={(e) => { e.stopPropagation(); setViewerData({ ...data, index: data.index - 1 }); setScale(1); setPosition({x:0, y:0}); }} className="absolute left-2 top-1/2 -translate-y-1/2 z-50 bg-slate-800/80 p-2 rounded-full text-white shadow-lg active:scale-90 transition-all border border-slate-600">
           <ChevronLeft size={28} />
         </button>
       )}
       {data.index < data.images.length - 1 && (
-        <button onClick={(e) => { e.stopPropagation(); setViewerData({ ...data, index: data.index + 1 }); setScale(1); setPosition({x:0, y:0}); }} className="absolute right-2 top-1/2 -translate-y-1/2 z-50 bg-slate-800/80 p-2 rounded-full text-white shadow-lg active:scale-90 transition-all border border-slate-600 hidden sm:block">
+        <button onClick={(e) => { e.stopPropagation(); setViewerData({ ...data, index: data.index + 1 }); setScale(1); setPosition({x:0, y:0}); }} className="absolute right-2 top-1/2 -translate-y-1/2 z-50 bg-slate-800/80 p-2 rounded-full text-white shadow-lg active:scale-90 transition-all border border-slate-600">
           <ChevronRight size={28} />
         </button>
       )}
@@ -705,6 +695,11 @@ const MarkupModalCanvas = ({ markupModal, setMarkupModal, onSave }) => {
     img.onload = () => {
       const scale = Math.min((window.innerWidth - 32) / img.width, (window.innerHeight * 0.55) / img.height, 1);
       setDimensions({ dispW: img.width * scale, dispH: img.height * scale, origW: img.width, origH: img.height, img });
+    };
+    // ★ 追加：iPhoneなどで画像が重すぎて読み込み失敗した時のフェイルセーフ
+    img.onerror = () => {
+      alert("⚠️ 画像の読み込みに失敗しました。\n(メモリ制限のため、少し時間をおいて再度お試しください)");
+      setMarkupModal({ isOpen: false, imgIndex: null, dataUrl: null });
     };
     img.src = markupModal.dataUrl;
   }, [markupModal.dataUrl]);
@@ -1376,6 +1371,7 @@ export default function App() {
     }
   };
 
+  // ★ AI機能の改善とエラー対策
   const handleAIAssist = async (mode = 'organize', customQuestion = '') => {
     if (!formData.content && (!formData.images || formData.images.length === 0) && mode !== 'ask') { 
       setToastMessage("⚠️ 画像を追加するか、少しメモを入力してください。");
@@ -1387,7 +1383,18 @@ export default function App() {
     setToastMessage("✨ AIが解析中...");
 
     try {
-      const apiKey = ""; const parts = [];
+      // ★ Vercel等の外部で動かす場合は、Google AI Studioで取得したAPIキーを localStorage に保存して使用
+      const canvasApiKey = ""; 
+      const apiKey = canvasApiKey || localStorage.getItem('voltVaultGeminiApiKey') || "";
+
+      if (!apiKey) {
+        alert("⚠️ Vercel等の外部環境でAIを使用するには、右下の設定画面（Equipment）から「Gemini APIキー」を登録してください。\n(Canvas内では自動で適用されます)");
+        setIsAILoading(false);
+        setToastMessage('');
+        return;
+      }
+
+      const parts = [];
 
       let systemPrompt = "";
       if (mode === 'organize') {
@@ -1449,7 +1456,7 @@ export default function App() {
     } catch (err) { 
       setToastMessage(`❌ AIエラー: ${err.message.substring(0, 30)}...`); 
       console.error(err); 
-      alert(`AIエラーが発生しました。\n・iPhoneの通信制限\n・画像の容量オーバー\nなどの可能性があります。\n詳細: ${err.message}`);
+      alert(`AIエラーが発生しました。\n・APIキー未設定\n・iPhoneの通信制限\n・画像の容量オーバー\nなどの可能性があります。\n詳細: ${err.message}`);
     } finally { 
       setIsAILoading(false); 
       setTimeout(() => setToastMessage(''), 4000);
@@ -1517,7 +1524,6 @@ export default function App() {
           {view === 'list' && (
             <div className="space-y-2 animate-in slide-in-from-top-2 relative z-10">
               <div className="flex bg-slate-950/50 p-1 rounded-xl backdrop-blur-sm border border-slate-800">
-                {/* ★ 変更：タブに「📝下書き」を追加 */}
                 {['all', 'drafts', 'site', 'genre', 'material'].map(mode => (
                   <button key={mode} onClick={() => setListMode(mode)} className={`flex-1 py-1.5 rounded-lg text-[10px] font-black transition-all ${listMode === mode ? 'bg-cyan-600 text-slate-900 shadow-[0_0_10px_rgba(6,182,212,0.5)]' : 'text-slate-400 hover:text-cyan-400'}`}>
                     {mode === 'all' ? '全て' : mode === 'drafts' ? '📝下書き' : mode === 'site' ? '現場別' : mode === 'genre' ? 'ジャンル' : '材料別'}
@@ -1647,6 +1653,34 @@ export default function App() {
           {view === 'settings' && (
             <div className="space-y-6 pb-10 animate-in slide-in-from-right">
               <h2 className="text-xl font-black text-cyan-400 flex items-center gap-2 mb-4 tracking-widest drop-shadow-[0_0_8px_rgba(34,211,238,0.5)]"><Settings className="text-cyan-500"/> MASTER SETTINGS</h2>
+              
+              {/* ★ 新設：Gemini API設定欄 */}
+              <div className="bg-slate-800/80 backdrop-blur-sm p-6 rounded-[2rem] border border-purple-500/50 shadow-[0_0_15px_rgba(147,51,234,0.3)] space-y-4">
+                <h3 className="text-sm font-black text-purple-400 border-b border-purple-900/50 pb-2 flex items-center gap-2 tracking-widest"><Sparkles size={16}/> AI (Gemini) API設定</h3>
+                <p className="text-[10px] text-slate-300 leading-relaxed font-bold">
+                  Vercel等でAI機能を使用するには、Google AI Studioで取得したAPIキーを設定してください。（入力した鍵はスマホ本体に安全に保存されます）
+                </p>
+                <div className="flex gap-2">
+                  <input 
+                    type="password" 
+                    id="apiKeyInput"
+                    placeholder="AIzaSy..." 
+                    defaultValue={localStorage.getItem('voltVaultGeminiApiKey') || ''}
+                    className="flex-1 bg-slate-900 border border-slate-700 p-2.5 rounded-xl text-xs font-bold text-cyan-50 outline-none focus:border-purple-500 shadow-inner" 
+                  />
+                  <button 
+                    onClick={() => {
+                      const val = document.getElementById('apiKeyInput').value.trim();
+                      localStorage.setItem('voltVaultGeminiApiKey', val);
+                      alert('AIの鍵を保存しました！\nこれでAI機能が使えるようになります。');
+                    }} 
+                    className="bg-purple-600 text-white px-4 py-2.5 rounded-xl text-xs font-black shadow-[0_0_10px_rgba(147,51,234,0.5)] active:scale-95"
+                  >
+                    保存
+                  </button>
+                </div>
+              </div>
+
               <EditorSection title="ジャンル編集" icon={ListFilter} items={userSettings.genres} placeholder="新ジャンル名..." onAdd={(name, colorId, icon, group) => handleAddItem('genres', name, colorId, icon, group)} onUpdate={(oldKey, newKey, colorId, icon, group) => handleUpdateItem('genres', oldKey, newKey, colorId, icon, group)} onDelete={(name) => { const obj = {...userSettings.genres}; delete obj[name]; saveSettings({...userSettings, genres: obj}); }} onMoveUp={(name) => handleMoveItem('genres', name, 'up')} onMoveDown={(name) => handleMoveItem('genres', name, 'down')} />
               <EditorSection title="材料・タグ編集" icon={Tags} items={userSettings.tags} placeholder="新しい材料・タグ..." onAdd={(name, colorId, icon, group) => handleAddItem('tags', name, colorId, icon, group)} onUpdate={(oldKey, newKey, colorId, icon, group) => handleUpdateItem('tags', oldKey, newKey, colorId, icon, group)} onDelete={(name) => { const obj = {...userSettings.tags}; delete obj[name]; saveSettings({...userSettings, tags: obj}); }} onMoveUp={(name) => handleMoveItem('tags', name, 'up')} onMoveDown={(name) => handleMoveItem('tags', name, 'down')} />
               <div className="bg-slate-800/80 backdrop-blur-sm p-6 rounded-[2rem] border border-slate-700 shadow-[0_0_15px_rgba(0,0,0,0.5)] space-y-4">
@@ -1904,16 +1938,24 @@ export default function App() {
                     Array.isArray(formData.images) && formData.images.map((img, i) => (
                       typeof img === 'string' ? (
                         <div key={i} className="relative w-48 flex-shrink-0 snap-center group">
-                          {/* ★ 修正：iOS Safariのタップ問題対策 (onClickでのイベント伝播停止) */}
+                          {/* ★ 修正：iOS Safariのタップ問題対策。画像自体ではなく外側のDivにonClickをつけ、透明なカバーで全体をボタン化する */}
                           <div 
-                            className="w-full h-32 rounded-[1.5rem] border border-slate-700 shadow-lg cursor-pointer active:opacity-50 transition-opacity bg-cover bg-center" 
+                            className="absolute inset-0 w-full h-full z-10 cursor-pointer"
+                            onClick={(e) => { 
+                              e.preventDefault(); 
+                              setMarkupModal({ isOpen: true, imgIndex: i, dataUrl: img }); 
+                            }}
+                          ></div>
+
+                          <div 
+                            className="w-full h-32 rounded-[1.5rem] border border-slate-700 shadow-lg bg-cover bg-center" 
                             style={{ backgroundImage: `url(${img})` }}
-                            onClick={(e) => { e.preventDefault(); e.stopPropagation(); setMarkupModal({ isOpen: true, imgIndex: i, dataUrl: img }); }}
                           />
-                          <button type="button" onClick={(e) => { e.preventDefault(); e.stopPropagation(); const newImgs = [...formData.images]; newImgs.splice(i, 1); setFormData({...formData, images: newImgs}); }} className="absolute -top-2 -right-2 bg-red-500 text-slate-900 p-1.5 rounded-full shadow-[0_0_10px_rgba(239,68,68,0.8)] z-10"><X size={14}/></button>
+                          <button type="button" onClick={(e) => { e.preventDefault(); const newImgs = [...formData.images]; newImgs.splice(i, 1); setFormData({...formData, images: newImgs}); }} className="absolute -top-2 -right-2 bg-red-500 text-slate-900 p-1.5 rounded-full shadow-[0_0_10px_rgba(239,68,68,0.8)] z-20"><X size={14}/></button>
                           
-                          {/* ★ スマホで確実にタップできるペンのマーク */}
-                          <button type="button" onClick={(e) => { e.preventDefault(); e.stopPropagation(); setMarkupModal({ isOpen: true, imgIndex: i, dataUrl: img }); }} className="absolute bottom-2 right-2 bg-cyan-600 text-slate-900 p-2 rounded-full shadow-[0_0_10px_rgba(6,182,212,0.8)] active:scale-90 transition-all z-10"><Edit3 size={16}/></button>
+                          <div className="absolute bottom-2 right-2 bg-cyan-600 text-slate-900 p-2 rounded-full shadow-[0_0_10px_rgba(6,182,212,0.8)] z-0 pointer-events-none">
+                            <Edit3 size={16}/>
+                          </div>
                         </div>
                       ) : null
                     ))
@@ -1992,7 +2034,10 @@ export default function App() {
             setViewerData={setViewerData} 
             onEdit={(src, idx) => {
               setViewerData(null);
-              setMarkupModal({ isOpen: true, imgIndex: idx, dataUrl: src });
+              // ★ プレビューからの編集移行時、Reactの状態更新が競合しないように一瞬遅らせる
+              setTimeout(() => {
+                setMarkupModal({ isOpen: true, imgIndex: idx, dataUrl: src });
+              }, 50);
             }}
           />
         )}
