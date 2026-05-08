@@ -503,7 +503,6 @@ const TextEditor = ({ t, texts, setTexts, setEditingTextId, zoom, dimensions }) 
   );
 };
 
-// ★ 復元した MemoCard
 const MemoCard = ({ memo, userSettings, onClick }) => {
   const gConf = userSettings?.genres?.[memo.genre] || { colorId: 'gray', icon: 'Info' };
   const c = ColorMap[gConf.colorId] || ColorMap.gray;
@@ -682,7 +681,6 @@ const ImageViewer = ({ data, onClose, setViewerData, onEdit }) => {
   );
 };
 
-// ★ 復元した MarkupModalCanvas
 const MarkupModalCanvas = ({ markupModal, setMarkupModal, onSave }) => {
   const canvasRef = useRef(null); const [mode, setMode] = useState('draw'); const [zoom, setZoom] = useState(1);
   const [dimensions, setDimensions] = useState(null); const [texts, setTexts] = useState([]); 
@@ -1392,18 +1390,15 @@ export default function App() {
     setToastMessage("✨ AIが解析中...");
 
     try {
-      const canvasApiKey = ""; 
-      const savedApiKey = localStorage.getItem('voltVaultGeminiApiKey') || "";
-      const apiKey = canvasApiKey || savedApiKey;
+      // ★ 修正：APIキーが空でも、Canvas環境ではエラーで止めずにそのまま進める（プロキシが処理するため）
+      let apiKey = ""; 
+      try {
+         const savedKey = localStorage.getItem('voltVaultGeminiApiKey');
+         if (savedKey) apiKey = savedKey;
+      } catch (e) {}
 
-      if (!apiKey) {
-        alert("⚠️ 右下の設定画面(Equipment)の一番上から「AI (Gemini) APIキー」を登録してください。\n(Canvas内では自動で適用されます)");
-        setIsAILoading(false);
-        setToastMessage('');
-        return;
-      }
-
-      const modelName = savedApiKey ? "gemini-1.5-flash" : "gemini-2.5-flash-preview-09-2025";
+      // 常にプレビューモデルを使用（これによりCanvasでもVercelでも安定稼働）
+      const modelName = "gemini-2.5-flash-preview-09-2025";
       const parts = [];
 
       let systemPrompt = "";
@@ -1417,7 +1412,7 @@ export default function App() {
       } else if (mode === 'shorten') {
         systemPrompt = `あなたは電気工事・建築現場の優秀なアシスタントです。提供された現場のメモ内容を、無駄を完全に省き、現場でパッと見て要点が伝わるように「極限まで簡潔な箇条書き」に短縮してください。挨拶や前置きは不要です。`;
       } else if (mode === 'ask') {
-        systemPrompt = `あなたは電気工事・建築現場の優秀なアシスタント（ベテラン職人）です。現場の写真（あれば）や現在のメモ内容を踏まえて、ユーザーからの質問にプロの視点で的確に答えてください。`;
+        systemPrompt = `あなたは電気工事・建築現場の優秀なアシスタント（ベテラン職人）です。現場の写真（あれば）や現在のメモ内容を踏まえて、ユーザーからの質問にプロの視点で的確に答えてください。挨拶や前置きは不要です。`;
       }
 
       let userQuery = `現在のラフメモ: ${formData.content || '(メモなし。写真から現場状況を推測してください)'}`;
@@ -1463,9 +1458,10 @@ export default function App() {
         throw new Error("AIが文章の生成に失敗しました。(データフォーマット異常)");
       }
     } catch (err) { 
-      setToastMessage(`❌ AIエラー: ${err.message.substring(0, 30)}...`); 
+      setToastMessage(`❌ AIエラー`); 
       console.error(err); 
-      alert(`AIエラーが発生しました。\n・APIキー未設定\n・iPhoneの通信制限\n・画像の容量オーバー\nなどの可能性があります。\n詳細: ${err.message}`);
+      // ★ 修正：Canvas内での利用を想定し、エラー時のメッセージを調整
+      alert(`AIエラーが発生しました。\n(Vercelなどの外部URLからアクセスしている場合は、設定画面からAPIキーを入力してください)\n詳細: ${err.message}`);
     } finally { 
       setIsAILoading(false); 
       setTimeout(() => setToastMessage(''), 4000);
@@ -1946,7 +1942,6 @@ export default function App() {
                     Array.isArray(formData.images) && formData.images.map((img, i) => (
                       typeof img === 'string' ? (
                         <div key={i} className="relative w-48 flex-shrink-0 snap-center group">
-                          {/* ★ iOS Safari対策：全体を覆う透明なボタン */}
                           <button 
                             type="button"
                             className="w-full h-32 rounded-[1.5rem] border border-slate-700 shadow-lg bg-cover bg-center overflow-hidden block active:opacity-70 transition-opacity" 
@@ -1958,7 +1953,6 @@ export default function App() {
                             }}
                           />
                           
-                          {/* ★ 削除ボタン（独立） */}
                           <button 
                             type="button" 
                             onClick={(e) => { 
@@ -1973,7 +1967,6 @@ export default function App() {
                             <X size={14} strokeWidth={3}/>
                           </button>
                           
-                          {/* ★ 編集ボタン（独立） */}
                           <button 
                             type="button" 
                             onClick={(e) => { 
