@@ -141,6 +141,8 @@ const currentAppId = typeof __app_id !== 'undefined' ? __app_id : (firebaseConfi
 
 const defaultSettings = {
   quickPhrases: ["通電確認OK", "絶縁抵抗計 測定済", "相色確認OK", "隠蔽部写真撮影済", "先行配管完了"],
+  sites: ["第1ビル", "東館改修工事", "高圧受変電所"], // ★ 新設：現場名の記憶リスト
+  teachers: ["門田さん", "社長", "協力業者のAさん"], // ★ 新設：教えてくれた人の記憶リスト
   genres: {
     '幹線工事': { colorId: 'red', icon: 'Zap', group: '電気', order: 0 },
     '盤結線': { colorId: 'blue', icon: 'Grid', group: '電気', order: 1 },
@@ -324,6 +326,37 @@ const RadarChart = ({ memos, userSettings }) => {
           return <text key={`label-${i}`} x={tx} y={ty} fill="#94a3b8" fontSize="12" fontWeight="900" textAnchor={anchor} dominantBaseline="middle" className="drop-shadow-md">{d.name}</text>;
         })}
       </svg>
+    </div>
+  );
+};
+
+// ★ 新設：設定画面用のシンプルなリスト編集コンポーネント
+const SimpleListEditor = ({ title, icon: Icon, items, onAdd, onDelete, placeholder }) => {
+  const [newItem, setNewItem] = useState('');
+  return (
+    <div className="bg-slate-800/80 backdrop-blur-sm p-5 rounded-[2rem] border border-slate-700 shadow-lg space-y-4">
+      <h3 className="text-sm font-black text-cyan-400 border-b border-slate-700 pb-2 flex items-center gap-2 tracking-widest"><Icon size={16}/> {title}</h3>
+      <div className="flex flex-wrap gap-2 mb-2">
+        {Array.isArray(items) && items.map((item, idx) => (
+          <span key={idx} className="bg-slate-900 text-cyan-100 text-xs font-bold px-3 py-1.5 rounded-lg flex items-center gap-2 border border-slate-600 shadow-inner">
+            {item} 
+            <button onClick={() => onDelete(item)} className="text-slate-500 hover:text-red-500 transition-colors"><X size={12}/></button>
+          </span>
+        ))}
+      </div>
+      <div className="bg-slate-900 p-3 rounded-2xl border border-slate-700 flex gap-2 shadow-inner">
+        <input 
+          type="text" 
+          placeholder={placeholder} 
+          value={newItem} 
+          onChange={e => setNewItem(e.target.value)} 
+          className="flex-1 bg-slate-800 border border-slate-700 p-2.5 rounded-xl text-sm font-bold text-cyan-50 outline-none placeholder-slate-500 focus:border-cyan-500 transition-all min-w-0" 
+          onKeyDown={e => { if(e.key === 'Enter' && newItem.trim()) { onAdd(newItem.trim()); setNewItem(''); } }}
+        />
+        <button onClick={() => { if(newItem.trim()){ onAdd(newItem.trim()); setNewItem(''); } }} className="bg-cyan-600/20 text-cyan-400 border border-cyan-500/50 px-4 py-2.5 rounded-xl font-black text-xs uppercase tracking-widest active:scale-[0.98] hover:bg-cyan-600 hover:text-slate-900 transition-all flex justify-center items-center gap-1 shrink-0">
+          <Plus size={14}/>追加
+        </button>
+      </div>
     </div>
   );
 };
@@ -681,7 +714,6 @@ const ImageViewer = ({ data, onClose, setViewerData, onEdit }) => {
   );
 };
 
-// ★ 復活させた MarkupModalCanvas （画像編集画面）
 const MarkupModalCanvas = ({ markupModal, setMarkupModal, onSave }) => {
   const canvasRef = useRef(null); const [mode, setMode] = useState('draw'); const [zoom, setZoom] = useState(1);
   const [dimensions, setDimensions] = useState(null); const [texts, setTexts] = useState([]); 
@@ -1010,7 +1042,14 @@ export default function App() {
           if (!obj[k].group || !MainCategories.includes(obj[k].group)) obj[k].group = 'その他';
           if (typeof obj[k].order !== 'number') obj[k].order = i;
         }));
-        setUserSettings({ quickPhrases: data.quickPhrases || defaultSettings.quickPhrases, genres: genresData, tags: tagsData, stats: { ...defaultSettings.stats, ...(data.stats || {}) } });
+        setUserSettings({ 
+          quickPhrases: data.quickPhrases || defaultSettings.quickPhrases, 
+          sites: data.sites || defaultSettings.sites || [], // ★ 現場名履歴
+          teachers: data.teachers || defaultSettings.teachers || [], // ★ 教えてくれた人履歴
+          genres: genresData, 
+          tags: tagsData, 
+          stats: { ...defaultSettings.stats, ...(data.stats || {}) } 
+        });
       }
     });
     return () => { unsubscribeMemos(); unsubscribeSettings(); };
@@ -1032,7 +1071,10 @@ export default function App() {
   const [newTagColor, setNewTagColor] = useState('gray');
   const [newTagIcon, setNewTagIcon] = useState('Tags');
 
-  const uniqueSites = useMemo(() => [...new Set(memos.map(m => String(m.site || "")).filter(Boolean))], [memos]);
+  // ★ 自動記憶した履歴と、過去のメモから抽出したユニークな名前を結合（重複を排除）してサジェストリストを作成
+  const uniqueSites = useMemo(() => Array.from(new Set([...(userSettings.sites || []), ...memos.map(m => String(m.site || "")).filter(Boolean)])), [memos, userSettings]);
+  const uniqueTeachers = useMemo(() => Array.from(new Set([...(userSettings.teachers || []), ...memos.map(m => String(m.teacher || "")).filter(Boolean)])), [memos, userSettings]);
+  
   const uniqueTitles = useMemo(() => [...new Set(memos.map(m => String(m.title || "").replace(/\s+\d+$/, "")).filter(Boolean))], [memos]);
 
   const sortedGenres = useMemo(() => Object.entries(userSettings?.genres || {}).map(([k, v]) => ({ key: k, ...v })).sort((a, b) => (a.order || 0) - (b.order || 0)), [userSettings]);
@@ -1212,8 +1254,24 @@ export default function App() {
 
       await setDoc(doc(db, 'artifacts', currentAppId, 'public', 'data', 'memos', id), memoToSave, { merge: true });
       
+      // ★ 新設：保存時に現場名や教えてくれた人を自動記憶する処理
+      let newSettings = { ...userSettings };
+      let settingsChanged = false;
+      
+      const currentSite = String(formData.site || '').trim();
+      if (currentSite && !(newSettings.sites || []).includes(currentSite)) {
+        newSettings.sites = [...(newSettings.sites || []), currentSite];
+        settingsChanged = true;
+      }
+
+      const currentTeacher = String(formData.teacher || '').trim();
+      if (currentTeacher && !(newSettings.teachers || []).includes(currentTeacher)) {
+        newSettings.teachers = [...(newSettings.teachers || []), currentTeacher];
+        settingsChanged = true;
+      }
+
       if (isNew && !saveAsDraft) {
-        const stats = userSettings.stats || defaultSettings.stats;
+        const stats = newSettings.stats || defaultSettings.stats;
         const todayStr = new Date().toISOString().split('T')[0];
         let newStreak = stats.streakDays || 0;
         if (stats.lastMemoDate !== todayStr) {
@@ -1226,8 +1284,13 @@ export default function App() {
         
         if (newLevel > currentLevel) { setLevelUpData({ level: newLevel, title: getTitle(newLevel) }); setTimeout(() => setLevelUpData(null), 4000); }
 
-        await saveSettings({ ...userSettings, stats: { ...stats, exp: newExp, level: newLevel, totalMemos: newTotalMemos, clipperDurability: Math.max(0, (stats.clipperDurability ?? 100) - 5), lastMemoDate: todayStr, streakDays: newStreak } });
+        newSettings.stats = { ...stats, exp: newExp, level: newLevel, totalMemos: newTotalMemos, clipperDurability: Math.max(0, (stats.clipperDurability ?? 100) - 5), lastMemoDate: todayStr, streakDays: newStreak };
+        settingsChanged = true;
         try { localStorage.removeItem('voltVaultDraft'); } catch(e){}
+      }
+      
+      if (settingsChanged) {
+        await saveSettings(newSettings);
       }
 
       setView('list'); setFormData(initialForm); setShowAdvanced(false); setShowNewGenre(false); setShowNewTag(false);
@@ -1380,6 +1443,7 @@ export default function App() {
     }
   };
 
+  // ★ AI機能の修正：Canvas環境とVercel環境を自動判定し、最新の安定モデルを使用
   const handleAIAssist = async (mode = 'organize', customQuestion = '') => {
     if (!formData.content && (!formData.images || formData.images.length === 0) && mode !== 'ask') { 
       setToastMessage("⚠️ 画像を追加するか、少しメモを入力してください。");
@@ -1391,18 +1455,25 @@ export default function App() {
     setToastMessage("✨ AIが解析中...");
 
     try {
-      const canvasApiKey = ""; 
+      // 現在のドメインが Google の開発環境（Canvas内）かどうかを判定
+      const isCanvas = window.location.hostname.includes('goog') || window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+      
       const savedApiKey = localStorage.getItem('voltVaultGeminiApiKey') || "";
-      const apiKey = canvasApiKey || savedApiKey;
-
-      if (!apiKey) {
-        alert("⚠️ 右下の設定画面(Equipment)の一番上から「AI (Gemini) APIキー」を登録してください。\n(Canvas内では自動で適用されます)");
+      
+      // Vercelなどの外部環境なのに、APIキーが登録されていない場合はエラーにする
+      if (!isCanvas && !savedApiKey) {
+        alert("⚠️ Vercel等の外部環境でAIを使用するには、右下の設定画面(Equipment)の一番上から「AI (Gemini) APIキー」を登録してください。\n\n※このキーがないとGoogle AIに接続できません。");
         setIsAILoading(false);
         setToastMessage('');
         return;
       }
 
-      const modelName = savedApiKey ? "gemini-1.5-flash" : "gemini-2.5-flash-preview-09-2025";
+      // Canvas内ならプロキシが処理するので空文字でOK。外部ならユーザーのAPIキーを使用。
+      const apiKey = isCanvas ? "" : savedApiKey;
+      
+      // Vercel環境（外部APIキー使用時）は安定した "gemini-1.5-flash-latest" を使用する。
+      const modelName = isCanvas ? "gemini-2.5-flash-preview-09-2025" : "gemini-1.5-flash-latest";
+      
       const parts = [];
 
       let systemPrompt = "";
@@ -1464,7 +1535,7 @@ export default function App() {
     } catch (err) { 
       setToastMessage(`❌ AIエラー: ${err.message.substring(0, 30)}...`); 
       console.error(err); 
-      alert(`AIエラーが発生しました。\n・APIキー未設定\n・iPhoneの通信制限\n・画像の容量オーバー\nなどの可能性があります。\n詳細: ${err.message}`);
+      alert(`AIエラーが発生しました。\n・APIキー未設定/間違い\n・iPhoneの通信制限\n・画像の容量オーバー\nなどの可能性があります。\n詳細: ${err.message}`);
     } finally { 
       setIsAILoading(false); 
       setTimeout(() => setToastMessage(''), 4000);
@@ -1662,7 +1733,6 @@ export default function App() {
             <div className="space-y-6 pb-10 animate-in slide-in-from-right">
               <h2 className="text-xl font-black text-cyan-400 flex items-center gap-2 mb-4 tracking-widest drop-shadow-[0_0_8px_rgba(34,211,238,0.5)]"><Settings className="text-cyan-500"/> MASTER SETTINGS</h2>
               
-              {/* ★ 新設：Gemini API設定欄 */}
               <div className="bg-slate-800/80 backdrop-blur-sm p-6 rounded-[2rem] border border-purple-500/50 shadow-[0_0_15px_rgba(147,51,234,0.3)] space-y-4">
                 <h3 className="text-sm font-black text-purple-400 border-b border-purple-900/50 pb-2 flex items-center gap-2 tracking-widest"><Sparkles size={16}/> AI (Gemini) API設定</h3>
                 <p className="text-[10px] text-slate-300 leading-relaxed font-bold">
@@ -1689,20 +1759,32 @@ export default function App() {
                 </div>
               </div>
 
+              {/* ★ 新設：現場名（ダンジョン）と教えてくれた人（伝授者）の記憶リスト管理 */}
+              <SimpleListEditor 
+                title="現場（ダンジョン）履歴" icon={Building} 
+                items={userSettings.sites || []} 
+                onAdd={(item) => saveSettings({ ...userSettings, sites: [...(userSettings.sites || []), item] })}
+                onDelete={(item) => saveSettings({ ...userSettings, sites: (userSettings.sites || []).filter(i => i !== item) })}
+                placeholder="新しく追加する現場名..."
+              />
+              <SimpleListEditor 
+                title="教えてくれた人（伝授者）履歴" icon={User} 
+                items={userSettings.teachers || []} 
+                onAdd={(item) => saveSettings({ ...userSettings, teachers: [...(userSettings.teachers || []), item] })}
+                onDelete={(item) => saveSettings({ ...userSettings, teachers: (userSettings.teachers || []).filter(i => i !== item) })}
+                placeholder="新しく追加する人の名前..."
+              />
+              <SimpleListEditor 
+                title="クイックフレーズ編集" icon={Type} 
+                items={userSettings.quickPhrases || []} 
+                onAdd={(item) => saveSettings({ ...userSettings, quickPhrases: [...(userSettings.quickPhrases || []), item] })}
+                onDelete={(item) => saveSettings({ ...userSettings, quickPhrases: (userSettings.quickPhrases || []).filter(i => i !== item) })}
+                placeholder="新しいフレーズ..."
+              />
+
               <EditorSection title="ジャンル編集" icon={ListFilter} items={userSettings.genres} placeholder="新ジャンル名..." onAdd={(name, colorId, icon, group) => handleAddItem('genres', name, colorId, icon, group)} onUpdate={(oldKey, newKey, colorId, icon, group) => handleUpdateItem('genres', oldKey, newKey, colorId, icon, group)} onDelete={(name) => { const obj = {...userSettings.genres}; delete obj[name]; saveSettings({...userSettings, genres: obj}); }} onMoveUp={(name) => handleMoveItem('genres', name, 'up')} onMoveDown={(name) => handleMoveItem('genres', name, 'down')} />
               <EditorSection title="材料・タグ編集" icon={Tags} items={userSettings.tags} placeholder="新しい材料・タグ..." onAdd={(name, colorId, icon, group) => handleAddItem('tags', name, colorId, icon, group)} onUpdate={(oldKey, newKey, colorId, icon, group) => handleUpdateItem('tags', oldKey, newKey, colorId, icon, group)} onDelete={(name) => { const obj = {...userSettings.tags}; delete obj[name]; saveSettings({...userSettings, tags: obj}); }} onMoveUp={(name) => handleMoveItem('tags', name, 'up')} onMoveDown={(name) => handleMoveItem('tags', name, 'down')} />
-              <div className="bg-slate-800/80 backdrop-blur-sm p-6 rounded-[2rem] border border-slate-700 shadow-[0_0_15px_rgba(0,0,0,0.5)] space-y-4">
-                <h3 className="text-sm font-black text-cyan-400 border-b border-slate-700 pb-2 flex items-center gap-2 tracking-widest"><Type size={16}/> クイックフレーズ編集</h3>
-                <div className="flex flex-wrap gap-2 mb-4">
-                  {Array.isArray(userSettings.quickPhrases) && userSettings.quickPhrases.map((phrase, idx) => (
-                    typeof phrase === 'string' ? <span key={idx} className="bg-slate-900 text-cyan-100 text-xs font-bold px-3 py-1.5 rounded-lg flex items-center gap-2 border border-slate-600 shadow-inner">{String(phrase)} <button onClick={() => saveSettings({...userSettings, quickPhrases: userSettings.quickPhrases.filter((_, i) => i !== idx)})} className="text-slate-500 hover:text-red-500 transition-colors"><X size={12}/></button></span> : null
-                  ))}
-                </div>
-                <div className="bg-slate-900 p-4 rounded-2xl border border-slate-700 flex flex-col gap-2 shadow-inner">
-                  <input id="newPhraseInput" type="text" placeholder="新しいフレーズ..." className="w-full bg-slate-800 border border-slate-700 p-3 rounded-xl text-sm font-bold text-cyan-50 outline-none placeholder-slate-500 focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 transition-all" />
-                  <button onClick={() => { const input = document.getElementById('newPhraseInput'); if (input.value.trim()) { saveSettings({ ...userSettings, quickPhrases: [...userSettings.quickPhrases, input.value.trim()] }); input.value = ''; } }} className="w-full bg-slate-800 border border-cyan-500/50 text-cyan-400 px-4 py-3 rounded-xl font-black text-xs uppercase tracking-widest shadow-[0_0_10px_rgba(34,211,238,0.2)] active:scale-[0.98] hover:bg-slate-700 transition-all flex justify-center items-center gap-2"><Sword size={14}/>装備に追加</button>
-                </div>
-              </div>
+              
               <div className="text-center py-4 opacity-30"><Gamepad2 size={32} className="mx-auto text-cyan-600 mb-2"/><p className="text-[10px] font-black text-cyan-600 uppercase tracking-widest">ELECTRIC CLIPPER MASTER v3.0</p></div>
             </div>
           )}
@@ -1787,7 +1869,7 @@ export default function App() {
                         </div>
                         
                         {/* ★ 詳細画面から直接画像編集モードを開くボタン */}
-                        <button onClick={(e) => { e.stopPropagation(); setMarkupModal({ isOpen: true, imgIndex: 0, dataUrl: selectedMemo.markupImage }); }} className="absolute bottom-4 right-4 bg-cyan-600 p-3 rounded-full shadow-[0_0_15px_rgba(6,182,212,0.8)] text-slate-900 z-10 active:scale-90 transition-all">
+                        <button onClick={(e) => { e.stopPropagation(); setMarkupModal({ isOpen: true, imgIndex: 0, dataUrl: selectedMemo.markupImage }); }} className="absolute bottom-4 right-4 bg-cyan-600 p-3 rounded-full shadow-[0_0_15px_rgba(6,182,212,0.8)] text-slate-900 z-10 active:scale-90 transition-all border-2 border-cyan-300">
                           <Edit3 size={20} />
                         </button>
                       </div>
@@ -1804,7 +1886,7 @@ export default function App() {
                         </div>
                         
                         {/* ★ 詳細画面から直接画像編集モードを開くボタン */}
-                        <button onClick={(e) => { e.stopPropagation(); setMarkupModal({ isOpen: true, imgIndex: i, dataUrl: img }); }} className="absolute bottom-4 right-4 bg-cyan-600 p-3 rounded-full shadow-[0_0_15px_rgba(6,182,212,0.8)] text-slate-900 z-10 active:scale-90 transition-all">
+                        <button onClick={(e) => { e.stopPropagation(); setMarkupModal({ isOpen: true, imgIndex: i, dataUrl: img }); }} className="absolute bottom-4 right-4 bg-cyan-600 p-3 rounded-full shadow-[0_0_15px_rgba(6,182,212,0.8)] text-slate-900 z-10 active:scale-90 transition-all border-2 border-cyan-300">
                           <Edit3 size={20} />
                         </button>
                       </div>
@@ -1888,7 +1970,8 @@ export default function App() {
                 <button type="button" onClick={() => setShowAdvanced(!showAdvanced)} className="w-full flex justify-between items-center text-xs font-black text-cyan-600 py-1"><span className="flex items-center gap-1.5 tracking-widest"><Info size={14}/> ADVANCED SETTINGS</span>{showAdvanced ? <ChevronUp size={16}/> : <ChevronDown size={16}/>}</button>
                 {showAdvanced && (
                   <div className="space-y-4 pt-3 border-t border-slate-800 animate-in fade-in slide-in-from-top-2">
-                    <div className="relative shadow-inner rounded-2xl"><User className="absolute left-3 top-3.5 text-cyan-700" size={16}/><input className="w-full p-3 pl-10 bg-slate-950 border border-slate-800 rounded-2xl font-bold outline-none text-sm text-cyan-50 focus:border-cyan-500 transition-colors" placeholder="教えてくれた人（師匠・先輩など）" value={formData.teacher || ''} onChange={e => setFormData({...formData, teacher: e.target.value})} /></div>
+                    <div className="relative shadow-inner rounded-2xl"><User className="absolute left-3 top-3.5 text-cyan-700" size={16}/><input list="teacher-history" className="w-full p-3 pl-10 bg-slate-950 border border-slate-800 rounded-2xl font-bold outline-none text-sm text-cyan-50 focus:border-cyan-500 transition-colors" placeholder="教えてくれた人（師匠・先輩など）" value={formData.teacher || ''} onChange={e => setFormData({...formData, teacher: e.target.value})} /></div>
+                    <datalist id="teacher-history">{uniqueTeachers.map(t => <option key={t} value={t} />)}</datalist>
                     <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800 space-y-4 shadow-inner">
                       <label className="flex items-center gap-3 cursor-pointer group"><div className={`w-5 h-5 rounded-md flex items-center justify-center border transition-all ${formData.needsReview ? 'bg-cyan-600 border-cyan-500 shadow-[0_0_10px_rgba(6,182,212,0.5)]' : 'bg-slate-800 border-slate-600 group-hover:border-cyan-500'}`}>{formData.needsReview && <Check size={14} className="text-slate-900" strokeWidth={4}/>}</div><input type="checkbox" checked={formData.needsReview || false} onChange={e => setFormData({...formData, needsReview: e.target.checked})} className="hidden" /><span className="text-xs font-black text-slate-300 group-hover:text-cyan-100 transition-colors">後で確認・復習が必要</span></label>
                       {formData.needsReview && (
@@ -1923,6 +2006,7 @@ export default function App() {
                 <div className="flex flex-col gap-2">{groupedTagsForm.map(({ category, tags }) => <TagAccordion key={category} groupName={`【${String(category)}】`} tags={tags} formData={formData} setFormData={setFormData} />)}</div>
               </div>
               
+              {/* ★ 写真添付欄 */}
               <div className="space-y-3 bg-slate-900/80 backdrop-blur-sm p-4 sm:p-5 rounded-[2.5rem] border border-slate-700 shadow-lg">
                 <div className="flex justify-between items-center text-[10px] font-black text-cyan-600 mb-2 tracking-widest"><span className="flex items-center gap-1"><Camera size={14}/> VISUAL EVIDENCE</span></div>
                 
@@ -1945,45 +2029,24 @@ export default function App() {
                     Array.isArray(formData.images) && formData.images.map((img, i) => (
                       typeof img === 'string' ? (
                         <div key={i} className="relative w-48 flex-shrink-0 snap-center group">
-                          {/* ★ iOS Safari対策：全体を覆う透明なボタン */}
-                          <button 
-                            type="button"
-                            className="w-full h-32 rounded-[1.5rem] border border-slate-700 shadow-lg bg-cover bg-center overflow-hidden block active:opacity-70 transition-opacity" 
-                            style={{ backgroundImage: `url(${img})` }}
+                          {/* ★ 修正：iOS Safariのタップ問題対策。画像自体ではなく外側のDivにonClickをつけ、透明なカバーで全体をボタン化する */}
+                          <div 
+                            className="absolute inset-0 w-full h-full z-10 cursor-pointer"
                             onClick={(e) => { 
                               e.preventDefault(); 
-                              e.stopPropagation(); 
                               setMarkupModal({ isOpen: true, imgIndex: i, dataUrl: img }); 
                             }}
+                          ></div>
+
+                          <div 
+                            className="w-full h-32 rounded-[1.5rem] border border-slate-700 shadow-lg bg-cover bg-center" 
+                            style={{ backgroundImage: `url(${img})` }}
                           />
+                          <button type="button" onClick={(e) => { e.preventDefault(); const newImgs = [...formData.images]; newImgs.splice(i, 1); setFormData({...formData, images: newImgs}); }} className="absolute -top-2 -right-2 bg-red-500 text-slate-900 p-1.5 rounded-full shadow-[0_0_10px_rgba(239,68,68,0.8)] z-20"><X size={14}/></button>
                           
-                          {/* ★ 削除ボタン（独立） */}
-                          <button 
-                            type="button" 
-                            onClick={(e) => { 
-                              e.preventDefault(); 
-                              e.stopPropagation(); 
-                              const newImgs = [...formData.images]; 
-                              newImgs.splice(i, 1); 
-                              setFormData({...formData, images: newImgs}); 
-                            }} 
-                            className="absolute -top-2 -right-2 bg-red-500 text-slate-900 p-2 rounded-full shadow-[0_0_10px_rgba(239,68,68,0.8)] z-20"
-                          >
-                            <X size={14} strokeWidth={3}/>
-                          </button>
-                          
-                          {/* ★ 編集ボタン（独立） */}
-                          <button 
-                            type="button" 
-                            onClick={(e) => { 
-                              e.preventDefault(); 
-                              e.stopPropagation(); 
-                              setMarkupModal({ isOpen: true, imgIndex: i, dataUrl: img }); 
-                            }} 
-                            className="absolute bottom-2 right-2 bg-cyan-600 text-slate-900 p-2.5 rounded-full shadow-[0_0_10px_rgba(6,182,212,0.8)] active:scale-90 transition-all z-20"
-                          >
-                            <Edit3 size={18} strokeWidth={2.5}/>
-                          </button>
+                          <div className="absolute bottom-2 right-2 bg-cyan-600 text-slate-900 p-2 rounded-full shadow-[0_0_10px_rgba(6,182,212,0.8)] z-0 pointer-events-none">
+                            <Edit3 size={16}/>
+                          </div>
                         </div>
                       ) : null
                     ))
@@ -2062,6 +2125,7 @@ export default function App() {
             setViewerData={setViewerData} 
             onEdit={(src, idx) => {
               setViewerData(null);
+              // ★ プレビューからの編集移行時、Reactの状態更新が競合しないように一瞬遅らせる
               setTimeout(() => {
                 setMarkupModal({ isOpen: true, imgIndex: idx, dataUrl: src });
               }, 50);
