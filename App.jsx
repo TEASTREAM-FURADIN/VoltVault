@@ -1440,7 +1440,6 @@ export default function App() {
     }
   };
 
-  // ★ AI機能の修正：Canvas環境とVercel環境を自動判定し、最新の安定モデルを使用
   const handleAIAssist = async (mode = 'organize', customQuestion = '') => {
     if (!formData.content && (!formData.images || formData.images.length === 0) && mode !== 'ask') { 
       setToastMessage("⚠️ 画像を追加するか、少しメモを入力してください。");
@@ -1452,21 +1451,24 @@ export default function App() {
     setToastMessage("✨ AIが解析中...");
 
     try {
-      const isCanvas = window.location.hostname.includes('goog') || window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-      const savedApiKey = localStorage.getItem('voltVaultGeminiApiKey') || "";
+      // ★ 究極の環境判定：Canvas(プレビュー)かVercel(本番)かを絶対に間違えないように修正
+      // Vercel等で動いている場合（localhostも含む）はisVercelをtrueに。
+      const isVercel = window.location.hostname.includes('vercel.app') || window.location.hostname.includes('localhost') || window.location.hostname === '127.0.0.1';
       
-      if (!isCanvas && !savedApiKey) {
-        alert("⚠️ Vercel等の外部環境でAIを使用するには、右下の設定画面(Equipment)の一番上から「AI (Gemini) APIキー」を登録してください。\n\n※このキーがないとGoogle AIに接続できません。");
-        setIsAILoading(false);
-        setToastMessage('');
-        return;
+      let apiKey = "";
+      let modelName = "gemini-2.5-flash-preview-09-2025"; // Canvas用の強制モデル
+
+      if (isVercel) {
+        apiKey = localStorage.getItem('voltVaultGeminiApiKey') || "";
+        if (!apiKey) {
+          alert("⚠️ Vercel環境でAIを使用するには、設定画面(Equipment)から「AI (Gemini) APIキー」を登録してください。\n※Firebaseのキーとは別物です。");
+          setIsAILoading(false);
+          setToastMessage('');
+          return;
+        }
+        modelName = "gemini-1.5-flash"; // Vercel用の安定モデル
       }
 
-      const apiKey = isCanvas ? "" : savedApiKey;
-      
-      // ★ 修正点："-latest" を外して、確実に存在する "gemini-1.5-flash" を指定
-      const modelName = isCanvas ? "gemini-2.5-flash-preview-09-2025" : "gemini-1.5-flash";
-      
       const parts = [];
 
       let systemPrompt = "";
@@ -1528,7 +1530,14 @@ export default function App() {
     } catch (err) { 
       setToastMessage(`❌ AIエラー: ${err.message.substring(0, 30)}...`); 
       console.error(err); 
-      alert(`AIエラーが発生しました。\n・APIキー未設定/間違い\n・iPhoneの通信制限\n・画像の容量オーバー\nなどの可能性があります。\n詳細: ${err.message}`);
+      
+      let errorMsg = `AIエラーが発生しました。\n\n詳細: ${err.message}\n\n`;
+      if (err.message.includes('not found')) {
+        errorMsg += "💡【原因の可能性】\n入力されたAPIキーが「Firebaseのもの」になっている可能性があります。AIを使うには『Google AI Studio』で新しく取得した専用のキーが必要です。設定画面を確認してください。";
+      } else {
+        errorMsg += "・APIキーの入力ミス\n・通信制限\nなどの可能性があります。";
+      }
+      alert(errorMsg);
     } finally { 
       setIsAILoading(false); 
       setTimeout(() => setToastMessage(''), 4000);
@@ -1729,7 +1738,8 @@ export default function App() {
               <div className="bg-slate-800/80 backdrop-blur-sm p-6 rounded-[2rem] border border-purple-500/50 shadow-[0_0_15px_rgba(147,51,234,0.3)] space-y-4">
                 <h3 className="text-sm font-black text-purple-400 border-b border-purple-900/50 pb-2 flex items-center gap-2 tracking-widest"><Sparkles size={16}/> AI (Gemini) API設定</h3>
                 <p className="text-[10px] text-slate-300 leading-relaxed font-bold">
-                  Vercel等でAI機能を使用するには、Google AI Studioで取得したAPIキーを設定してください。（入力した鍵はスマホ本体に安全に保存されます）
+                  Vercel等でAI機能を使用するには、Google AI Studioで取得したAPIキーを設定してください。<br/>
+                  <span className="text-red-400 font-black">※Firebaseのキー（STEP4でコピーしたもの）とは別物です！間違えるとエラーになります。</span>
                 </p>
                 <div className="flex gap-2">
                   <input 
@@ -1859,6 +1869,11 @@ export default function App() {
                         <div className="absolute inset-0 bg-cyan-500/10 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center pointer-events-none">
                           <ZoomIn size={32} className="text-cyan-300 drop-shadow-lg" />
                         </div>
+                        
+                        {/* ★ 詳細画面から直接画像編集モードを開くボタン */}
+                        <button onClick={(e) => { e.stopPropagation(); setMarkupModal({ isOpen: true, imgIndex: 0, dataUrl: selectedMemo.markupImage }); }} className="absolute bottom-4 right-4 bg-cyan-600 p-3 rounded-full shadow-[0_0_15px_rgba(6,182,212,0.8)] text-slate-900 z-10 active:scale-90 transition-all border-2 border-cyan-300">
+                          <Edit3 size={20} />
+                        </button>
                       </div>
                     )}
                     {selectedMemo.images && selectedMemo.images.map((img, i) => (
@@ -1871,6 +1886,11 @@ export default function App() {
                         <div className="absolute inset-0 bg-cyan-500/10 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center pointer-events-none">
                           <ZoomIn size={32} className="text-cyan-300 drop-shadow-lg" />
                         </div>
+                        
+                        {/* ★ 詳細画面から直接画像編集モードを開くボタン */}
+                        <button onClick={(e) => { e.stopPropagation(); setMarkupModal({ isOpen: true, imgIndex: i, dataUrl: img }); }} className="absolute bottom-4 right-4 bg-cyan-600 p-3 rounded-full shadow-[0_0_15px_rgba(6,182,212,0.8)] text-slate-900 z-10 active:scale-90 transition-all border-2 border-cyan-300">
+                          <Edit3 size={20} />
+                        </button>
                       </div>
                     ))}
                   </div>
@@ -2125,6 +2145,7 @@ export default function App() {
             setViewerData={setViewerData} 
             onEdit={(src, idx) => {
               setViewerData(null);
+              // ★ プレビューからの編集移行時、Reactの状態更新が競合しないように一瞬遅らせる
               setTimeout(() => {
                 setMarkupModal({ isOpen: true, imgIndex: idx, dataUrl: src });
               }, 50);
@@ -2139,6 +2160,7 @@ export default function App() {
             setMarkupModal={setMarkupModal} 
             onSave={async (newDataUrl, index) => {
               if (view === 'detail' && selectedMemo) {
+                // 詳細画面からの編集：直接Firestoreを更新
                 const newImages = Array.isArray(selectedMemo.images) ? [...selectedMemo.images] : [];
                 newImages[index] = newDataUrl;
                 try {
@@ -2148,6 +2170,7 @@ export default function App() {
                   alert('画像の上書き保存に失敗しました。');
                 }
               } else {
+                // 追加・編集画面からの編集：フォームデータを更新
                 setFormData(prev => {
                   const newImages = Array.isArray(prev.images) ? [...prev.images] : [];
                   newImages[index] = newDataUrl;
