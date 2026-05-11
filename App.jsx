@@ -141,8 +141,8 @@ const currentAppId = typeof __app_id !== 'undefined' ? __app_id : (firebaseConfi
 
 const defaultSettings = {
   quickPhrases: ["通電確認OK", "絶縁抵抗計 測定済", "相色確認OK", "隠蔽部写真撮影済", "先行配管完了"],
-  sites: ["第1ビル", "東館改修工事", "高圧受変電所"], // ★ 新設：現場名の記憶リスト
-  teachers: ["門田さん", "社長", "協力業者のAさん"], // ★ 新設：教えてくれた人の記憶リスト
+  sites: ["第1ビル", "東館改修工事", "高圧受変電所"],
+  teachers: ["門田さん", "社長", "協力業者のAさん"],
   genres: {
     '幹線工事': { colorId: 'red', icon: 'Zap', group: '電気', order: 0 },
     '盤結線': { colorId: 'blue', icon: 'Grid', group: '電気', order: 1 },
@@ -330,7 +330,6 @@ const RadarChart = ({ memos, userSettings }) => {
   );
 };
 
-// ★ 新設：設定画面用のシンプルなリスト編集コンポーネント
 const SimpleListEditor = ({ title, icon: Icon, items, onAdd, onDelete, placeholder }) => {
   const [newItem, setNewItem] = useState('');
   return (
@@ -660,7 +659,7 @@ const ImageViewer = ({ data, onClose, setViewerData, onEdit }) => {
         </div>
       )}
 
-      {/* ★ 詳細画面から直接編集モードへ行けるボタン */}
+      {/* ★ 詳細画面から直接編集モードへ行けるボタン（確実に開くようにsetTimeoutをかませる） */}
       <button onClick={() => { onClose(); setTimeout(() => onEdit(src, data.index), 50); }} className="absolute top-6 right-36 z-50 bg-cyan-600 p-3 rounded-full text-slate-900 shadow-[0_0_15px_rgba(6,182,212,0.8)] active:scale-90 transition-all border-2 border-cyan-300">
         <Edit3 size={24} />
       </button>
@@ -1044,8 +1043,8 @@ export default function App() {
         }));
         setUserSettings({ 
           quickPhrases: data.quickPhrases || defaultSettings.quickPhrases, 
-          sites: data.sites || defaultSettings.sites || [], // ★ 現場名履歴
-          teachers: data.teachers || defaultSettings.teachers || [], // ★ 教えてくれた人履歴
+          sites: data.sites || defaultSettings.sites || [], 
+          teachers: data.teachers || defaultSettings.teachers || [], 
           genres: genresData, 
           tags: tagsData, 
           stats: { ...defaultSettings.stats, ...(data.stats || {}) } 
@@ -1071,7 +1070,6 @@ export default function App() {
   const [newTagColor, setNewTagColor] = useState('gray');
   const [newTagIcon, setNewTagIcon] = useState('Tags');
 
-  // ★ 自動記憶した履歴と、過去のメモから抽出したユニークな名前を結合（重複を排除）してサジェストリストを作成
   const uniqueSites = useMemo(() => Array.from(new Set([...(userSettings.sites || []), ...memos.map(m => String(m.site || "")).filter(Boolean)])), [memos, userSettings]);
   const uniqueTeachers = useMemo(() => Array.from(new Set([...(userSettings.teachers || []), ...memos.map(m => String(m.teacher || "")).filter(Boolean)])), [memos, userSettings]);
   
@@ -1254,7 +1252,6 @@ export default function App() {
 
       await setDoc(doc(db, 'artifacts', currentAppId, 'public', 'data', 'memos', id), memoToSave, { merge: true });
       
-      // ★ 新設：保存時に現場名や教えてくれた人を自動記憶する処理
       let newSettings = { ...userSettings };
       let settingsChanged = false;
       
@@ -1455,12 +1452,9 @@ export default function App() {
     setToastMessage("✨ AIが解析中...");
 
     try {
-      // 現在のドメインが Google の開発環境（Canvas内）かどうかを判定
       const isCanvas = window.location.hostname.includes('goog') || window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-      
       const savedApiKey = localStorage.getItem('voltVaultGeminiApiKey') || "";
       
-      // Vercelなどの外部環境なのに、APIキーが登録されていない場合はエラーにする
       if (!isCanvas && !savedApiKey) {
         alert("⚠️ Vercel等の外部環境でAIを使用するには、右下の設定画面(Equipment)の一番上から「AI (Gemini) APIキー」を登録してください。\n\n※このキーがないとGoogle AIに接続できません。");
         setIsAILoading(false);
@@ -1468,11 +1462,10 @@ export default function App() {
         return;
       }
 
-      // Canvas内ならプロキシが処理するので空文字でOK。外部ならユーザーのAPIキーを使用。
       const apiKey = isCanvas ? "" : savedApiKey;
       
-      // Vercel環境（外部APIキー使用時）は安定した "gemini-1.5-flash-latest" を使用する。
-      const modelName = isCanvas ? "gemini-2.5-flash-preview-09-2025" : "gemini-1.5-flash-latest";
+      // ★ 修正点："-latest" を外して、確実に存在する "gemini-1.5-flash" を指定
+      const modelName = isCanvas ? "gemini-2.5-flash-preview-09-2025" : "gemini-1.5-flash";
       
       const parts = [];
 
@@ -1759,7 +1752,6 @@ export default function App() {
                 </div>
               </div>
 
-              {/* ★ 新設：現場名（ダンジョン）と教えてくれた人（伝授者）の記憶リスト管理 */}
               <SimpleListEditor 
                 title="現場（ダンジョン）履歴" icon={Building} 
                 items={userSettings.sites || []} 
@@ -1867,11 +1859,6 @@ export default function App() {
                         <div className="absolute inset-0 bg-cyan-500/10 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center pointer-events-none">
                           <ZoomIn size={32} className="text-cyan-300 drop-shadow-lg" />
                         </div>
-                        
-                        {/* ★ 詳細画面から直接画像編集モードを開くボタン */}
-                        <button onClick={(e) => { e.stopPropagation(); setMarkupModal({ isOpen: true, imgIndex: 0, dataUrl: selectedMemo.markupImage }); }} className="absolute bottom-4 right-4 bg-cyan-600 p-3 rounded-full shadow-[0_0_15px_rgba(6,182,212,0.8)] text-slate-900 z-10 active:scale-90 transition-all border-2 border-cyan-300">
-                          <Edit3 size={20} />
-                        </button>
                       </div>
                     )}
                     {selectedMemo.images && selectedMemo.images.map((img, i) => (
@@ -1884,11 +1871,6 @@ export default function App() {
                         <div className="absolute inset-0 bg-cyan-500/10 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center pointer-events-none">
                           <ZoomIn size={32} className="text-cyan-300 drop-shadow-lg" />
                         </div>
-                        
-                        {/* ★ 詳細画面から直接画像編集モードを開くボタン */}
-                        <button onClick={(e) => { e.stopPropagation(); setMarkupModal({ isOpen: true, imgIndex: i, dataUrl: img }); }} className="absolute bottom-4 right-4 bg-cyan-600 p-3 rounded-full shadow-[0_0_15px_rgba(6,182,212,0.8)] text-slate-900 z-10 active:scale-90 transition-all border-2 border-cyan-300">
-                          <Edit3 size={20} />
-                        </button>
                       </div>
                     ))}
                   </div>
@@ -2029,24 +2011,42 @@ export default function App() {
                     Array.isArray(formData.images) && formData.images.map((img, i) => (
                       typeof img === 'string' ? (
                         <div key={i} className="relative w-48 flex-shrink-0 snap-center group">
-                          {/* ★ 修正：iOS Safariのタップ問題対策。画像自体ではなく外側のDivにonClickをつけ、透明なカバーで全体をボタン化する */}
-                          <div 
-                            className="absolute inset-0 w-full h-full z-10 cursor-pointer"
+                          <button 
+                            type="button"
+                            className="w-full h-32 rounded-[1.5rem] border border-slate-700 shadow-lg bg-cover bg-center overflow-hidden block active:opacity-70 transition-opacity" 
+                            style={{ backgroundImage: `url(${img})` }}
                             onClick={(e) => { 
                               e.preventDefault(); 
+                              e.stopPropagation(); 
                               setMarkupModal({ isOpen: true, imgIndex: i, dataUrl: img }); 
                             }}
-                          ></div>
-
-                          <div 
-                            className="w-full h-32 rounded-[1.5rem] border border-slate-700 shadow-lg bg-cover bg-center" 
-                            style={{ backgroundImage: `url(${img})` }}
                           />
-                          <button type="button" onClick={(e) => { e.preventDefault(); const newImgs = [...formData.images]; newImgs.splice(i, 1); setFormData({...formData, images: newImgs}); }} className="absolute -top-2 -right-2 bg-red-500 text-slate-900 p-1.5 rounded-full shadow-[0_0_10px_rgba(239,68,68,0.8)] z-20"><X size={14}/></button>
                           
-                          <div className="absolute bottom-2 right-2 bg-cyan-600 text-slate-900 p-2 rounded-full shadow-[0_0_10px_rgba(6,182,212,0.8)] z-0 pointer-events-none">
-                            <Edit3 size={16}/>
-                          </div>
+                          <button 
+                            type="button" 
+                            onClick={(e) => { 
+                              e.preventDefault(); 
+                              e.stopPropagation(); 
+                              const newImgs = [...formData.images]; 
+                              newImgs.splice(i, 1); 
+                              setFormData({...formData, images: newImgs}); 
+                            }} 
+                            className="absolute -top-2 -right-2 bg-red-500 text-slate-900 p-2 rounded-full shadow-[0_0_10px_rgba(239,68,68,0.8)] z-20"
+                          >
+                            <X size={14} strokeWidth={3}/>
+                          </button>
+                          
+                          <button 
+                            type="button" 
+                            onClick={(e) => { 
+                              e.preventDefault(); 
+                              e.stopPropagation(); 
+                              setMarkupModal({ isOpen: true, imgIndex: i, dataUrl: img }); 
+                            }} 
+                            className="absolute bottom-2 right-2 bg-cyan-600 text-slate-900 p-2.5 rounded-full shadow-[0_0_10px_rgba(6,182,212,0.8)] active:scale-90 transition-all z-20"
+                          >
+                            <Edit3 size={18} strokeWidth={2.5}/>
+                          </button>
                         </div>
                       ) : null
                     ))
@@ -2125,7 +2125,6 @@ export default function App() {
             setViewerData={setViewerData} 
             onEdit={(src, idx) => {
               setViewerData(null);
-              // ★ プレビューからの編集移行時、Reactの状態更新が競合しないように一瞬遅らせる
               setTimeout(() => {
                 setMarkupModal({ isOpen: true, imgIndex: idx, dataUrl: src });
               }, 50);
@@ -2140,7 +2139,6 @@ export default function App() {
             setMarkupModal={setMarkupModal} 
             onSave={async (newDataUrl, index) => {
               if (view === 'detail' && selectedMemo) {
-                // 詳細画面からの編集：直接Firestoreを更新
                 const newImages = Array.isArray(selectedMemo.images) ? [...selectedMemo.images] : [];
                 newImages[index] = newDataUrl;
                 try {
@@ -2150,7 +2148,6 @@ export default function App() {
                   alert('画像の上書き保存に失敗しました。');
                 }
               } else {
-                // 追加・編集画面からの編集：フォームデータを更新
                 setFormData(prev => {
                   const newImages = Array.isArray(prev.images) ? [...prev.images] : [];
                   newImages[index] = newDataUrl;
