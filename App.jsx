@@ -15,7 +15,8 @@ import {
   Move, ZoomIn, ZoomOut, RotateCcw, RotateCw,
   User, Bell, ChevronUp, CheckSquare, ArrowUp, ArrowDown,
   Coffee, Eraser, Skull, Lock as LockIcon,
-  Cpu, Server, Router, Network, Video, Speaker, Fan, Monitor, Mic, Gauge, Signal, ToggleLeft, Sliders, Cog, Magnet, Scale, Settings2, Crosshair
+  Cpu, Server, Router, Network, Video, Speaker, Fan, Monitor, Mic, Gauge, Signal, ToggleLeft, Sliders, Cog, Magnet, Scale, Settings2, Crosshair,
+  Minus, Square, Circle, Triangle, ArrowRight
 } from 'lucide-react';
 
 import { initializeApp } from 'firebase/app';
@@ -659,7 +660,7 @@ const ImageViewer = ({ data, onClose, setViewerData, onEdit }) => {
         </div>
       )}
 
-      {/* ★ 詳細画面から直接編集モードへ行けるボタン（確実に開くようにsetTimeoutをかませる） */}
+      {/* ★ 詳細画面から直接編集モードへ行けるボタン */}
       <button onClick={() => { onClose(); setTimeout(() => onEdit(src, data.index), 50); }} className="absolute top-6 right-36 z-50 bg-cyan-600 p-3 rounded-full text-slate-900 shadow-[0_0_15px_rgba(6,182,212,0.8)] active:scale-90 transition-all border-2 border-cyan-300">
         <Edit3 size={24} />
       </button>
@@ -713,6 +714,7 @@ const ImageViewer = ({ data, onClose, setViewerData, onEdit }) => {
   );
 };
 
+// ★ 図形描画ツールを追加したMarkupModalCanvas
 const MarkupModalCanvas = ({ markupModal, setMarkupModal, onSave }) => {
   const canvasRef = useRef(null); const [mode, setMode] = useState('draw'); const [zoom, setZoom] = useState(1);
   const [dimensions, setDimensions] = useState(null); const [texts, setTexts] = useState([]); 
@@ -722,6 +724,8 @@ const MarkupModalCanvas = ({ markupModal, setMarkupModal, onSave }) => {
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const isPanning = useRef(false);
   const panStart = useRef({ x: 0, y: 0 });
+  
+  const [previewShape, setPreviewShape] = useState(null); // ★ 追加：ドラッグ中の図形プレビュー用
 
   const PEN_COLORS = [{id:'red',v:'#ef4444',tw:'bg-red-500'},{id:'cyan',v:'#22d3ee',tw:'bg-cyan-400'},{id:'yellow',v:'#facc15',tw:'bg-yellow-400'},{id:'green',v:'#4ade80',tw:'bg-green-400'}];
 
@@ -744,12 +748,40 @@ const MarkupModalCanvas = ({ markupModal, setMarkupModal, onSave }) => {
     img.src = markupModal.dataUrl;
   }, [markupModal.dataUrl]);
 
-  const redraw = () => {
-    if (!dimensions || !canvasRef.current) return;
-    const cvs = canvasRef.current; const ctx = cvs.getContext('2d');
-    ctx.clearRect(0, 0, cvs.width, cvs.height);
-    
-    strokes.forEach(s => {
+  const drawStrokeOrShape = (ctx, cvs, s) => {
+    if (s.type === 'shape') {
+      ctx.globalCompositeOperation = 'source-over';
+      ctx.strokeStyle = s.color;
+      ctx.lineWidth = s.width * cvs.width;
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      ctx.beginPath();
+      const x1 = s.startPos.x * cvs.width, y1 = s.startPos.y * cvs.height;
+      const x2 = s.endPos.x * cvs.width, y2 = s.endPos.y * cvs.height;
+      
+      if (s.shape === 'line') {
+        ctx.moveTo(x1, y1); ctx.lineTo(x2, y2);
+      } else if (s.shape === 'rect') {
+        ctx.rect(x1, y1, x2 - x1, y2 - y1);
+      } else if (s.shape === 'circle') {
+        const r = Math.hypot(x2 - x1, y2 - y1);
+        ctx.arc(x1, y1, r, 0, Math.PI * 2);
+      } else if (s.shape === 'triangle') {
+        ctx.moveTo(x1 + (x2 - x1)/2, y1);
+        ctx.lineTo(x2, y2);
+        ctx.lineTo(x1, y2);
+        ctx.closePath();
+      } else if (s.shape === 'arrow') {
+        const headlen = 15 * zoom; 
+        const angle = Math.atan2(y2 - y1, x2 - x1);
+        ctx.moveTo(x1, y1);
+        ctx.lineTo(x2, y2);
+        ctx.lineTo(x2 - headlen * Math.cos(angle - Math.PI / 6), y2 - headlen * Math.sin(angle - Math.PI / 6));
+        ctx.moveTo(x2, y2);
+        ctx.lineTo(x2 - headlen * Math.cos(angle + Math.PI / 6), y2 - headlen * Math.sin(angle + Math.PI / 6));
+      }
+      ctx.stroke();
+    } else {
       ctx.globalCompositeOperation = s.type === 'eraser' ? 'destination-out' : 'source-over';
       ctx.strokeStyle = s.type === 'eraser' ? 'rgba(0,0,0,1)' : s.color;
       ctx.lineWidth = s.width * cvs.width; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
@@ -765,11 +797,21 @@ const MarkupModalCanvas = ({ markupModal, setMarkupModal, onSave }) => {
           ctx.stroke();
         }
       }
-    });
+    }
+  };
+
+  const redraw = () => {
+    if (!dimensions || !canvasRef.current) return;
+    const cvs = canvasRef.current; const ctx = cvs.getContext('2d');
+    ctx.clearRect(0, 0, cvs.width, cvs.height);
+    
+    strokes.forEach(s => drawStrokeOrShape(ctx, cvs, s));
+    if (previewShape) drawStrokeOrShape(ctx, cvs, previewShape);
+    
     ctx.globalCompositeOperation = 'source-over';
   };
 
-  useEffect(() => { redraw(); }, [dimensions, strokes]);
+  useEffect(() => { redraw(); }, [dimensions, strokes, previewShape, zoom]);
 
   const getPos = (e) => {
     const r = canvasRef.current.getBoundingClientRect();
@@ -787,6 +829,14 @@ const MarkupModalCanvas = ({ markupModal, setMarkupModal, onSave }) => {
     }
 
     const p = getPos(e);
+    
+    if (['line', 'rect', 'circle', 'triangle', 'arrow'].includes(mode)) {
+      panStart.current = p;
+      setPreviewShape({ type: 'shape', shape: mode, color: penColor, width: 0.01 / zoom, startPos: p, endPos: p });
+      if (e.target && e.target.setPointerCapture) e.target.setPointerCapture(e.pointerId);
+      return;
+    }
+
     if (editingTextId) { setEditingTextId(null); return; }
     if (mode === 'text') { setTexts([...texts, { id: Date.now(), text: '', x: p.x, y: p.y, color: penColor }]); setEditingTextId(Date.now()); return; }
     if (mode !== 'draw' && mode !== 'eraser') return;
@@ -806,6 +856,12 @@ const MarkupModalCanvas = ({ markupModal, setMarkupModal, onSave }) => {
       return;
     }
 
+    if (['line', 'rect', 'circle', 'triangle', 'arrow'].includes(mode) && previewShape) {
+      e.preventDefault();
+      setPreviewShape(prev => ({ ...prev, endPos: getPos(e) }));
+      return;
+    }
+
     if (!currentStroke.current || !canvasRef.current) return;
     e.preventDefault(); const p = getPos(e); const pts = currentStroke.current.points; const prev = pts[pts.length - 1]; pts.push(p);
     const cvs = canvasRef.current; const ctx = cvs.getContext('2d');
@@ -818,6 +874,14 @@ const MarkupModalCanvas = ({ markupModal, setMarkupModal, onSave }) => {
     
     if (mode === 'move' && isPanning.current) {
       isPanning.current = false;
+      if (e && e.target && e.target.releasePointerCapture) e.target.releasePointerCapture(e.pointerId);
+      return;
+    }
+
+    if (['line', 'rect', 'circle', 'triangle', 'arrow'].includes(mode) && previewShape) {
+      setStrokes([...strokes, previewShape]);
+      setRedoStack([]);
+      setPreviewShape(null);
       if (e && e.target && e.target.releasePointerCapture) e.target.releasePointerCapture(e.pointerId);
       return;
     }
@@ -860,22 +924,7 @@ const MarkupModalCanvas = ({ markupModal, setMarkupModal, onSave }) => {
       ctx.fillRect(0, 0, cvs.width, cvs.height);
       ctx.drawImage(dimensions.img, 0, 0, cvs.width, cvs.height);
       
-      strokes.forEach(s => {
-        ctx.globalCompositeOperation = s.type === 'eraser' ? 'destination-out' : 'source-over'; ctx.strokeStyle = s.type === 'eraser' ? 'rgba(0,0,0,1)' : s.color;
-        const w = s.width * cvs.width; ctx.lineWidth = w; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-        if(s.points.length > 0){
-          ctx.beginPath();
-          if (s.points.length === 1) {
-            ctx.fillStyle = s.type === 'eraser' ? 'rgba(0,0,0,1)' : s.color;
-            ctx.arc(s.points[0].x * cvs.width, s.points[0].y * cvs.height, w / 2, 0, Math.PI * 2);
-            ctx.fill();
-          } else {
-            ctx.moveTo(s.points[0].x * cvs.width, s.points[0].y * cvs.height);
-            s.points.forEach((p, i) => { if(i>0) ctx.lineTo(p.x * cvs.width, p.y * cvs.height); });
-            ctx.stroke();
-          }
-        }
-      });
+      strokes.forEach(s => drawStrokeOrShape(ctx, cvs, s));
 
       ctx.globalCompositeOperation = 'source-over'; ctx.textBaseline = 'top';
       texts.forEach(t => {
@@ -901,11 +950,22 @@ const MarkupModalCanvas = ({ markupModal, setMarkupModal, onSave }) => {
         <div className="flex justify-between items-center px-2 pt-1 shrink-0"><h3 className="font-black text-cyan-400 flex gap-2"><Edit3 size={18}/> MARKUP</h3><button onClick={() => setMarkupModal({ isOpen: false, imgIndex: null, dataUrl: null })} className="text-slate-500 hover:text-cyan-400"><X size={28}/></button></div>
         <div className="flex flex-col gap-2 bg-slate-800 p-2 rounded-xl shrink-0">
           <div className="flex justify-between items-center bg-slate-900 p-1.5 rounded-lg border border-slate-700">
-            <div className="flex gap-1"><button onClick={() => setMode('draw')} className={`p-2 rounded-md ${mode === 'draw' ? 'bg-cyan-900/50 text-cyan-400' : 'text-slate-500'}`}><PenTool size={16}/></button><button onClick={() => setMode('eraser')} className={`p-2 rounded-md ${mode === 'eraser' ? 'bg-cyan-900/50 text-cyan-400' : 'text-slate-500'}`}><Eraser size={16}/></button><button onClick={() => setMode('text')} className={`p-2 rounded-md ${mode === 'text' ? 'bg-cyan-900/50 text-cyan-400' : 'text-slate-500'}`}><Type size={16}/></button></div>
-            <div className="flex gap-2">{PEN_COLORS.map(c => <button key={c.id} onClick={() => { setPenColor(c.v); if(mode==='eraser'||mode==='move') setMode('draw'); }} className={`w-6 h-6 rounded-full ${c.tw} border-2 ${penColor === c.v ? 'border-white scale-110' : 'border-transparent opacity-50'} transition-all`} />)}</div>
+            {/* ★ ツールバーに図形アイコンを追加し、横スクロールに対応 */}
+            <div className="flex gap-1 overflow-x-auto pb-1 snap-x flex-1" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
+              <button onClick={() => setMode('draw')} className={`shrink-0 p-2 rounded-md ${mode === 'draw' ? 'bg-cyan-900/50 text-cyan-400' : 'text-slate-500'}`}><PenTool size={16}/></button>
+              <button onClick={() => setMode('line')} className={`shrink-0 p-2 rounded-md ${mode === 'line' ? 'bg-cyan-900/50 text-cyan-400' : 'text-slate-500'}`}><Minus size={16}/></button>
+              <button onClick={() => setMode('arrow')} className={`shrink-0 p-2 rounded-md ${mode === 'arrow' ? 'bg-cyan-900/50 text-cyan-400' : 'text-slate-500'}`}><ArrowRight size={16}/></button>
+              <button onClick={() => setMode('rect')} className={`shrink-0 p-2 rounded-md ${mode === 'rect' ? 'bg-cyan-900/50 text-cyan-400' : 'text-slate-500'}`}><Square size={16}/></button>
+              <button onClick={() => setMode('circle')} className={`shrink-0 p-2 rounded-md ${mode === 'circle' ? 'bg-cyan-900/50 text-cyan-400' : 'text-slate-500'}`}><Circle size={16}/></button>
+              <button onClick={() => setMode('triangle')} className={`shrink-0 p-2 rounded-md ${mode === 'triangle' ? 'bg-cyan-900/50 text-cyan-400' : 'text-slate-500'}`}><Triangle size={16}/></button>
+              <button onClick={() => setMode('eraser')} className={`shrink-0 p-2 rounded-md ${mode === 'eraser' ? 'bg-cyan-900/50 text-cyan-400' : 'text-slate-500'}`}><Eraser size={16}/></button>
+              <button onClick={() => setMode('text')} className={`shrink-0 p-2 rounded-md ${mode === 'text' ? 'bg-cyan-900/50 text-cyan-400' : 'text-slate-500'}`}><Type size={16}/></button>
+              <button onClick={() => setMode('move')} className={`shrink-0 p-2 rounded-md ${mode === 'move' ? 'bg-cyan-900/50 text-cyan-400' : 'text-slate-500'}`}><Move size={16}/></button>
+            </div>
+            <div className="flex gap-2 pl-2 border-l border-slate-700 ml-1 shrink-0">{PEN_COLORS.map(c => <button key={c.id} onClick={() => { setPenColor(c.v); if(mode==='eraser'||mode==='move') setMode('draw'); }} className={`w-6 h-6 rounded-full ${c.tw} border-2 ${penColor === c.v ? 'border-white scale-110' : 'border-transparent opacity-50'} transition-all`} />)}</div>
           </div>
           <div className="flex justify-between items-center bg-slate-900 p-1.5 rounded-lg border border-slate-700">
-            <button onClick={() => setMode('move')} className={`px-3 py-1.5 rounded-lg text-xs font-bold flex gap-1 ${mode === 'move' ? 'bg-slate-800 text-cyan-400 border border-cyan-900' : 'text-slate-400'}`}><Move size={14}/> 移動</button>
+            <span className="text-[10px] font-bold text-slate-500 flex items-center gap-1 pl-2"><Info size={12}/>スワイプでツールを選択</span>
             <div className="flex gap-2">
               <button onClick={handleUndo} disabled={strokes.length === 0} className="px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1 text-slate-300 bg-slate-800 disabled:opacity-30 border border-slate-700"><RotateCcw size={14}/>戻る</button>
               <button onClick={handleRedo} disabled={redoStack.length === 0} className="px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1 text-slate-300 bg-slate-800 disabled:opacity-30 border border-slate-700"><RotateCw size={14}/>進む</button>
@@ -918,7 +978,7 @@ const MarkupModalCanvas = ({ markupModal, setMarkupModal, onSave }) => {
             <div style={{ width: dimensions.dispW, height: dimensions.dispH, position: 'relative', transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`, transformOrigin: 'center' }}>
               <img src={markupModal.dataUrl} alt="base" style={{ width: '100%', height: '100%', display: 'block', opacity: 0.8, pointerEvents: 'none' }} />
               <canvas ref={canvasRef} width={dimensions.dispW} height={dimensions.dispH} style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', zIndex: 10 }}
-                className={`${mode === 'draw' ? 'cursor-crosshair' : mode === 'text' ? 'cursor-text' : mode === 'eraser' ? 'cursor-cell' : 'cursor-grab'}`}
+                className={`${['draw', 'line', 'rect', 'circle', 'triangle', 'arrow'].includes(mode) ? 'cursor-crosshair' : mode === 'text' ? 'cursor-text' : mode === 'eraser' ? 'cursor-cell' : 'cursor-grab'}`}
                 onPointerDown={handleStart} onPointerMove={handleMove} onPointerUp={handleEnd} onPointerLeave={handleEnd} />
               
               {texts.map(t => editingTextId === t.id ? (
@@ -1440,6 +1500,7 @@ export default function App() {
     }
   };
 
+  // ★ AI機能の修正
   const handleAIAssist = async (mode = 'organize', customQuestion = '') => {
     if (!formData.content && (!formData.images || formData.images.length === 0) && mode !== 'ask') { 
       setToastMessage("⚠️ 画像を追加するか、少しメモを入力してください。");
@@ -1451,22 +1512,22 @@ export default function App() {
     setToastMessage("✨ AIが解析中...");
 
     try {
-      // ★ 究極の環境判定：Canvas(プレビュー)かVercel(本番)かを絶対に間違えないように修正
-      // Vercel等で動いている場合（localhostも含む）はisVercelをtrueに。
-      const isVercel = window.location.hostname.includes('vercel.app') || window.location.hostname.includes('localhost') || window.location.hostname === '127.0.0.1';
+      // ★ 環境判定を絶対に間違えないように修正
+      const isCanvasEnv = typeof __initial_auth_token !== 'undefined';
+      const savedApiKey = localStorage.getItem('voltVaultGeminiApiKey') || "";
       
-      let apiKey = "";
-      let modelName = "gemini-2.5-flash-preview-09-2025"; // Canvas用の強制モデル
+      let apiKeyToUse = "";
+      let modelToUse = "gemini-2.5-flash-preview-09-2025"; 
 
-      if (isVercel) {
-        apiKey = localStorage.getItem('voltVaultGeminiApiKey') || "";
-        if (!apiKey) {
-          alert("⚠️ Vercel環境でAIを使用するには、設定画面(Equipment)から「AI (Gemini) APIキー」を登録してください。\n※Firebaseのキーとは別物です。");
+      if (!isCanvasEnv) {
+        if (!savedApiKey) {
+          alert("⚠️ Vercel等の外部環境でAIを使用するには、設定画面(Equipment)から「AI (Gemini) APIキー」を登録してください。\n※Firebaseのキーとは別物です。");
           setIsAILoading(false);
           setToastMessage('');
           return;
         }
-        modelName = "gemini-1.5-flash"; // Vercel用の安定モデル
+        apiKeyToUse = savedApiKey;
+        modelToUse = "gemini-1.5-flash"; 
       }
 
       const parts = [];
@@ -1508,11 +1569,26 @@ export default function App() {
         systemInstruction: { parts: [{ text: systemPrompt }] }
       };
 
-      const data = await fetchWithRetry(`https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`, {
-        method: 'POST', 
-        headers: { 'Content-Type': 'application/json' }, 
-        body: JSON.stringify(payload) 
-      });
+      let data;
+      try {
+        data = await fetchWithRetry(`https://generativelanguage.googleapis.com/v1beta/models/${modelToUse}:generateContent?key=${apiKeyToUse}`, {
+          method: 'POST', 
+          headers: { 'Content-Type': 'application/json' }, 
+          body: JSON.stringify(payload) 
+        });
+      } catch (err) {
+        // ★ エラーフォールバック処理 (gemini-1.5-flashが見つからない場合、gemini-1.5-proを試す)
+        if (!isCanvasEnv && err.message && err.message.includes('not found')) {
+          console.warn("Model not found. Trying fallback model...");
+          data = await fetchWithRetry(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent?key=${apiKeyToUse}`, {
+            method: 'POST', 
+            headers: { 'Content-Type': 'application/json' }, 
+            body: JSON.stringify(payload) 
+          });
+        } else {
+          throw err;
+        }
+      }
       
       if (data.candidates && data.candidates[0] && data.candidates[0].content.parts[0].text) {
         const aiText = data.candidates[0].content.parts[0].text.trim();
@@ -2031,42 +2107,25 @@ export default function App() {
                     Array.isArray(formData.images) && formData.images.map((img, i) => (
                       typeof img === 'string' ? (
                         <div key={i} className="relative w-48 flex-shrink-0 snap-center group">
-                          <button 
-                            type="button"
-                            className="w-full h-32 rounded-[1.5rem] border border-slate-700 shadow-lg bg-cover bg-center overflow-hidden block active:opacity-70 transition-opacity" 
-                            style={{ backgroundImage: `url(${img})` }}
+                          {/* ★ 修正：iOS Safariのタップ問題対策。画像自体ではなく外側のDivにonClickをつけ、透明なカバーで全体をボタン化する */}
+                          <div 
+                            className="absolute inset-0 w-full h-full z-10 cursor-pointer"
                             onClick={(e) => { 
                               e.preventDefault(); 
                               e.stopPropagation(); 
                               setMarkupModal({ isOpen: true, imgIndex: i, dataUrl: img }); 
                             }}
+                          ></div>
+
+                          <div 
+                            className="w-full h-32 rounded-[1.5rem] border border-slate-700 shadow-lg bg-cover bg-center" 
+                            style={{ backgroundImage: `url(${img})` }}
                           />
+                          <button type="button" onClick={(e) => { e.preventDefault(); const newImgs = [...formData.images]; newImgs.splice(i, 1); setFormData({...formData, images: newImgs}); }} className="absolute -top-2 -right-2 bg-red-500 text-slate-900 p-1.5 rounded-full shadow-[0_0_10px_rgba(239,68,68,0.8)] z-20"><X size={14}/></button>
                           
-                          <button 
-                            type="button" 
-                            onClick={(e) => { 
-                              e.preventDefault(); 
-                              e.stopPropagation(); 
-                              const newImgs = [...formData.images]; 
-                              newImgs.splice(i, 1); 
-                              setFormData({...formData, images: newImgs}); 
-                            }} 
-                            className="absolute -top-2 -right-2 bg-red-500 text-slate-900 p-2 rounded-full shadow-[0_0_10px_rgba(239,68,68,0.8)] z-20"
-                          >
-                            <X size={14} strokeWidth={3}/>
-                          </button>
-                          
-                          <button 
-                            type="button" 
-                            onClick={(e) => { 
-                              e.preventDefault(); 
-                              e.stopPropagation(); 
-                              setMarkupModal({ isOpen: true, imgIndex: i, dataUrl: img }); 
-                            }} 
-                            className="absolute bottom-2 right-2 bg-cyan-600 text-slate-900 p-2.5 rounded-full shadow-[0_0_10px_rgba(6,182,212,0.8)] active:scale-90 transition-all z-20"
-                          >
-                            <Edit3 size={18} strokeWidth={2.5}/>
-                          </button>
+                          <div className="absolute bottom-2 right-2 bg-cyan-600 text-slate-900 p-2 rounded-full shadow-[0_0_10px_rgba(6,182,212,0.8)] z-0 pointer-events-none">
+                            <Edit3 size={16}/>
+                          </div>
                         </div>
                       ) : null
                     ))
