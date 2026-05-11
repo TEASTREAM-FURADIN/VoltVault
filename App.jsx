@@ -1499,6 +1499,7 @@ export default function App() {
     }
   };
 
+  // ★ AI機能の修正：オートサーチ（フォールバック）機能を搭載
   const handleAIAssist = async (mode = 'organize', customQuestion = '') => {
     if (!formData.content && (!formData.images || formData.images.length === 0) && mode !== 'ask') { 
       setToastMessage("⚠️ 画像を追加するか、少しメモを入力してください。");
@@ -1510,23 +1511,25 @@ export default function App() {
     setToastMessage("✨ AIが解析中...");
 
     try {
+      // プレビュー環境（Canvas）か外部デプロイ環境（Vercel）かを厳密に判定
       const isExternalDeploy = typeof __initial_auth_token === 'undefined' && !window.location.hostname.includes('goog');
       
-      let apiKey = "";
-      let modelName = "gemini-2.5-flash-preview-09-2025"; 
-
+      let apiKeyToUse = "";
+      
       if (isExternalDeploy) {
-        apiKey = localStorage.getItem('voltVaultGeminiApiKey') || "";
-        if (!apiKey) {
+        apiKeyToUse = localStorage.getItem('voltVaultGeminiApiKey') || "";
+        if (!apiKeyToUse) {
           alert("⚠️ Vercel環境でAIを使用するには、設定画面(Equipment)から「AI (Gemini) APIキー」を登録してください。\n※Firebaseのキーとは別物です。");
           setIsAILoading(false);
           setToastMessage('');
           return;
         }
-        modelName = "gemini-1.5-flash"; 
       }
-      
-      const parts = [];
+
+      // ★ Vercel等の外部環境では、複数のモデル名を順番に試す（オートサーチ機能）
+      const modelNamesToTry = isExternalDeploy 
+        ? ["gemini-2.5-flash", "gemini-2.5-flash-preview-09-2025", "gemini-1.5-flash", "gemini-1.5-pro", "gemini-pro"]
+        : ["gemini-2.5-flash-preview-09-2025"];
 
       let systemPrompt = "";
       if (mode === 'organize') {
@@ -1565,13 +1568,32 @@ export default function App() {
         systemInstruction: { parts: [{ text: systemPrompt }] }
       };
 
-      const data = await fetchWithRetry(`https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`, {
-        method: 'POST', 
-        headers: { 'Content-Type': 'application/json' }, 
-        body: JSON.stringify(payload) 
-      });
+      let data = null;
+      let lastErr = null;
+
+      // オートサーチ（フォールバック）の実行
+      for (const mName of modelNamesToTry) {
+        try {
+          data = await fetchWithRetry(`https://generativelanguage.googleapis.com/v1beta/models/${mName}:generateContent?key=${apiKeyToUse}`, {
+            method: 'POST', 
+            headers: { 'Content-Type': 'application/json' }, 
+            body: JSON.stringify(payload) 
+          });
+          console.log(`Successfully connected to model: ${mName}`);
+          break; // 成功したらループを抜ける
+        } catch(err) {
+          console.warn(`Model ${mName} failed:`, err);
+          lastErr = err;
+          // not found エラーの場合は次のモデル名でリトライする
+          if (err.message && err.message.includes('not found')) {
+            continue;
+          }
+          // APIキー間違いなど、別のエラーの場合はループを抜けて終了
+          break; 
+        }
+      }
       
-      if (data.candidates && data.candidates[0] && data.candidates[0].content.parts[0].text) {
+      if (data && data.candidates && data.candidates[0] && data.candidates[0].content.parts[0].text) {
         const aiText = data.candidates[0].content.parts[0].text.trim();
         
         if (mode === 'ask') {
@@ -1582,14 +1604,14 @@ export default function App() {
         
         setToastMessage(`✅ AIの処理が完了しました！`);
       } else {
-        throw new Error("AIが文章の生成に失敗しました。(データフォーマット異常)");
+        throw lastErr || new Error("利用可能なAIモデルに接続できませんでした。");
       }
     } catch (err) { 
       setToastMessage(`❌ AIエラー: ${err.message.substring(0, 30)}...`); 
       console.error(err); 
       
       let errorMsg = `AIエラーが発生しました。\n\n詳細: ${err.message}\n\n`;
-      if (err.message.includes('not found')) {
+      if (err.message && err.message.includes('not found')) {
         errorMsg += "💡【原因の可能性】\n入力されたAPIキーが「Firebaseのもの」になっている可能性があります。AIを使うには『Google AI Studio』で新しく取得した専用のキーが必要です。設定画面を確認してください。";
       } else {
         errorMsg += "・APIキーの入力ミス\n・通信制限\nなどの可能性があります。";
@@ -1792,6 +1814,7 @@ export default function App() {
             <div className="space-y-6 pb-10 animate-in slide-in-from-right">
               <h2 className="text-xl font-black text-cyan-400 flex items-center gap-2 mb-4 tracking-widest drop-shadow-[0_0_8px_rgba(34,211,238,0.5)]"><Settings className="text-cyan-500"/> MASTER SETTINGS</h2>
               
+              {/* ★ 新設：Gemini API設定欄 */}
               <div className="bg-slate-800/80 backdrop-blur-sm p-6 rounded-[2rem] border border-purple-500/50 shadow-[0_0_15px_rgba(147,51,234,0.3)] space-y-4">
                 <h3 className="text-sm font-black text-purple-400 border-b border-purple-900/50 pb-2 flex items-center gap-2 tracking-widest"><Sparkles size={16}/> AI (Gemini) API設定</h3>
                 <p className="text-[10px] text-slate-300 leading-relaxed font-bold">
