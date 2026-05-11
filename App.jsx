@@ -714,7 +714,6 @@ const ImageViewer = ({ data, onClose, setViewerData, onEdit }) => {
   );
 };
 
-// ★ 図形描画ツールを追加したMarkupModalCanvas
 const MarkupModalCanvas = ({ markupModal, setMarkupModal, onSave }) => {
   const canvasRef = useRef(null); const [mode, setMode] = useState('draw'); const [zoom, setZoom] = useState(1);
   const [dimensions, setDimensions] = useState(null); const [texts, setTexts] = useState([]); 
@@ -725,7 +724,7 @@ const MarkupModalCanvas = ({ markupModal, setMarkupModal, onSave }) => {
   const isPanning = useRef(false);
   const panStart = useRef({ x: 0, y: 0 });
   
-  const [previewShape, setPreviewShape] = useState(null); // ★ 追加：ドラッグ中の図形プレビュー用
+  const [previewShape, setPreviewShape] = useState(null); 
 
   const PEN_COLORS = [{id:'red',v:'#ef4444',tw:'bg-red-500'},{id:'cyan',v:'#22d3ee',tw:'bg-cyan-400'},{id:'yellow',v:'#facc15',tw:'bg-yellow-400'},{id:'green',v:'#4ade80',tw:'bg-green-400'}];
 
@@ -1500,7 +1499,6 @@ export default function App() {
     }
   };
 
-  // ★ AI機能の修正
   const handleAIAssist = async (mode = 'organize', customQuestion = '') => {
     if (!formData.content && (!formData.images || formData.images.length === 0) && mode !== 'ask') { 
       setToastMessage("⚠️ 画像を追加するか、少しメモを入力してください。");
@@ -1512,24 +1510,22 @@ export default function App() {
     setToastMessage("✨ AIが解析中...");
 
     try {
-      // ★ 環境判定を絶対に間違えないように修正
-      const isCanvasEnv = typeof __initial_auth_token !== 'undefined';
-      const savedApiKey = localStorage.getItem('voltVaultGeminiApiKey') || "";
+      const isExternalDeploy = typeof __initial_auth_token === 'undefined' && !window.location.hostname.includes('goog');
       
-      let apiKeyToUse = "";
-      let modelToUse = "gemini-2.5-flash-preview-09-2025"; 
+      let apiKey = "";
+      let modelName = "gemini-2.5-flash-preview-09-2025"; 
 
-      if (!isCanvasEnv) {
-        if (!savedApiKey) {
-          alert("⚠️ Vercel等の外部環境でAIを使用するには、設定画面(Equipment)から「AI (Gemini) APIキー」を登録してください。\n※Firebaseのキーとは別物です。");
+      if (isExternalDeploy) {
+        apiKey = localStorage.getItem('voltVaultGeminiApiKey') || "";
+        if (!apiKey) {
+          alert("⚠️ Vercel環境でAIを使用するには、設定画面(Equipment)から「AI (Gemini) APIキー」を登録してください。\n※Firebaseのキーとは別物です。");
           setIsAILoading(false);
           setToastMessage('');
           return;
         }
-        apiKeyToUse = savedApiKey;
-        modelToUse = "gemini-1.5-flash"; 
+        modelName = "gemini-1.5-flash"; 
       }
-
+      
       const parts = [];
 
       let systemPrompt = "";
@@ -1569,26 +1565,11 @@ export default function App() {
         systemInstruction: { parts: [{ text: systemPrompt }] }
       };
 
-      let data;
-      try {
-        data = await fetchWithRetry(`https://generativelanguage.googleapis.com/v1beta/models/${modelToUse}:generateContent?key=${apiKeyToUse}`, {
-          method: 'POST', 
-          headers: { 'Content-Type': 'application/json' }, 
-          body: JSON.stringify(payload) 
-        });
-      } catch (err) {
-        // ★ エラーフォールバック処理 (gemini-1.5-flashが見つからない場合、gemini-1.5-proを試す)
-        if (!isCanvasEnv && err.message && err.message.includes('not found')) {
-          console.warn("Model not found. Trying fallback model...");
-          data = await fetchWithRetry(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent?key=${apiKeyToUse}`, {
-            method: 'POST', 
-            headers: { 'Content-Type': 'application/json' }, 
-            body: JSON.stringify(payload) 
-          });
-        } else {
-          throw err;
-        }
-      }
+      const data = await fetchWithRetry(`https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`, {
+        method: 'POST', 
+        headers: { 'Content-Type': 'application/json' }, 
+        body: JSON.stringify(payload) 
+      });
       
       if (data.candidates && data.candidates[0] && data.candidates[0].content.parts[0].text) {
         const aiText = data.candidates[0].content.parts[0].text.trim();
@@ -2044,47 +2025,7 @@ export default function App() {
                 </div>
               </div>
 
-              <div className="space-y-3 bg-slate-900/80 backdrop-blur-sm p-4 rounded-[2rem] border border-slate-700 shadow-lg">
-                <button type="button" onClick={() => setShowAdvanced(!showAdvanced)} className="w-full flex justify-between items-center text-xs font-black text-cyan-600 py-1"><span className="flex items-center gap-1.5 tracking-widest"><Info size={14}/> ADVANCED SETTINGS</span>{showAdvanced ? <ChevronUp size={16}/> : <ChevronDown size={16}/>}</button>
-                {showAdvanced && (
-                  <div className="space-y-4 pt-3 border-t border-slate-800 animate-in fade-in slide-in-from-top-2">
-                    <div className="relative shadow-inner rounded-2xl"><User className="absolute left-3 top-3.5 text-cyan-700" size={16}/><input list="teacher-history" className="w-full p-3 pl-10 bg-slate-950 border border-slate-800 rounded-2xl font-bold outline-none text-sm text-cyan-50 focus:border-cyan-500 transition-colors" placeholder="教えてくれた人（師匠・先輩など）" value={formData.teacher || ''} onChange={e => setFormData({...formData, teacher: e.target.value})} /></div>
-                    <datalist id="teacher-history">{uniqueTeachers.map(t => <option key={t} value={t} />)}</datalist>
-                    <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800 space-y-4 shadow-inner">
-                      <label className="flex items-center gap-3 cursor-pointer group"><div className={`w-5 h-5 rounded-md flex items-center justify-center border transition-all ${formData.needsReview ? 'bg-cyan-600 border-cyan-500 shadow-[0_0_10px_rgba(6,182,212,0.5)]' : 'bg-slate-800 border-slate-600 group-hover:border-cyan-500'}`}>{formData.needsReview && <Check size={14} className="text-slate-900" strokeWidth={4}/>}</div><input type="checkbox" checked={formData.needsReview || false} onChange={e => setFormData({...formData, needsReview: e.target.checked})} className="hidden" /><span className="text-xs font-black text-slate-300 group-hover:text-cyan-100 transition-colors">後で確認・復習が必要</span></label>
-                      {formData.needsReview && (
-                        <div className="pl-8 space-y-4 animate-in fade-in">
-                          <div className="flex items-center gap-2"><Bell size={14} className="text-orange-500 shrink-0 drop-shadow-[0_0_5px_rgba(249,115,22,0.8)]"/><input type="date" className="p-2 bg-slate-900 border border-slate-700 rounded-xl font-bold outline-none text-xs text-cyan-50 shadow-inner w-full focus:border-orange-500 focus:ring-1 focus:ring-orange-500" value={formData.reviewDate || ''} onChange={e => setFormData({...formData, reviewDate: e.target.value})} /><span className="text-[10px] text-slate-500 font-bold shrink-0">にお知らせ</span></div>
-                          <label className="flex items-center gap-3 cursor-pointer group"><div className={`w-5 h-5 rounded-md flex items-center justify-center border transition-all ${formData.isReviewed ? 'bg-green-500 border-green-400 shadow-[0_0_10px_rgba(34,197,94,0.5)]' : 'bg-slate-800 border-slate-600 group-hover:border-green-500'}`}>{formData.isReviewed && <Check size={14} className="text-slate-900" strokeWidth={4}/>}</div><input type="checkbox" checked={formData.isReviewed || false} onChange={e => setFormData({...formData, isReviewed: e.target.checked})} className="hidden" /><span className="text-xs font-black text-slate-300 group-hover:text-green-100 transition-colors">確認完了（クリア！）</span></label>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              <div className="space-y-3">
-                <div className="flex justify-between items-end">
-                  <p className="text-[10px] font-black text-cyan-600 flex items-center gap-1 tracking-widest"><Tags size={12}/> COMPONENTS & TAGS</p>
-                  <button type="button" onClick={() => setShowNewTag(!showNewTag)} className="text-[10px] font-bold text-cyan-400 bg-slate-800 px-2.5 py-1.5 rounded-lg flex items-center gap-1 border border-cyan-900 shadow-[0_0_8px_rgba(6,182,212,0.2)] active:scale-95 transition-all"><Plus size={12}/>新規タグ作成</button>
-                </div>
-                {showNewTag && (
-                  <div className="bg-cyan-950/30 p-3 rounded-2xl border border-cyan-900 flex flex-col gap-2 animate-in fade-in slide-in-from-top-2 shadow-inner">
-                    <div className="flex gap-2">
-                      <select value={newTagGroup} onChange={e=>setNewTagGroup(e.target.value)} className="bg-slate-900 border border-slate-700 p-2 rounded-xl text-[10px] sm:text-xs font-bold text-slate-200 outline-none focus:border-cyan-500 shrink-0 w-24">{MainCategories.map(c => <option key={c} value={c}>{String(c)}</option>)}</select>
-                      <input type="text" placeholder="新タグ名" value={newTagName} onChange={e=>setNewTagName(e.target.value)} className="w-full bg-slate-900 border border-slate-700 p-2 rounded-xl text-xs font-bold text-cyan-50 outline-none focus:border-cyan-500 min-w-0" />
-                    </div>
-                    <div className="flex gap-2 items-center">
-                      <ColorSelector value={newTagColor} onChange={setNewTagColor} />
-                      <IconSelector value={newTagIcon} onChange={setNewTagIcon} />
-                      <button type="button" onClick={() => { if(newTagName.trim()) { handleAddItem('tags', newTagName.trim(), newTagColor, newTagIcon, newTagGroup); const mats = formData.materials || []; if (!mats.includes(newTagName.trim())) { setFormData({...formData, materials: [...mats, newTagName.trim()]}); } setNewTagName(''); setNewTagColor('gray'); setNewTagIcon('Tags'); setShowNewTag(false); } }} className="bg-cyan-600 text-slate-900 px-4 py-2.5 rounded-xl text-xs font-black shadow-[0_0_10px_rgba(6,182,212,0.5)] active:scale-95 shrink-0">追加</button>
-                    </div>
-                  </div>
-                )}
-                <div className="flex flex-col gap-2">{groupedTagsForm.map(({ category, tags }) => <TagAccordion key={category} groupName={`【${String(category)}】`} tags={tags} formData={formData} setFormData={setFormData} />)}</div>
-              </div>
-              
-              {/* ★ 写真添付欄 */}
+              {/* ★ 写真添付欄を画面上部へ移動！ */}
               <div className="space-y-3 bg-slate-900/80 backdrop-blur-sm p-4 sm:p-5 rounded-[2.5rem] border border-slate-700 shadow-lg">
                 <div className="flex justify-between items-center text-[10px] font-black text-cyan-600 mb-2 tracking-widest"><span className="flex items-center gap-1"><Camera size={14}/> VISUAL EVIDENCE</span></div>
                 
@@ -2132,7 +2073,8 @@ export default function App() {
                   )}
                 </div>
               </div>
-              
+
+              {/* ★ QUEST LOG & AI ASSIST を写真の下に移動 */}
               <div className="space-y-3 bg-slate-900/80 backdrop-blur-sm p-4 sm:p-5 rounded-[2.5rem] border border-slate-700 shadow-lg">
                 <div className="flex flex-col gap-2">
                   <div className="flex justify-between items-center text-[10px] font-black text-cyan-600 tracking-widest">
@@ -2184,6 +2126,48 @@ export default function App() {
                   ))}
                 </div>
                 <textarea className="w-full h-40 pt-2 bg-transparent outline-none text-sm font-medium leading-relaxed resize-none text-cyan-50 placeholder:text-slate-600" placeholder="攻略のヒント、配線の色、次回への引き継ぎ事項などを記録...&#10;&#10;【✨AIアシストの使い方】&#10;写真を追加して上の「✨AIで自動整理」を押すと、写真から現場状況を推測して自動でレポートを作成します！ラフなメモを入力してから押すと、プロ仕様の文章に整形してくれます。" value={formData.content || ''} onChange={e => setFormData({...formData, content: e.target.value})} />
+              </div>
+
+              {/* ★ COMPONENTS & TAGS を次に移動 */}
+              <div className="space-y-3">
+                <div className="flex justify-between items-end">
+                  <p className="text-[10px] font-black text-cyan-600 flex items-center gap-1 tracking-widest"><Tags size={12}/> COMPONENTS & TAGS</p>
+                  <button type="button" onClick={() => setShowNewTag(!showNewTag)} className="text-[10px] font-bold text-cyan-400 bg-slate-800 px-2.5 py-1.5 rounded-lg flex items-center gap-1 border border-cyan-900 shadow-[0_0_8px_rgba(6,182,212,0.2)] active:scale-95 transition-all"><Plus size={12}/>新規タグ作成</button>
+                </div>
+                {showNewTag && (
+                  <div className="bg-cyan-950/30 p-3 rounded-2xl border border-cyan-900 flex flex-col gap-2 animate-in fade-in slide-in-from-top-2 shadow-inner">
+                    <div className="flex gap-2">
+                      <select value={newTagGroup} onChange={e=>setNewTagGroup(e.target.value)} className="bg-slate-900 border border-slate-700 p-2 rounded-xl text-[10px] sm:text-xs font-bold text-slate-200 outline-none focus:border-cyan-500 shrink-0 w-24">{MainCategories.map(c => <option key={c} value={c}>{String(c)}</option>)}</select>
+                      <input type="text" placeholder="新タグ名" value={newTagName} onChange={e=>setNewTagName(e.target.value)} className="w-full bg-slate-900 border border-slate-700 p-2 rounded-xl text-xs font-bold text-cyan-50 outline-none focus:border-cyan-500 min-w-0" />
+                    </div>
+                    <div className="flex gap-2 items-center">
+                      <ColorSelector value={newTagColor} onChange={setNewTagColor} />
+                      <IconSelector value={newTagIcon} onChange={setNewTagIcon} />
+                      <button type="button" onClick={() => { if(newTagName.trim()) { handleAddItem('tags', newTagName.trim(), newTagColor, newTagIcon, newTagGroup); const mats = formData.materials || []; if (!mats.includes(newTagName.trim())) { setFormData({...formData, materials: [...mats, newTagName.trim()]}); } setNewTagName(''); setNewTagColor('gray'); setNewTagIcon('Tags'); setShowNewTag(false); } }} className="bg-cyan-600 text-slate-900 px-4 py-2.5 rounded-xl text-xs font-black shadow-[0_0_10px_rgba(6,182,212,0.5)] active:scale-95 shrink-0">追加</button>
+                    </div>
+                  </div>
+                )}
+                <div className="flex flex-col gap-2">{groupedTagsForm.map(({ category, tags }) => <TagAccordion key={category} groupName={`【${String(category)}】`} tags={tags} formData={formData} setFormData={setFormData} />)}</div>
+              </div>
+
+              {/* ★ ADVANCED SETTINGS を一番下に移動 */}
+              <div className="space-y-3 bg-slate-900/80 backdrop-blur-sm p-4 rounded-[2rem] border border-slate-700 shadow-lg">
+                <button type="button" onClick={() => setShowAdvanced(!showAdvanced)} className="w-full flex justify-between items-center text-xs font-black text-cyan-600 py-1"><span className="flex items-center gap-1.5 tracking-widest"><Info size={14}/> ADVANCED SETTINGS</span>{showAdvanced ? <ChevronUp size={16}/> : <ChevronDown size={16}/>}</button>
+                {showAdvanced && (
+                  <div className="space-y-4 pt-3 border-t border-slate-800 animate-in fade-in slide-in-from-top-2">
+                    <div className="relative shadow-inner rounded-2xl"><User className="absolute left-3 top-3.5 text-cyan-700" size={16}/><input list="teacher-history" className="w-full p-3 pl-10 bg-slate-950 border border-slate-800 rounded-2xl font-bold outline-none text-sm text-cyan-50 focus:border-cyan-500 transition-colors" placeholder="教えてくれた人（師匠・先輩など）" value={formData.teacher || ''} onChange={e => setFormData({...formData, teacher: e.target.value})} /></div>
+                    <datalist id="teacher-history">{uniqueTeachers.map(t => <option key={t} value={t} />)}</datalist>
+                    <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800 space-y-4 shadow-inner">
+                      <label className="flex items-center gap-3 cursor-pointer group"><div className={`w-5 h-5 rounded-md flex items-center justify-center border transition-all ${formData.needsReview ? 'bg-cyan-600 border-cyan-500 shadow-[0_0_10px_rgba(6,182,212,0.5)]' : 'bg-slate-800 border-slate-600 group-hover:border-cyan-500'}`}>{formData.needsReview && <Check size={14} className="text-slate-900" strokeWidth={4}/>}</div><input type="checkbox" checked={formData.needsReview || false} onChange={e => setFormData({...formData, needsReview: e.target.checked})} className="hidden" /><span className="text-xs font-black text-slate-300 group-hover:text-cyan-100 transition-colors">後で確認・復習が必要</span></label>
+                      {formData.needsReview && (
+                        <div className="pl-8 space-y-4 animate-in fade-in">
+                          <div className="flex items-center gap-2"><Bell size={14} className="text-orange-500 shrink-0 drop-shadow-[0_0_5px_rgba(249,115,22,0.8)]"/><input type="date" className="p-2 bg-slate-900 border border-slate-700 rounded-xl font-bold outline-none text-xs text-cyan-50 shadow-inner w-full focus:border-orange-500 focus:ring-1 focus:ring-orange-500" value={formData.reviewDate || ''} onChange={e => setFormData({...formData, reviewDate: e.target.value})} /><span className="text-[10px] text-slate-500 font-bold shrink-0">にお知らせ</span></div>
+                          <label className="flex items-center gap-3 cursor-pointer group"><div className={`w-5 h-5 rounded-md flex items-center justify-center border transition-all ${formData.isReviewed ? 'bg-green-500 border-green-400 shadow-[0_0_10px_rgba(34,197,94,0.5)]' : 'bg-slate-800 border-slate-600 group-hover:border-green-500'}`}>{formData.isReviewed && <Check size={14} className="text-slate-900" strokeWidth={4}/>}</div><input type="checkbox" checked={formData.isReviewed || false} onChange={e => setFormData({...formData, isReviewed: e.target.checked})} className="hidden" /><span className="text-xs font-black text-slate-300 group-hover:text-green-100 transition-colors">確認完了（クリア！）</span></label>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
               
               {view === 'edit' && <button type="button" onClick={() => handleDelete(selectedMemo.id)} className="w-full py-5 text-red-500 font-black text-xs border-2 border-red-900/50 border-dashed rounded-[2.5rem] uppercase tracking-widest hover:bg-red-950 transition-all mt-8 shadow-inner">クエストを破棄する</button>}
