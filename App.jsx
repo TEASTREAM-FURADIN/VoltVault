@@ -176,6 +176,60 @@ const DynamicIcon = ({ name, size = 16, className = "" }) => {
   return <Icon size={size} className={className} />;
 };
 
+// ★ iPhone向け：サジェスト（候補）が確実に出るカスタム入力欄
+const SuggestInput = ({ value, onChange, options, placeholder, icon: IconComponent, className }) => {
+  const [showSuggest, setShowSuggest] = useState(false);
+  const [filteredOptions, setFilteredOptions] = useState([]);
+  const wrapperRef = useRef(null);
+
+  useEffect(() => {
+    if (showSuggest) {
+      if (!value) {
+        setFilteredOptions(options); // 空の時は全て表示
+      } else {
+        setFilteredOptions(options.filter(o => o.toLowerCase().includes(value.toLowerCase())));
+      }
+    }
+  }, [value, showSuggest, options]);
+
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (wrapperRef.current && !wrapperRef.current.contains(e.target)) {
+        setShowSuggest(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  return (
+    <div className="relative w-full" ref={wrapperRef}>
+      {IconComponent && <IconComponent className="absolute left-3 top-3.5 text-cyan-700" size={16}/>}
+      <input 
+        type="text"
+        className={className}
+        placeholder={placeholder}
+        value={value}
+        onChange={e => { onChange(e.target.value); setShowSuggest(true); }}
+        onFocus={() => setShowSuggest(true)}
+      />
+      {showSuggest && filteredOptions.length > 0 && (
+        <div className="absolute z-[150] w-full mt-1 bg-slate-800 border border-slate-600 rounded-xl shadow-lg max-h-40 overflow-y-auto">
+          {filteredOptions.map((opt, i) => (
+            <div 
+              key={i} 
+              className="px-4 py-3 border-b border-slate-700 last:border-0 text-sm font-bold text-cyan-50 cursor-pointer active:bg-slate-700 hover:bg-slate-700 transition-colors"
+              onClick={() => { onChange(opt); setShowSuggest(false); }}
+            >
+              {opt}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
+
 // --- ボトムナビゲーション ---
 const NavBtn = ({ view, setView }) => (
   <nav className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-slate-900/90 backdrop-blur-xl border border-slate-700 rounded-full p-2 flex items-center shadow-[0_0_20px_rgba(0,0,0,0.8)] z-40 w-max gap-2">
@@ -660,7 +714,7 @@ const ImageViewer = ({ data, onClose, setViewerData, onEdit }) => {
         </div>
       )}
 
-      {/* ★ 詳細画面から直接編集モードへ行けるボタン */}
+      {/* ★ 詳細画面から直接編集モードへ行けるボタン（確実に開くようにsetTimeoutをかませる） */}
       <button onClick={() => { onClose(); setTimeout(() => onEdit(src, data.index), 50); }} className="absolute top-6 right-36 z-50 bg-cyan-600 p-3 rounded-full text-slate-900 shadow-[0_0_15px_rgba(6,182,212,0.8)] active:scale-90 transition-all border-2 border-cyan-300">
         <Edit3 size={24} />
       </button>
@@ -1499,7 +1553,6 @@ export default function App() {
     }
   };
 
-  // ★ AI機能の修正：オートサーチ（フォールバック）機能を搭載
   const handleAIAssist = async (mode = 'organize', customQuestion = '') => {
     if (!formData.content && (!formData.images || formData.images.length === 0) && mode !== 'ask') { 
       setToastMessage("⚠️ 画像を追加するか、少しメモを入力してください。");
@@ -1511,7 +1564,6 @@ export default function App() {
     setToastMessage("✨ AIが解析中...");
 
     try {
-      // プレビュー環境（Canvas）か外部デプロイ環境（Vercel）かを厳密に判定
       const isExternalDeploy = typeof __initial_auth_token === 'undefined' && !window.location.hostname.includes('goog');
       
       let apiKeyToUse = "";
@@ -1526,7 +1578,6 @@ export default function App() {
         }
       }
 
-      // ★ Vercel等の外部環境では、複数のモデル名を順番に試す（オートサーチ機能）
       const modelNamesToTry = isExternalDeploy 
         ? ["gemini-2.5-flash", "gemini-2.5-flash-preview-09-2025", "gemini-1.5-flash", "gemini-1.5-pro", "gemini-pro"]
         : ["gemini-2.5-flash-preview-09-2025"];
@@ -1571,7 +1622,6 @@ export default function App() {
       let data = null;
       let lastErr = null;
 
-      // オートサーチ（フォールバック）の実行
       for (const mName of modelNamesToTry) {
         try {
           data = await fetchWithRetry(`https://generativelanguage.googleapis.com/v1beta/models/${mName}:generateContent?key=${apiKeyToUse}`, {
@@ -1580,15 +1630,13 @@ export default function App() {
             body: JSON.stringify(payload) 
           });
           console.log(`Successfully connected to model: ${mName}`);
-          break; // 成功したらループを抜ける
+          break; 
         } catch(err) {
           console.warn(`Model ${mName} failed:`, err);
           lastErr = err;
-          // not found エラーの場合は次のモデル名でリトライする
           if (err.message && err.message.includes('not found')) {
             continue;
           }
-          // APIキー間違いなど、別のエラーの場合はループを抜けて終了
           break; 
         }
       }
@@ -2011,8 +2059,14 @@ export default function App() {
               )}
 
               <div className="space-y-4">
-                <input list="title-history" className="w-full text-2xl font-black bg-transparent border-b-2 border-slate-700 py-2 text-slate-100 focus:border-cyan-400 outline-none transition-colors placeholder:text-slate-600" placeholder="クエスト名（空なら自動で日時を入力）" value={formData.title || ''} onChange={e => setFormData({...formData, title: e.target.value})} />
-                <datalist id="title-history">{uniqueTitles.map(t => <option key={t} value={t} />)}</datalist>
+                {/* ★ タイトル入力欄にもサジェスト機能（SuggestInput）を適用！ */}
+                <SuggestInput 
+                  value={formData.title || ''}
+                  onChange={val => setFormData({...formData, title: val})}
+                  options={uniqueTitles}
+                  placeholder="クエスト名（空なら自動で日時を入力）"
+                  className="w-full text-2xl font-black bg-transparent border-b-2 border-slate-700 py-2 text-slate-100 focus:border-cyan-400 outline-none transition-colors placeholder:text-slate-600"
+                />
 
                 <div className="grid grid-cols-2 gap-4">
                   <input type="date" className="p-3 bg-slate-900 border border-slate-700 rounded-2xl font-bold outline-none text-sm text-cyan-50 shadow-inner focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500" value={formData.date || ''} onChange={e => setFormData({...formData, date: e.target.value})} />
@@ -2041,11 +2095,15 @@ export default function App() {
                   </div>
                 )}
 
-                <div className="relative shadow-inner rounded-2xl">
-                  <Building className="absolute left-3 top-3.5 text-cyan-700" size={16}/>
-                  <input list="site-history" className="w-full p-3 pl-10 bg-slate-900 border border-slate-700 rounded-2xl font-bold outline-none text-sm text-cyan-50 focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500" placeholder="ダンジョン名（現場・案件）" value={formData.site || ''} onChange={e => setFormData({...formData, site: e.target.value})} />
-                  <datalist id="site-history">{uniqueSites.map(s => <option key={s} value={s} />)}</datalist>
-                </div>
+                {/* ★ iPhoneでも確実に出るサジェスト機能（現場名） */}
+                <SuggestInput 
+                  value={formData.site || ''}
+                  onChange={val => setFormData({...formData, site: val})}
+                  options={uniqueSites}
+                  placeholder="ダンジョン名（現場・案件）"
+                  icon={Building}
+                  className="w-full p-3 pl-10 bg-slate-900 border border-slate-700 rounded-2xl font-bold outline-none text-sm text-cyan-50 focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 shadow-inner"
+                />
               </div>
 
               {/* ★ 写真添付欄を画面上部へ移動！ */}
@@ -2178,8 +2236,18 @@ export default function App() {
                 <button type="button" onClick={() => setShowAdvanced(!showAdvanced)} className="w-full flex justify-between items-center text-xs font-black text-cyan-600 py-1"><span className="flex items-center gap-1.5 tracking-widest"><Info size={14}/> ADVANCED SETTINGS</span>{showAdvanced ? <ChevronUp size={16}/> : <ChevronDown size={16}/>}</button>
                 {showAdvanced && (
                   <div className="space-y-4 pt-3 border-t border-slate-800 animate-in fade-in slide-in-from-top-2">
-                    <div className="relative shadow-inner rounded-2xl"><User className="absolute left-3 top-3.5 text-cyan-700" size={16}/><input list="teacher-history" className="w-full p-3 pl-10 bg-slate-950 border border-slate-800 rounded-2xl font-bold outline-none text-sm text-cyan-50 focus:border-cyan-500 transition-colors" placeholder="教えてくれた人（師匠・先輩など）" value={formData.teacher || ''} onChange={e => setFormData({...formData, teacher: e.target.value})} /></div>
-                    <datalist id="teacher-history">{uniqueTeachers.map(t => <option key={t} value={t} />)}</datalist>
+                    {/* ★ iPhoneでも確実に出るサジェスト機能（教えてくれた人） */}
+                    <div className="relative">
+                      <SuggestInput 
+                        value={formData.teacher || ''}
+                        onChange={val => setFormData({...formData, teacher: val})}
+                        options={uniqueTeachers}
+                        placeholder="教えてくれた人（師匠・先輩など）"
+                        icon={User}
+                        className="w-full p-3 pl-10 bg-slate-950 border border-slate-800 rounded-2xl font-bold outline-none text-sm text-cyan-50 focus:border-cyan-500 transition-colors shadow-inner"
+                      />
+                    </div>
+                    
                     <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800 space-y-4 shadow-inner">
                       <label className="flex items-center gap-3 cursor-pointer group"><div className={`w-5 h-5 rounded-md flex items-center justify-center border transition-all ${formData.needsReview ? 'bg-cyan-600 border-cyan-500 shadow-[0_0_10px_rgba(6,182,212,0.5)]' : 'bg-slate-800 border-slate-600 group-hover:border-cyan-500'}`}>{formData.needsReview && <Check size={14} className="text-slate-900" strokeWidth={4}/>}</div><input type="checkbox" checked={formData.needsReview || false} onChange={e => setFormData({...formData, needsReview: e.target.checked})} className="hidden" /><span className="text-xs font-black text-slate-300 group-hover:text-cyan-100 transition-colors">後で確認・復習が必要</span></label>
                       {formData.needsReview && (
@@ -2247,6 +2315,12 @@ export default function App() {
             }}
           />
         )}
+      </div>
+
+      {/* ★ 復元したレベルアップ＆トロフィーモーダル（確実に一番手前に表示） */}
+      <div className="relative z-[250]">
+        <LevelUpModal levelUpData={levelUpData} />
+        <TrophiesModal showTrophiesModal={showTrophiesModal} setShowTrophiesModal={setShowTrophiesModal} memos={memos} userSettings={userSettings} />
       </div>
       
       {!markupModal.isOpen && !viewerData && view !== 'add' && view !== 'edit' && view !== 'detail' && <NavBtn view={view} setView={setView} />}
